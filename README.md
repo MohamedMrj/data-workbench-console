@@ -176,49 +176,6 @@ CONFIRMATION_STORE_FILE=.data/pending-confirmations.json
 
 These files are ignored by git and should stay private.
 
-## Publish To GitHub
-
-Before creating a GitHub repository, check that sensitive files are ignored:
-
-```bash
-git status --short
-```
-
-Files that must not be committed:
-
-- `.env`
-- `.data/`
-- `audit-log.ndjson`
-- `audit-log.ndjson.tmp`
-- `data/saved-connections.json`
-- `node_modules/`
-- `.next/`
-
-Initialize the repository:
-
-```bash
-git init
-git add .
-git status --short
-git commit -m "Initial commit"
-```
-
-Create an empty repository on GitHub, then connect and push:
-
-```bash
-git branch -M main
-git remote add origin https://github.com/<your-org-or-user>/<repo-name>.git
-git push -u origin main
-```
-
-If you use the GitHub CLI:
-
-```bash
-gh repo create <repo-name> --private --source=. --remote=origin --push
-```
-
-Use a private repository unless the code and documentation have been reviewed for public release.
-
 ## Purpose
 
 This app provides a browser-based operator console for:
