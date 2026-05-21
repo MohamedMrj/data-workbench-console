@@ -1,8 +1,17 @@
 # Data Workbench Console
 
-Production-safe multi-source SQL workbench and stored procedure runner for Microsoft Fabric SQL endpoints, Fabric Lakehouse SQL endpoints, and SQL Server.
+![Data Workbench Console SQL Studio](public/readme-sql-studio.png)
 
-The app is built with Next.js and is designed for internal operational use where safety, auditability, and controlled execution matter more than unrestricted SQL access.
+Production-safe internal SQL workbench for Microsoft Fabric SQL endpoints, Fabric Lakehouse SQL endpoints, and SQL Server.
+
+Data Workbench Console is built for controlled operational work: browse metadata, generate SQL, run read queries, preview writes before execution, run stored procedures from a dedicated flow, and keep an audit trail of important actions.
+
+<p>
+  <img alt="Next.js" src="https://img.shields.io/badge/Next.js-15-111827?style=for-the-badge&logo=nextdotjs" />
+  <img alt="React" src="https://img.shields.io/badge/React-19-149eca?style=for-the-badge&logo=react&logoColor=white" />
+  <img alt="Node" src="https://img.shields.io/badge/Node-%3E%3D20-339933?style=for-the-badge&logo=nodedotjs&logoColor=white" />
+  <img alt="Microsoft Fabric" src="https://img.shields.io/badge/Microsoft%20Fabric-SQL%20Endpoints-f97316?style=for-the-badge" />
+</p>
 
 ## License / Ownership
 
@@ -16,7 +25,51 @@ the copyright owner.
 >
 > This app can connect to real databases and execute writes/procedures when the connected source allows it. Do not publish it with real `.env` secrets, audit logs, saved connections, or production credentials. Put authentication/SSO or a private network boundary in front of any hosted deployment.
 
-## Quick Start
+## What You Can Do
+
+| Area | What it gives you |
+| --- | --- |
+| SQL Studio | Browse tables/views, generate SQL, run SELECT queries, preview writes, inspect results, export CSV. |
+| Procedure Runner | Browse stored procedures, inspect parameters, prepare execution, confirm, view output/return values. |
+| Connection profiles | Save reusable connection details without storing passwords or client secrets. |
+| Audit | Track connection tests, catalog loads, query execution, write previews, procedure execution, and saved profile changes. |
+| Documentation | Built-in user docs at `/docs/sql-studio` and `/docs/procedure-runner`. |
+
+## Screenshots
+
+### SQL Studio
+
+![SQL Studio screenshot](public/readme-sql-studio.png)
+
+### Procedure Runner
+
+![Procedure Runner screenshot](public/readme-procedure-runner.png)
+
+### Built-in Documentation
+
+![Documentation screenshot](public/readme-docs.png)
+
+## For Users
+
+1. Open the app in your browser.
+2. Choose the source type:
+   - `Fabric SQL endpoint`
+   - `Fabric Lakehouse SQL endpoint`
+   - `SQL Server`
+3. Enter server, port, database, and authentication details.
+4. Click `Test connection`.
+5. Click `Load catalog`.
+6. Use `SQL Studio` for tables, views, SQL generation, query execution, and results.
+7. Use `Procedure Runner` for stored procedures where the selected source supports them.
+
+Useful pages:
+
+- `/` - SQL Studio
+- `/procedures` - Procedure Runner
+- `/docs/sql-studio` - SQL Studio guide
+- `/docs/procedure-runner` - Procedure Runner guide
+
+## For Developers Cloning The Repo
 
 Prerequisites:
 
@@ -25,7 +78,14 @@ Prerequisites:
 - Network access to the SQL endpoints you want to use, usually outbound TCP `1433`
 - For Microsoft Fabric sources, an Azure/Fabric service principal with access to the target workspace and SQL endpoint
 
-Install dependencies:
+Clone the repository:
+
+```bash
+git clone <repo-url>
+cd data-workbench-console
+```
+
+Install dependencies from the lockfile:
 
 ```bash
 npm ci
@@ -76,31 +136,44 @@ Run the full local verification suite:
 npm run verify
 ```
 
-## Local Usage Flow
+## Local Project Commands
 
-1. Open `http://localhost:3000`.
-2. Choose the source type:
-   - `Fabric SQL endpoint`
-   - `Fabric Lakehouse SQL endpoint`
-   - `SQL Server`
-3. Choose authentication.
-4. Enter server, port, and database.
-5. Click `Test connection`.
-6. Click `Load catalog`.
-7. Use `SQL Studio` for object browsing, query generation, read queries, write preview, and results.
-8. Use `Procedure Runner` for stored procedure discovery and execution where supported.
+| Command | Purpose |
+| --- | --- |
+| `npm run dev` | Start the local Next.js development server. |
+| `npm run build` | Create a production build. |
+| `npm run start` | Run the production build locally. |
+| `npm run clean` | Remove `.next`. Useful if Next dev cache gets corrupted. |
+| `npm run verify` | Clean, build, run backend smoke test, and run UI smoke test. |
 
-## Documentation Pages
+## Environment Setup
 
-The app includes user-facing documentation pages:
+Use `.env.example` as the template. Never commit your real `.env`.
 
-- `/docs/sql-studio`
-  SQL Studio documentation
+Minimum for local UI-only startup:
 
-- `/docs/procedure-runner`
-  Procedure Runner documentation
+```env
+PORT=3000
+DB_PORT=1433
+```
 
-The main UI contains a `Documentation` button that opens the relevant documentation page in a new browser tab.
+Required for Fabric service-principal authentication:
+
+```env
+AZURE_CLIENT_ID=your-client-id
+AZURE_CLIENT_SECRET=your-client-secret
+AZURE_TENANT_ID=your-tenant-id
+```
+
+Runtime data is local by default:
+
+```env
+AUDIT_LOG_FILE=./audit-log.ndjson
+APP_DATA_DIR=data
+CONFIRMATION_STORE_FILE=.data/pending-confirmations.json
+```
+
+These files are ignored by git and should stay private.
 
 ## Publish To GitHub
 
@@ -144,42 +217,6 @@ gh repo create <repo-name> --private --source=. --remote=origin --push
 ```
 
 Use a private repository unless the code and documentation have been reviewed for public release.
-
-## Important Environment Variables
-
-Common local values are documented in `.env.example`.
-
-Fabric authentication:
-
-- `AZURE_CLIENT_ID`
-- `AZURE_CLIENT_SECRET`
-- `AZURE_TENANT_ID`
-
-Runtime and limits:
-
-- `PORT`
-- `DB_PORT`
-- `DB_CONNECTION_TIMEOUT_MS`
-- `DB_REQUEST_TIMEOUT_MS`
-- `RESPONSE_ROW_LIMIT`
-- `MAX_QUERY_LENGTH`
-- `WRITE_PREVIEW_LIMIT`
-- `CONFIRMATION_TTL_MS`
-
-Audit and local persistence:
-
-- `AUDIT_LOG_FILE`
-- `AUDIT_LOG_LIMIT`
-- `AUDIT_LOG_MAX_BYTES`
-- `APP_DATA_DIR`
-- `SAVED_CONNECTIONS_FILE`
-- `CONFIRMATION_STORE_FILE`
-
-Hosted/internal security:
-
-- `ALLOW_LOCAL_MISSING_ORIGIN=false`
-- `AUDIT_LOCAL_ONLY=false` only if remote audit viewing should be allowed
-- `AUDIT_ACCESS_MODE=same-origin` for same-origin hosted audit access
 
 ## Purpose
 
