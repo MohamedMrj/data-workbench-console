@@ -2,11 +2,13 @@ window.createConsoleApp = function createConsoleApp() {
   const HISTORY_KEY = 'dataWorkbenchConnectionsV2';
   const LEGACY_HISTORY_KEYS = ['dataWorkbenchConnectionsV0', 'dataWorkbenchConnections', 'savedConnections'];
   const QUERY_HISTORY_KEY = 'dataWorkbenchQueryHistoryV3';
+  const PROCEDURE_HISTORY_KEY = 'dataWorkbenchProcedureHistoryV1';
   const THEME_KEY = 'dataWorkbenchThemeV2';
   const EDITOR_TEXT_SIZE_KEY = 'dataWorkbenchEditorTextSizeV1';
   const RESULTS_TEXT_SIZE_KEY = 'dataWorkbenchResultsTextSizeV1';
   const ACTIVE_CONNECTION_KEY = 'dataWorkbenchActiveConnectionV1';
   const CATALOG_STATE_KEY = 'dataWorkbenchCatalogStateV1';
+  const WORKSPACE_STATE_KEY = 'dataWorkbenchWorkspaceStateV1';
   const PANEL_LAYOUT_KEY = 'dataWorkbenchPanelLayoutV1';
   const SIDE_PANEL_VISIBILITY_KEY = 'dataWorkbenchSidePanelVisibilityV1';
   const ADVANCED_OPERATIONS_VISIBILITY_KEY = 'dataWorkbenchAdvancedOperationsVisibleV1';
@@ -57,6 +59,7 @@ window.createConsoleApp = function createConsoleApp() {
     explorer: 'objects',
     connectionHistory: [],
     queryHistory: [],
+    procedureHistory: [],
     objects: [],
     filteredObjects: [],
     procedures: [],
@@ -97,6 +100,27 @@ window.createConsoleApp = function createConsoleApp() {
     confirmCountdownTimer: null,
     historyFilter: ''
   };
+
+  function defaultResultsState() {
+    return {
+      columns: [],
+      rows: [],
+      output: {},
+      returnValue: null,
+      rowsAffected: 0,
+      totalRows: 0,
+      truncated: false,
+      page: 1,
+      pageSize: 50,
+      columnWidths: {},
+      expandedCells: {},
+      sortColumn: '',
+      sortDirection: 'asc',
+      localFilter: '',
+      visualKind: '',
+      visualObject: ''
+    };
+  }
 
   const $ = (id) => document.getElementById(id);
   const esc = (value) => String(value ?? '')
@@ -932,6 +956,139 @@ window.createConsoleApp = function createConsoleApp() {
     }));
   }
 
+  function normalizeResultsSnapshot(snapshot) {
+    const base = defaultResultsState();
+    if (!snapshot || typeof snapshot !== 'object') {
+      return base;
+    }
+    return {
+      ...base,
+      columns: Array.isArray(snapshot.columns) ? snapshot.columns : [],
+      rows: Array.isArray(snapshot.rows) ? snapshot.rows : [],
+      output: snapshot.output && typeof snapshot.output === 'object' ? snapshot.output : {},
+      returnValue: snapshot.returnValue ?? null,
+      rowsAffected: Number(snapshot.rowsAffected || 0),
+      totalRows: Number(snapshot.totalRows || 0),
+      truncated: Boolean(snapshot.truncated),
+      page: Math.max(1, Number(snapshot.page || 1)),
+      pageSize: Math.max(1, Number(snapshot.pageSize || base.pageSize)),
+      columnWidths: snapshot.columnWidths && typeof snapshot.columnWidths === 'object' ? snapshot.columnWidths : {},
+      expandedCells: snapshot.expandedCells && typeof snapshot.expandedCells === 'object' ? snapshot.expandedCells : {},
+      sortColumn: String(snapshot.sortColumn || ''),
+      sortDirection: snapshot.sortDirection === 'desc' ? 'desc' : 'asc',
+      localFilter: String(snapshot.localFilter || ''),
+      visualKind: String(snapshot.visualKind || ''),
+      visualObject: String(snapshot.visualObject || '')
+    };
+  }
+
+  function readWorkspaceState() {
+    try {
+      const parsed = JSON.parse(safeSessionGet(WORKSPACE_STATE_KEY) || '{}');
+      return parsed && typeof parsed === 'object' ? parsed : {};
+    } catch {
+      return {};
+    }
+  }
+
+  function writeWorkspaceState(nextState) {
+    safeSessionSet(WORKSPACE_STATE_KEY, JSON.stringify(nextState || {}));
+  }
+
+  function currentBuilderSnapshot() {
+    return {
+      query: getQuery(),
+      queryMode: state.queryMode,
+      filters: getFilters(),
+      sortColumn: $('sortColumnSelect')?.value || '',
+      sortDirection: $('sortDirectionSelect')?.value || 'ASC',
+      topRows: $('topRowsInput')?.value || '100',
+      distinct: $('distinctSelect')?.value || 'false',
+      advancedSourceObject: $('advancedSourceObjectSelect')?.value || '',
+      targetJoinColumn: $('targetJoinColumnSelect')?.value || '',
+      sourceJoinColumn: $('sourceJoinColumnInput')?.value || '',
+      profileSampleRows: $('profileSampleRowsInput')?.value || '200'
+    };
+  }
+
+  function persistWorkspaceState(workspace = state.workspace) {
+    if (!$('queryEditor')) {
+      return;
+    }
+    const allState = readWorkspaceState();
+    const key = workspace === 'procedure' ? 'procedure' : 'sql';
+    const snapshot = {
+      connectionSignature: connectionSignature(),
+      activeObject: state.activeObject || '',
+      activeProcedure: state.activeProcedure || '',
+      procedureValues: { ...(state.procedureValues || {}) },
+      procedureParameters: Array.isArray(state.procedureParameters) ? state.procedureParameters : [],
+      historyFilter: state.historyFilter || '',
+      results: normalizeResultsSnapshot(state.results),
+      savedAt: new Date().toISOString()
+    };
+    if (key === 'sql') {
+      snapshot.builder = currentBuilderSnapshot();
+    }
+    allState[key] = snapshot;
+    writeWorkspaceState(allState);
+  }
+
+  function restoreFilterRows(filters = []) {
+    const list = $('filtersList');
+    if (!list) {
+      return;
+    }
+    list.innerHTML = '';
+    filters
+      .filter((filter) => filter && state.activeColumns.some((column) => column.name === filter.column))
+      .forEach((filter) => list.appendChild(createFilterRow(filter)));
+    renderFilters();
+  }
+
+  function restoreWorkspaceState(workspace = state.workspace) {
+    const allState = readWorkspaceState();
+    const key = workspace === 'procedure' ? 'procedure' : 'sql';
+    const snapshot = allState[key];
+    if (!snapshot || snapshot.connectionSignature !== connectionSignature()) {
+      return false;
+    }
+
+    if (key === 'sql') {
+      const builder = snapshot.builder || {};
+      setMode(builder.queryMode || state.queryMode || 'select');
+      if ($('sortColumnSelect')) $('sortColumnSelect').value = builder.sortColumn || '';
+      if ($('sortDirectionSelect')) $('sortDirectionSelect').value = builder.sortDirection || 'ASC';
+      if ($('topRowsInput')) $('topRowsInput').value = builder.topRows || '100';
+      if ($('distinctSelect')) $('distinctSelect').value = builder.distinct || 'false';
+      if ($('advancedSourceObjectSelect')) $('advancedSourceObjectSelect').value = builder.advancedSourceObject || '';
+      if ($('targetJoinColumnSelect')) $('targetJoinColumnSelect').value = builder.targetJoinColumn || '';
+      if ($('sourceJoinColumnInput')) $('sourceJoinColumnInput').value = builder.sourceJoinColumn || '';
+      if ($('profileSampleRowsInput')) $('profileSampleRowsInput').value = builder.profileSampleRows || '200';
+      restoreFilterRows(Array.isArray(builder.filters) ? builder.filters : []);
+      setQuery(typeof builder.query === 'string' ? builder.query : getQuery());
+      updateAdvancedOperationsSummary();
+    } else {
+      if (snapshot.activeProcedure && snapshot.activeProcedure === state.activeProcedure) {
+        state.procedureValues = snapshot.procedureValues && typeof snapshot.procedureValues === 'object' ? { ...snapshot.procedureValues } : state.procedureValues;
+        renderProcedureWorkspace();
+        persistCatalogState();
+      }
+    }
+
+    state.historyFilter = String(snapshot.historyFilter || '');
+    if ($('queryHistorySearch')) {
+      $('queryHistorySearch').value = state.historyFilter;
+    }
+    state.results = normalizeResultsSnapshot(snapshot.results);
+    if ($('localResultsFilter')) {
+      $('localResultsFilter').value = state.results.localFilter || '';
+    }
+    renderHistoryPanel();
+    renderResults();
+    return true;
+  }
+
   function restoreCatalogState() {
     let saved = null;
     try {
@@ -1069,6 +1226,29 @@ window.createConsoleApp = function createConsoleApp() {
         timestamp: String(item.timestamp || new Date().toISOString())
       }))
       .filter((item) => item.query.trim())
+      .filter((item) => {
+        const time = new Date(item.timestamp).getTime();
+        return Number.isFinite(time) && (now - time) <= QUERY_HISTORY_RETENTION_MS;
+      })
+      .slice(0, QUERY_HISTORY_MAX);
+  }
+
+  function normalizeProcedureHistory(raw) {
+    const now = Date.now();
+    return (Array.isArray(raw) ? raw : [])
+      .filter((item) => item && typeof item === 'object' && typeof item.procedure === 'string')
+      .map((item) => ({
+        id: String(item.id || `${Date.now()}-${Math.random().toString(16).slice(2, 7)}`),
+        procedure: String(item.procedure || '').slice(0, 512),
+        parameters: item.parameters && typeof item.parameters === 'object' ? Object.fromEntries(
+          Object.entries(item.parameters).map(([key, value]) => [String(key), value == null ? '' : String(value)])
+        ) : {},
+        connectionSignature: String(item.connectionSignature || ''),
+        database: String(item.database || ''),
+        server: String(item.server || ''),
+        timestamp: String(item.timestamp || new Date().toISOString())
+      }))
+      .filter((item) => item.procedure.trim())
       .filter((item) => {
         const time = new Date(item.timestamp).getTime();
         return Number.isFinite(time) && (now - time) <= QUERY_HISTORY_RETENTION_MS;
@@ -1248,12 +1428,46 @@ window.createConsoleApp = function createConsoleApp() {
     safeSet(QUERY_HISTORY_KEY, JSON.stringify(state.queryHistory));
   }
 
+  function saveProcedureHistory() {
+    safeSet(PROCEDURE_HISTORY_KEY, JSON.stringify(state.procedureHistory));
+  }
+
   function addQueryHistory(query) {
     const clean = String(query || '').trim();
     if (!clean) return;
     state.queryHistory = [{ id: `${Date.now()}-${Math.random().toString(16).slice(2, 7)}`, query: clean.slice(0, 20000), timestamp: new Date().toISOString() }, ...state.queryHistory.filter((item) => item.query !== clean)].slice(0, QUERY_HISTORY_MAX);
     saveQueryHistory();
-    renderQueryHistory();
+    renderHistoryPanel();
+  }
+
+  function addProcedureHistory(procedure, parameters = {}) {
+    const cleanProcedure = String(procedure || '').trim();
+    if (!cleanProcedure) return;
+    const normalizedParameters = Object.fromEntries(
+      Object.entries(parameters || {}).map(([key, value]) => [String(key), value == null ? '' : String(value)])
+    );
+    const currentConnection = storageConnection();
+    const signature = `${cleanProcedure}|${connectionSignature(currentConnection)}|${JSON.stringify(normalizedParameters)}`;
+    state.procedureHistory = [{
+      id: `${Date.now()}-${Math.random().toString(16).slice(2, 7)}`,
+      procedure: cleanProcedure.slice(0, 512),
+      parameters: normalizedParameters,
+      connectionSignature: connectionSignature(currentConnection),
+      database: currentConnection.database || '',
+      server: currentConnection.server || '',
+      timestamp: new Date().toISOString()
+    }, ...state.procedureHistory.filter((item) => `${item.procedure}|${item.connectionSignature}|${JSON.stringify(item.parameters || {})}` !== signature)].slice(0, QUERY_HISTORY_MAX);
+    saveProcedureHistory();
+    renderHistoryPanel();
+  }
+
+  function procedureHistorySearchText(item) {
+    return [
+      item.procedure,
+      item.database,
+      item.server,
+      Object.entries(item.parameters || {}).map(([key, value]) => `${key} ${value}`).join(' ')
+    ].join(' ').toLowerCase();
   }
 
   function renderQueryHistory() {
@@ -1280,15 +1494,72 @@ window.createConsoleApp = function createConsoleApp() {
     });
   }
 
-  function loadQueryHistory() {
-    try { state.queryHistory = normalizeQueryHistory(JSON.parse(safeGet(QUERY_HISTORY_KEY) || '[]')); } catch { state.queryHistory = []; }
+  function renderProcedureHistory() {
+    const container = $('queryHistory');
+    const filtered = state.historyFilter
+      ? state.procedureHistory.filter((item) => procedureHistorySearchText(item).includes(state.historyFilter))
+      : state.procedureHistory;
+    if (!filtered.length) {
+      container.innerHTML = state.historyFilter
+        ? '<div class="empty-note">No procedure runs match the search.</div>'
+        : '<div class="empty-note">Procedure runs will appear here after execution.</div>';
+      return;
+    }
+    container.innerHTML = filtered.map((item) => {
+      const parameterCount = Object.values(item.parameters || {}).filter((value) => String(value || '').trim()).length;
+      const scope = [item.database, `${parameterCount} value${parameterCount === 1 ? '' : 's'}`].filter(Boolean).join(' • ');
+      return `<button class="history-item" data-procedure-history-id="${esc(item.id)}" type="button" title="${esc(item.procedure)}"><strong>${esc(item.procedure.slice(0, 54))}</strong><span>${esc(formatTimestamp(item.timestamp))}${scope ? ` • ${esc(scope)}` : ''}</span></button>`;
+    }).join('');
+    container.querySelectorAll('[data-procedure-history-id]').forEach((button) => {
+      button.onclick = () => {
+        const item = state.procedureHistory.find((candidate) => candidate.id === button.dataset.procedureHistoryId);
+        if (item) {
+          restoreProcedureHistoryItem(item).catch((error) => setStatus('error', error.message));
+        }
+      };
+    });
+  }
+
+  function updateHistoryPanelMode() {
+    const procedureMode = state.workspace === 'procedure';
+    if ($('historyPanelTitle')) {
+      $('historyPanelTitle').textContent = procedureMode ? 'Procedure History' : 'Recent SQL';
+    }
+    if ($('queryHistorySearch')) {
+      $('queryHistorySearch').placeholder = procedureMode ? 'Filter procedure runs...' : 'Filter recent queries...';
+    }
+  }
+
+  function renderHistoryPanel() {
+    updateHistoryPanelMode();
+    if (state.workspace === 'procedure') {
+      renderProcedureHistory();
+      return;
+    }
     renderQueryHistory();
   }
 
-  function clearQueryHistory() {
+  function loadQueryHistory() {
+    try { state.queryHistory = normalizeQueryHistory(JSON.parse(safeGet(QUERY_HISTORY_KEY) || '[]')); } catch { state.queryHistory = []; }
+    renderHistoryPanel();
+  }
+
+  function loadProcedureHistory() {
+    try { state.procedureHistory = normalizeProcedureHistory(JSON.parse(safeGet(PROCEDURE_HISTORY_KEY) || '[]')); } catch { state.procedureHistory = []; }
+    renderHistoryPanel();
+  }
+
+  function clearCurrentHistory() {
+    if (state.workspace === 'procedure') {
+      state.procedureHistory = [];
+      saveProcedureHistory();
+      renderHistoryPanel();
+      setStatus('success', 'Procedure history cleared.');
+      return;
+    }
     state.queryHistory = [];
     saveQueryHistory();
-    renderQueryHistory();
+    renderHistoryPanel();
     setStatus('success', 'Recent SQL history cleared.');
   }
 
@@ -1666,6 +1937,11 @@ window.createConsoleApp = function createConsoleApp() {
     document.querySelectorAll('.workspace-segment').forEach((button) => {
       button.classList.toggle('active', button.dataset.workspace === state.workspace);
     });
+    state.historyFilter = '';
+    if ($('queryHistorySearch')) {
+      $('queryHistorySearch').value = '';
+    }
+    renderHistoryPanel();
   }
 
   function setExplorer(explorer) {
@@ -2255,7 +2531,7 @@ window.createConsoleApp = function createConsoleApp() {
     });
   }
 
-  async function selectProcedure(fullName) {
+  async function selectProcedure(fullName, restoredValues = null) {
     if (!ensureReadyConnection('loading procedure parameters')) {
       setStatus('error', 'Enter a connection first.');
       return;
@@ -2265,7 +2541,7 @@ window.createConsoleApp = function createConsoleApp() {
     resetActiveObject();
     state.activeProcedure = fullName;
     state.procedureParameters = payload.parameters || [];
-    state.procedureValues = {};
+    state.procedureValues = restoredValues && typeof restoredValues === 'object' ? { ...restoredValues } : {};
     setWorkspace('procedure');
     setExplorer('procedures');
     renderObjects();
@@ -2274,6 +2550,27 @@ window.createConsoleApp = function createConsoleApp() {
     refreshActiveSummary();
     persistCatalogState();
     setStatus('success', `Loaded parameters for ${fullName}.`);
+  }
+
+  async function restoreProcedureHistoryItem(item) {
+    if (!item?.procedure) {
+      setStatus('error', 'Procedure history item is invalid.');
+      return;
+    }
+    if (!ensureReadyConnection('restoring the procedure run')) {
+      return;
+    }
+    const currentSignature = connectionSignature();
+    const sameConnection = !item.connectionSignature || item.connectionSignature === currentSignature;
+    await selectProcedure(item.procedure, item.parameters || {});
+    renderProcedureWorkspace();
+    persistCatalogState();
+    setStatus(
+      sameConnection ? 'success' : 'neutral',
+      sameConnection
+        ? `Restored ${item.procedure} with saved parameter values.`
+        : `Restored ${item.procedure} values. Check the active connection before running.`
+    );
   }
 
   async function refreshProcedureParameters() {
@@ -3058,7 +3355,8 @@ window.createConsoleApp = function createConsoleApp() {
     setStatus('loading', state.pendingAction.type === 'procedure' ? 'Executing stored procedure...' : 'Executing write...');
     try {
       if (state.pendingAction.type === 'procedure') {
-        const payload = await api('/api/procedures', { method: 'POST', data: requestConnection({ ...state.pendingAction.request }) });
+        const executedRequest = { ...state.pendingAction.request };
+        const payload = await api('/api/procedures', { method: 'POST', data: requestConnection({ ...executedRequest }) });
         closeConfirm();
         setResults(payload.columns || [], payload.rows || [], {
           rowsAffected: Number(payload.rowsAffected || 0),
@@ -3069,6 +3367,7 @@ window.createConsoleApp = function createConsoleApp() {
           visualKind: 'procedure',
           visualObject: payload.procedure || state.activeProcedure
         });
+        addProcedureHistory(payload.procedure || executedRequest.procedure || state.activeProcedure, executedRequest.parameters || {});
         setStatus('success', payload.message);
         return;
       }
@@ -3135,7 +3434,7 @@ window.createConsoleApp = function createConsoleApp() {
     }
     $('testConnectionBtn').onclick = () => testConnection().catch((error) => setStatus('error', error.message));
     $('loadTablesBtn').onclick = () => loadCatalog().catch((error) => setStatus('error', error.message));
-    $('clearHistoryBtn').onclick = clearQueryHistory;
+    $('clearHistoryBtn').onclick = clearCurrentHistory;
     if ($('loadAuditBtn')) {
       $('loadAuditBtn').onclick = () => loadAudit().catch((error) => setStatus('error', error.message));
     }
@@ -3284,7 +3583,7 @@ window.createConsoleApp = function createConsoleApp() {
     if ($('queryHistorySearch')) {
       $('queryHistorySearch').oninput = debounce(() => {
         state.historyFilter = ($('queryHistorySearch').value || '').trim().toLowerCase();
-        renderQueryHistory();
+        renderHistoryPanel();
       }, 150);
     }
     if ($('localResultsFilter')) {
@@ -3379,6 +3678,7 @@ window.createConsoleApp = function createConsoleApp() {
     loadTheme();
     await loadConnectionHistory();
     loadQueryHistory();
+    loadProcedureHistory();
     setWorkspace(state.workspace);
     setExplorer(state.explorer);
     const catalogRestored = restoreCatalogState();

@@ -307,10 +307,6 @@ export default function WorkbenchShell({ pageMode = 'sql' }) {
                 <p>One production-safe workspace for Fabric SQL, Lakehouse SQL endpoints, and SQL Server operations.</p>
               </div>
             </div>
-            <nav className="page-nav" aria-label="Workbench Pages">
-              <Link href="/" className={`page-link${!isProceduresPage ? ' active' : ''}`}>SQL Studio</Link>
-              <Link href="/procedures" className={`page-link${isProceduresPage ? ' active' : ''}`}>Procedure Runner</Link>
-            </nav>
             <Link
               href={isProceduresPage ? '/docs/procedure-runner' : '/docs/sql-studio'}
               className="page-link docs-link-button"
@@ -440,6 +436,10 @@ export default function WorkbenchShell({ pageMode = 'sql' }) {
         <main className="workspace-shell">
           <header className="hero-panel surface">
             <div className="hero-copy">
+              <nav className="workspace-mode-nav" aria-label="Workbench mode">
+                <Link href="/" className={`workspace-mode-link page-link${!isProceduresPage ? ' active' : ''}`}>SQL Studio</Link>
+                <Link href="/procedures" className={`workspace-mode-link page-link${isProceduresPage ? ' active' : ''}`}>Procedure Runner</Link>
+              </nav>
               <div className="eyebrow">{isProceduresPage ? 'Procedure execution' : 'SQL execution'}</div>
               <div id="activeTarget" className="active-target">No object or procedure selected</div>
               <div id="activeMeta" className="active-meta">
@@ -555,13 +555,13 @@ export default function WorkbenchShell({ pageMode = 'sql' }) {
                 <div className="section-title-row">
                   <div>
                     <div className="eyebrow">Recall</div>
-                    <h2>Recent SQL</h2>
+                    <h2 id="historyPanelTitle">{isProceduresPage ? 'Procedure History' : 'Recent SQL'}</h2>
                   </div>
                   <button id="clearHistoryBtn" className="ghost-btn small">Clear</button>
                 </div>
                 <label className="field compact-field">
                   <span>Search history</span>
-                  <input id="queryHistorySearch" type="text" placeholder="Filter recent queries…" autoComplete="off" />
+                  <input id="queryHistorySearch" type="text" placeholder={isProceduresPage ? 'Filter procedure runs…' : 'Filter recent queries…'} autoComplete="off" />
                 </label>
                 <div id="queryHistory" className="query-history" />
               </section>
