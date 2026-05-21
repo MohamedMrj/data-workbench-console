@@ -3,6 +3,7 @@
 Production-safe multi-source SQL workbench and stored procedure runner for Microsoft Fabric SQL endpoints, Fabric Lakehouse SQL endpoints, and SQL Server.
 
 The app is built with Next.js and is designed for internal operational use where safety, auditability, and controlled execution matter more than unrestricted SQL access.
+<img width="365" height="320" alt="image" src="https://github.com/user-attachments/assets/daafe92a-8da7-43f8-98c2-6d0d22412dd4" />
 
 ## License / Ownership
 
