@@ -187,6 +187,101 @@ CONFIRMATION_STORE_FILE=.data/pending-confirmations.json
 
 These files are ignored by git and should stay private.
 
+## Internal Live Deployment On Vercel
+
+The first live/team version should run with Microsoft login, an email allowlist, Supabase metadata storage, and Fabric service-principal credentials stored as Vercel environment variables.
+
+### 1. Create The Microsoft Entra App
+
+In Microsoft Entra ID:
+
+- create an App Registration for this web app
+- add a Web redirect URI:
+  `https://YOUR-VERCEL-DOMAIN/api/auth/callback/azure-ad`
+- create a client secret
+- copy the client ID, client secret, and tenant ID
+
+### 2. Create The Supabase Tables
+
+Run this SQL in Supabase:
+
+```sql
+create table saved_connections (
+  id uuid primary key default gen_random_uuid(),
+  owner_email text not null,
+  profile_name text not null,
+  source_type text not null,
+  auth_mode text not null default 'servicePrincipal',
+  server text not null,
+  port integer not null default 1433,
+  database text not null,
+  trust_server_certificate boolean not null default false,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index saved_connections_owner_updated_idx
+on saved_connections (owner_email, updated_at desc);
+
+create table audit_entries (
+  id uuid primary key default gen_random_uuid(),
+  owner_email text not null,
+  timestamp timestamptz not null default now(),
+  event text not null,
+  outcome text not null,
+  action text,
+  source_type text,
+  server text,
+  database text,
+  row_count integer,
+  detail text
+);
+
+create index audit_entries_owner_timestamp_idx
+on audit_entries (owner_email, timestamp desc);
+```
+
+### 3. Add Vercel Environment Variables
+
+Set these in the Vercel project settings:
+
+```env
+AUTH_REQUIRED=true
+AUTH_SECRET=generate-a-long-random-secret
+NEXTAUTH_URL=https://YOUR-VERCEL-DOMAIN
+MICROSOFT_ENTRA_CLIENT_ID=your-entra-app-client-id
+MICROSOFT_ENTRA_CLIENT_SECRET=your-entra-app-client-secret
+MICROSOFT_ENTRA_TENANT_ID=your-tenant-id
+ALLOWED_USER_EMAILS=person1@company.com,person2@company.com
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
+AZURE_CLIENT_ID=your-fabric-service-principal-client-id
+AZURE_CLIENT_SECRET=your-fabric-service-principal-secret
+AZURE_TENANT_ID=your-fabric-tenant-id
+ALLOW_LOCAL_MISSING_ORIGIN=false
+AUDIT_ACCESS_MODE=same-origin
+NODE_ENV=production
+```
+
+Do not prefix private values with `NEXT_PUBLIC_`. The Supabase service role key and Azure secrets must stay server-side only.
+
+### 4. Deploy
+
+```bash
+npm ci
+npm run verify
+vercel
+vercel --prod
+```
+
+Live behavior:
+
+- only Microsoft accounts in `ALLOWED_USER_EMAILS` can access the app
+- saved connection profiles are scoped per signed-in user
+- saved profiles do not store passwords, client secrets, or tokens
+- audit entries are scoped per signed-in user
+- Fabric SQL and Fabric Lakehouse connections use the server-owned `AZURE_*` service principal
+
 ## Purpose
 
 This app provides a browser-based operator console for:

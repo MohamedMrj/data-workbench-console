@@ -63,7 +63,7 @@ export default function SqlStudioDocsPage() {
           <div className="docs-card"><strong>Server</strong><span>Klistra bara in hostnamnet, inte hela connection string och inte flera hostnames.</span></div>
           <div className="docs-card"><strong>Database</strong><span>Databasen/SQL endpoint-databasen som katalog och frågor ska köras mot.</span></div>
         </div>
-        <div className="docs-callout">Rätt ordning: <strong>Test connection</strong> först, sedan <strong>Load catalog</strong>. Sparade profiler fyller bara i fält, de kör inget automatiskt.</div>
+        <div className="docs-callout">Rätt ordning: <strong>Test connection</strong> först, sedan <strong>Load catalog</strong>. Sparade profiler är kopplade till ditt inloggade konto, fyller bara i fält och sparar inte lösenord eller secrets.</div>
       </DocsSection>
 
       <DocsSection id="explorer" title="Object Explorer">

@@ -10,7 +10,7 @@
     "build": "next build",
     "start": "next start",
     "clean": "node -e \"require('fs').rmSync('.next', { recursive: true, force: true })\"",
-    "verify": "npm run clean && npm run build && node scripts/smoke-test.mjs && node scripts/ui-smoke.mjs"
+    "verify": "npm run clean && npm run build && node scripts/metadata-store.test.mjs && node scripts/smoke-test.mjs && node scripts/auth-smoke-test.mjs && node scripts/ui-smoke.mjs"
   },
   "keywords": [
     "fabric",
@@ -23,9 +23,11 @@
   "dependencies": {
     "@azure/identity": "^4.13.1",
     "@azure/keyvault-secrets": "^4.11.1",
+    "@supabase/supabase-js": "^2.106.1",
     "dotenv": "^16.4.7",
     "mssql": "^12.2.1",
     "next": "^15.5.0",
+    "next-auth": "^4.24.14",
     "react": "^19.1.0",
     "react-dom": "^19.1.0"
   },

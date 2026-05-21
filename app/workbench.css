@@ -189,6 +189,33 @@
   margin-top: 10px;
 }
 
+.auth-panel {
+  display: grid;
+  gap: 10px;
+  margin-top: 8px;
+  padding: 12px;
+  border: 1px solid color-mix(in srgb, var(--line) 72%, transparent);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--surface-soft) 88%, transparent);
+}
+
+.auth-panel div {
+  display: grid;
+  gap: 2px;
+}
+
+.auth-panel span,
+.auth-panel small {
+  color: var(--muted);
+  font-size: 0.76rem;
+}
+
+.auth-panel strong {
+  color: var(--text);
+  font-size: 0.88rem;
+  overflow-wrap: anywhere;
+}
+
 .docs-link-button {
   text-decoration: none;
 }
@@ -205,6 +232,31 @@
 
 .emphasis-chip strong {
   color: color-mix(in srgb, var(--accent) 78%, var(--text));
+}
+
+.access-page {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+}
+
+.access-card {
+  width: min(640px, 100%);
+  display: grid;
+  gap: 16px;
+  padding: 28px;
+}
+
+.access-card h1 {
+  margin: 0;
+  font-size: clamp(1.8rem, 4vw, 3rem);
+}
+
+.access-card p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.6;
 }
 
 .grow-section {

@@ -1,6 +1,9 @@
 import Link from 'next/link';
 import Script from 'next/script';
+import { getServerSession } from 'next-auth';
 import ConsoleAppBoot from './console-app-boot';
+import { authOptions } from '../../lib/server/auth-options';
+import { isAuthRequired } from '../../lib/server/live-config';
 
 function SqlWorkspace({ hidden = false }) {
   return (
@@ -281,8 +284,12 @@ function ResultsCard() {
   );
 }
 
-export default function WorkbenchShell({ pageMode = 'sql' }) {
+export default async function WorkbenchShell({ pageMode = 'sql' }) {
   const isProceduresPage = pageMode === 'procedures';
+  const authRequired = isAuthRequired();
+  const session = authRequired ? await getServerSession(authOptions) : null;
+  const userEmail = session?.user?.email || (authRequired ? '' : 'Local development');
+  const userName = session?.user?.name || userEmail;
 
   return (
     <>
@@ -315,6 +322,18 @@ export default function WorkbenchShell({ pageMode = 'sql' }) {
             >
               Open documentation
             </Link>
+            <div className="auth-panel">
+              <div>
+                <span>Signed in as</span>
+                <strong>{userName || 'Unknown user'}</strong>
+                {userEmail && userEmail !== userName ? <small>{userEmail}</small> : null}
+              </div>
+              {authRequired ? (
+                <Link href="/api/auth/signout" className="ghost-btn small">Sign out</Link>
+              ) : (
+                <span className="tiny-note">Local auth disabled</span>
+              )}
+            </div>
             <div className="brand-highlights">
               <div className="info-chip emphasis-chip">
                 <strong>Safety-first</strong>
@@ -398,7 +417,7 @@ export default function WorkbenchShell({ pageMode = 'sql' }) {
             </div>
 
             <div id="saveConnectionResult" className="connection-test-panel empty-note">
-              Save persists this profile in the app database so it is available after restarts. Passwords are never saved.
+              Save persists this profile to your signed-in account. Passwords and secrets are never saved.
             </div>
 
             <div id="testConnectionResult" className="connection-test-panel empty-note">
@@ -412,7 +431,7 @@ export default function WorkbenchShell({ pageMode = 'sql' }) {
                 <div className="eyebrow">Quick Connect</div>
                 <h2>Saved Profiles</h2>
               </div>
-              <span className="tiny-note">Passwords never stored</span>
+              <span className="tiny-note">Per user</span>
             </div>
             <div id="savedConnections" className="saved-connections" />
           </section>

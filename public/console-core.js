@@ -630,7 +630,7 @@ window.createConsoleApp = function createConsoleApp() {
 
     if (!info) {
       panel.className = 'connection-test-panel empty-note';
-      panel.innerHTML = 'Save stores this connection in the app database so it is available every time the project starts.';
+      panel.innerHTML = 'Save stores this connection profile on your signed-in account. Passwords and secrets are never saved.';
       return;
     }
 
@@ -1331,7 +1331,7 @@ window.createConsoleApp = function createConsoleApp() {
   function renderConnectionHistory() {
     const container = $('savedConnections');
     if (!state.connectionHistory.length) {
-      container.innerHTML = '<div class="empty-note">Saved connections will appear here. They are stored in the app database and survive restarts.</div>';
+      container.innerHTML = '<div class="empty-note">Saved connections will appear here. They are stored for your signed-in account and survive restarts.</div>';
       return;
     }
     container.innerHTML = state.connectionHistory.map((item, index) => (
@@ -1436,7 +1436,7 @@ window.createConsoleApp = function createConsoleApp() {
       renderSaveConnectionResult({
         state: 'success',
         title: 'Profile saved',
-        message: `"${saved.profileName}" is now in the app database and will survive restarts.`
+        message: `"${saved.profileName}" is saved to your account and will survive restarts.`
       });
       // Scroll the saved list into view so the user can see the result.
       setTimeout(() => {

@@ -54,6 +54,9 @@ export default function ProcedureRunnerDocsPage() {
         <DocsMiniSection title="Separat historik">
           <p>Procedure Runner visar bara procedure history. SQL Studio visar bara SQL history. Historikerna blandas inte.</p>
         </DocsMiniSection>
+        <DocsMiniSection title="Inloggat konto">
+          <p>Sparade profiler och audit visas per inloggad användare i live-versionen. Secrets och lösenord sparas inte i profilerna.</p>
+        </DocsMiniSection>
       </DocsSection>
 
       <DocsSection id="support" title="Stöd per källa">
