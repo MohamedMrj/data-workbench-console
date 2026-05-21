@@ -82,7 +82,7 @@ Prerequisites:
 Clone the repository:
 
 ```bash
-git clone <repo-url>
+git clone https://github.com/MohamedMrj/data-workbench-console.git
 cd data-workbench-console
 ```
 
