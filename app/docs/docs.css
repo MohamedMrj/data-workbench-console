@@ -113,19 +113,19 @@
 
 .docs-content {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 10px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
   align-items: start;
 }
 
 .docs-section {
-  padding: 14px;
+  padding: 16px;
   border-radius: var(--radius-md);
 }
 
 .docs-section h2 {
-  margin-bottom: 8px;
-  font-size: 1.08rem;
+  margin-bottom: 10px;
+  font-size: 1.16rem;
   line-height: 1.15;
 }
 
@@ -138,8 +138,8 @@
 .docs-section p,
 .docs-section li {
   color: var(--muted);
-  line-height: 1.38;
-  font-size: 0.86rem;
+  line-height: 1.48;
+  font-size: 0.9rem;
 }
 
 .docs-section p + p {
@@ -209,8 +209,8 @@
 .docs-card span {
   display: block;
   color: var(--muted);
-  line-height: 1.35;
-  font-size: 0.78rem;
+  line-height: 1.42;
+  font-size: 0.84rem;
 }
 
 .docs-check-list {
@@ -258,8 +258,8 @@
 
 .docs-table span {
   color: var(--muted);
-  line-height: 1.3;
-  font-size: 0.78rem;
+  line-height: 1.38;
+  font-size: 0.82rem;
 }
 
 .docs-kbd {
