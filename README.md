@@ -14,8 +14,6 @@ Data Workbench Console is built for controlled operational work: browse metadata
 </p>
 
 
-<img width="365" height="320" alt="image" src="https://github.com/user-attachments/assets/daafe92a-8da7-43f8-98c2-6d0d22412dd4" />
-
 ## License / Ownership
 
 Copyright (c) 2026 Mohamed Almefrej. All rights reserved.
