@@ -1,0 +1,771 @@
+import { JSDOM } from 'jsdom';
+import fs from 'fs/promises';
+import path from 'path';
+
+const appDir = path.join(process.cwd(), '.next', 'server', 'app');
+const coreScript = await fs.readFile(path.join(process.cwd(), 'public', 'console-core.js'), 'utf8');
+const appScript = await fs.readFile(path.join(process.cwd(), 'public', 'console-app.js'), 'utf8');
+
+const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+async function readBuiltHtml(routeSegments = []) {
+  const candidates = routeSegments.length === 0
+    ? [path.join(appDir, 'index.html')]
+    : [
+        path.join(appDir, `${routeSegments.join(path.sep)}.html`),
+        path.join(appDir, ...routeSegments, 'index.html')
+      ];
+
+  for (const candidate of candidates) {
+    try {
+      return await fs.readFile(candidate, 'utf8');
+    } catch {
+      // Try the next candidate path.
+    }
+  }
+
+  throw new Error(`Could not locate built HTML for route ${routeSegments.join('/') || '/'}.`);
+}
+
+async function assertBuildIsFresh() {
+  const buildArtifact = path.join(appDir, 'index.html');
+  try {
+    await fs.stat(buildArtifact);
+  } catch {
+    throw new Error('UI smoke test build output is missing. Run `npm run build` before `node scripts/ui-smoke.mjs`.');
+  }
+}
+
+function attachMocks(window) {
+  window.fetch = async (url, options = {}) => {
+    const body = options.body ? JSON.parse(options.body) : {};
+
+    if (String(url).includes('/api/health')) {
+      return new Response(JSON.stringify({
+        ok: true,
+        writePreviewLimit: 10,
+        heightenedConfirmLimit: 3,
+        responseRowLimit: 250,
+        supportedSourceTypes: [
+          { id: 'fabric-sql', label: 'Fabric SQL endpoint', authModes: ['servicePrincipal'], supportsProcedures: true },
+          { id: 'fabric-lakehouse', label: 'Fabric Lakehouse SQL endpoint', authModes: ['servicePrincipal'], supportsProcedures: false },
+          { id: 'sql-server', label: 'SQL Server', authModes: ['sqlLogin', 'servicePrincipal'], supportsProcedures: true }
+        ],
+        supportedAuthModes: [
+          { id: 'servicePrincipal', label: 'Azure service principal' },
+          { id: 'sqlLogin', label: 'SQL login' }
+        ]
+      }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+
+    if (String(url).includes('/api/tables')) {
+      return new Response(JSON.stringify({
+        success: true,
+        objects: [
+          { schema: 'dbo', name: 'Alerts', table: 'Alerts', fullName: 'dbo.Alerts', objectType: 'table' },
+          { schema: 'dbo', name: 'AlertView', table: 'AlertView', fullName: 'dbo.AlertView', objectType: 'view' }
+        ]
+      }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+
+    if (String(url).includes('/api/columns')) {
+      return new Response(JSON.stringify({
+        success: true,
+        columns: [
+          { name: 'AlertId', type: 'int', nullable: false },
+          { name: 'Status', type: 'varchar', nullable: true }
+        ]
+      }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+
+    if (String(url).includes('/api/procedure-parameters')) {
+      return new Response(JSON.stringify({
+        success: true,
+        supported: true,
+        procedure: 'dbo.usp_ProcessAlert',
+        parameters: [
+          { name: '@AlertId', cleanName: 'AlertId', mode: 'IN', dataType: 'int' },
+          { name: '@ResultMessage', cleanName: 'ResultMessage', mode: 'INOUT', dataType: 'varchar' }
+        ]
+      }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+
+    if (String(url).includes('/api/procedures')) {
+      if (body.procedure || body.confirmToken) {
+        if (body.confirmToken) {
+          return new Response(JSON.stringify({
+            success: true,
+            mode: 'procedure',
+            procedure: 'dbo.usp_ProcessAlert',
+            columns: ['AlertId', 'Processed'],
+            rows: [{ AlertId: 42, Processed: 'YES' }],
+            totalRows: 1,
+            rowsAffected: 1,
+            truncated: false,
+            output: { ResultMessage: 'OK' },
+            returnValue: 0,
+            message: 'Stored procedure dbo.usp_ProcessAlert executed successfully.'
+          }), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' }
+          });
+        }
+
+        return new Response(JSON.stringify({
+          success: true,
+          mode: 'procedure-preview',
+          requiresConfirmation: true,
+          confirmationToken: 'procedure-token',
+          procedure: 'dbo.usp_ProcessAlert',
+          parameterCount: 2,
+          expectedText: 'RUN DBO.USP_PROCESSALERT',
+          message: 'Stored procedures are executed directly in this app. Review the parameters and type the confirmation text before running dbo.usp_ProcessAlert.'
+        }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
+
+      return new Response(JSON.stringify({
+        success: true,
+        supported: true,
+        procedures: [{ schema: 'dbo', name: 'usp_ProcessAlert', fullName: 'dbo.usp_ProcessAlert' }]
+      }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+
+    if (String(url).includes('/api/audit')) {
+      return new Response(JSON.stringify({ success: true, entries: [], limit: 25 }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+
+    if (String(url).includes('/api/object-insights')) {
+      if (body.action === 'profile') {
+        return new Response(JSON.stringify({
+          success: true,
+          action: 'profile',
+          object: body.object || 'dbo.Alerts',
+          columns: ['column_name', 'data_type', 'nullable', 'sample_rows', 'null_rows', 'distinct_values', 'completeness_pct', 'min_value', 'max_value'],
+          rows: [
+            { column_name: 'AlertId', data_type: 'int', nullable: 'NO', sample_rows: 2, null_rows: 0, distinct_values: 2, completeness_pct: 100, min_value: '1', max_value: '2' },
+            { column_name: 'Status', data_type: 'varchar', nullable: 'YES', sample_rows: 2, null_rows: 1, distinct_values: 1, completeness_pct: 50, min_value: 'FAILED', max_value: 'FAILED' }
+          ],
+          totalRows: 2,
+          output: {
+            object: body.object || 'dbo.Alerts',
+            sampled_rows: 2,
+            profiled_columns: 2
+          },
+          message: `Profiled ${body.object || 'dbo.Alerts'} using 2 sampled row(s).`
+        }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
+
+      return new Response(JSON.stringify({
+        success: true,
+        action: 'dependencies',
+        object: body.object || 'dbo.Alerts',
+        columns: ['dependency_direction', 'primary_object', 'related_object', 'related_type'],
+        rows: [
+          { dependency_direction: 'referenced_by', primary_object: 'dbo.Alerts', related_object: 'dbo.AlertView', related_type: 'VIEW' }
+        ],
+        totalRows: 1,
+        output: {
+          object: body.object || 'dbo.Alerts',
+          dependency_rows: 1
+        },
+        message: `Loaded 1 dependency row(s) for ${body.object || 'dbo.Alerts'}.`
+      }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+
+    if (String(url).includes('/api/query')) {
+      return new Response(JSON.stringify({
+        success: true,
+        columns: ['AlertId', 'Status'],
+        rows: [{ AlertId: 1, Status: null }, { AlertId: 2, Status: 'FAILED' }],
+        totalRows: 2,
+        rowsAffected: 0,
+        truncated: false
+      }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+
+    if (String(url).includes('/api/test-connection')) {
+      return new Response(JSON.stringify({
+        success: true,
+        message: 'Connection successful.',
+        data: {
+          database_name: body.database || 'meta_store',
+          server_name: body.server || 'demo',
+          version_info: 'SQL Server test build',
+          sourceType: body.sourceType || 'fabric-sql',
+          authMode: body.authMode || 'servicePrincipal'
+        }
+      }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+
+    throw new Error(`Unhandled fetch: ${url}`);
+  };
+
+  window.IntersectionObserver = class {
+    constructor(callback) { this.callback = callback; }
+    observe(target) { this.callback([{ isIntersecting: true, target }]); }
+    unobserve() {}
+    disconnect() {}
+  };
+  window.navigator.clipboard = { writeText: async () => {} };
+  window.document.execCommand = () => true;
+  window.Response = Response;
+}
+
+async function createWindow(routePath, routeSegments = [], viewport = { width: 1680, height: 980 }, prepareWindow) {
+  await assertBuildIsFresh();
+  const html = await readBuiltHtml(routeSegments);
+  const dom = new JSDOM(html, {
+    url: routePath,
+    runScripts: 'dangerously',
+    pretendToBeVisual: true
+  });
+
+  const { window } = dom;
+  Object.defineProperty(window, 'innerWidth', { value: viewport.width, writable: true, configurable: true });
+  Object.defineProperty(window, 'innerHeight', { value: viewport.height, writable: true, configurable: true });
+  const visualViewport = {
+    width: viewport.visualWidth || viewport.width,
+    height: viewport.visualHeight || viewport.height,
+    scale: viewport.scale || 1,
+    addEventListener() {},
+    removeEventListener() {}
+  };
+  Object.defineProperty(window, 'visualViewport', { value: visualViewport, configurable: true });
+  attachMocks(window);
+  if (typeof prepareWindow === 'function') {
+    await prepareWindow(window);
+  }
+  window.eval(coreScript);
+  window.eval(appScript);
+  if (typeof window.initConsoleApp === 'function') {
+    await window.initConsoleApp();
+  }
+  if (window.consoleAppReady) {
+    await window.consoleAppReady;
+  }
+  return window;
+}
+
+function dragHandle(window, handleName, start, end) {
+  const handle = window.document.querySelector(`[data-resize-handle="${handleName}"]`);
+  if (!handle || typeof handle.onpointerdown !== 'function') {
+    throw new Error(`Resize handle ${handleName} is not wired.`);
+  }
+
+  handle.onpointerdown({
+    clientX: start.x,
+    clientY: start.y,
+    pointerId: 1,
+    preventDefault() {},
+    target: handle
+  });
+
+  if (typeof handle.onpointermove !== 'function') {
+    throw new Error(`Resize handle ${handleName} did not enter dragging mode.`);
+  }
+
+  handle.onpointermove({
+    clientX: end.x,
+    clientY: end.y,
+    pointerId: 1,
+    preventDefault() {},
+    target: handle
+  });
+
+  handle.onpointerup({
+    clientX: end.x,
+    clientY: end.y,
+    pointerId: 1,
+    preventDefault() {},
+    target: handle
+  });
+}
+
+function extractBody(html) {
+  const match = html.match(/<body[^>]*>([\s\S]*)<\/body>/i);
+  if (!match) {
+    throw new Error('Could not extract body markup from built HTML.');
+  }
+  return match[1];
+}
+
+const legacyWindow = await createWindow(
+  'http://127.0.0.1:3100/',
+  [],
+  { width: 1680, height: 980 },
+  (window) => {
+    window.localStorage.setItem('dataWorkbenchConnectionsV0', JSON.stringify({
+      primary: {
+        source: 'fabric-sql',
+        auth: 'servicePrincipal',
+        host: 'legacy-demo',
+        db: 'legacy_meta_store'
+      }
+    }));
+  }
+);
+
+if (!legacyWindow.document.getElementById('savedConnections').textContent.includes('legacy_meta_store')) {
+  throw new Error('Legacy saved connections were not migrated into the visible saved connections list.');
+}
+
+legacyWindow.document.getElementById('serverInput').value = 'fresh-demo';
+legacyWindow.document.getElementById('databaseInput').value = 'fresh_meta_store';
+legacyWindow.document.getElementById('saveConnectionBtn').click();
+await flush();
+
+if (!legacyWindow.document.getElementById('savedConnections').textContent.includes('fresh_meta_store')) {
+  throw new Error('Saving a connection failed after loading a legacy saved-connections payload.');
+}
+
+const sqlWindow = await createWindow('http://127.0.0.1:3100/');
+if (sqlWindow.document.querySelectorAll('#themeList .theme-chip').length !== 6) {
+  throw new Error('Theme chips did not render on the SQL page.');
+}
+if (sqlWindow.document.querySelector('.results-card')?.dataset.resultsState !== 'empty') {
+  throw new Error('Empty results should mark the results card as empty for compact sizing.');
+}
+['saveConnectionBtn', 'testConnectionBtn', 'loadTablesBtn', 'runQueryBtn', 'clearHistoryBtn', 'toggleAdvancedOperationsBtn', 'insertSelectTemplateBtn', 'updateJoinTemplateBtn', 'mergePreviewBtn', 'profileObjectBtn', 'dependencyViewBtn', 'insertSqlHelperBtn', 'wrapSqlHelperBtn', 'scrollResultsLeftBtn', 'scrollResultsRightBtn', 'scrollResultsDockLeftBtn', 'scrollResultsDockRightBtn'].forEach((id) => {
+  const element = sqlWindow.document.getElementById(id);
+  if (!element || typeof element.onclick !== 'function') {
+    throw new Error(`Expected ${id} to be wired on the SQL page.`);
+  }
+});
+if (!sqlWindow.document.getElementById('sqlHelperSelect')) {
+  throw new Error('Expected SQL helper selector to render on the SQL page.');
+}
+if (!sqlWindow.document.getElementById('advancedOperationsContent').classList.contains('hidden')) {
+  throw new Error('Advanced operations should start collapsed by default.');
+}
+sqlWindow.document.getElementById('toggleAdvancedOperationsBtn').click();
+if (sqlWindow.document.getElementById('advancedOperationsContent').classList.contains('hidden')) {
+  throw new Error('Advanced operations did not expand after clicking the toggle.');
+}
+if (sqlWindow.document.getElementById('toggleAdvancedOperationsBtn').getAttribute('aria-expanded') !== 'true') {
+  throw new Error('Advanced operations toggle did not update aria-expanded when opened.');
+}
+['controlRail', 'explorer', 'activity', 'results'].forEach((name) => {
+  const handle = sqlWindow.document.querySelector(`[data-resize-handle="${name}"]`);
+  if (!handle || typeof handle.onpointerdown !== 'function') {
+    throw new Error(`Expected ${name} resize handle to be wired on the SQL page.`);
+  }
+});
+
+dragHandle(sqlWindow, 'controlRail', { x: 320, y: 120 }, { x: 370, y: 120 });
+if (sqlWindow.document.querySelector('.app-shell').style.getPropertyValue('--control-rail-width') !== '390px') {
+  throw new Error('Control rail resize did not update the persisted width.');
+}
+
+dragHandle(sqlWindow, 'explorer', { x: 480, y: 180 }, { x: 540, y: 180 });
+if (sqlWindow.document.querySelector('.app-shell').style.getPropertyValue('--explorer-width') !== '360px') {
+  throw new Error('Explorer resize did not update the persisted width.');
+}
+
+dragHandle(sqlWindow, 'activity', { x: 1460, y: 180 }, { x: 1410, y: 180 });
+if (sqlWindow.document.querySelector('.app-shell').style.getPropertyValue('--activity-width') !== '370px') {
+  throw new Error('Activity resize did not update the persisted width.');
+}
+
+dragHandle(sqlWindow, 'results', { x: 900, y: 760 }, { x: 900, y: 700 });
+if (sqlWindow.document.querySelector('.app-shell').style.getPropertyValue('--results-height') !== '200px') {
+  throw new Error('Results resize did not update the persisted height.');
+}
+
+sqlWindow.document.getElementById('sourceTypeSelect').value = 'nonsense';
+sqlWindow.document.getElementById('authModeSelect').value = 'junk';
+sqlWindow.document.getElementById('sourceTypeSelect').dispatchEvent(new sqlWindow.Event('change', { bubbles: true }));
+await flush();
+
+if (sqlWindow.document.getElementById('sourceTypeSelect').value !== 'fabric-sql') {
+  throw new Error('Source selector did not recover from an invalid value.');
+}
+if (sqlWindow.document.getElementById('authModeSelect').value !== 'servicePrincipal') {
+  throw new Error('Auth selector did not recover from an invalid value.');
+}
+if (!sqlWindow.document.getElementById('usernameInput').disabled || !sqlWindow.document.getElementById('passwordInput').disabled) {
+  throw new Error('Hidden SQL login inputs should be disabled for non-SQL-login sources.');
+}
+
+sqlWindow.document.getElementById('serverInput').value = 'demo';
+sqlWindow.document.getElementById('databaseInput').value = 'meta_store';
+sqlWindow.document.getElementById('serverInput').dispatchEvent(new sqlWindow.Event('input', { bubbles: true }));
+sqlWindow.document.getElementById('databaseInput').dispatchEvent(new sqlWindow.Event('input', { bubbles: true }));
+sqlWindow.document.getElementById('saveConnectionBtn').click();
+sqlWindow.document.getElementById('testConnectionBtn').click();
+await flush();
+if (!sqlWindow.document.getElementById('testConnectionResult').textContent.includes('Connection successful')) {
+  throw new Error('Connection test did not render a visible success summary in the connection panel.');
+}
+if (!sqlWindow.document.getElementById('testConnectionResult').textContent.includes('meta_store')) {
+  throw new Error('Connection test did not render the tested database details.');
+}
+sqlWindow.document.getElementById('loadTablesBtn').click();
+await flush();
+sqlWindow.document.querySelector('[data-object="dbo.Alerts"]').click();
+await flush();
+
+sqlWindow.document.getElementById('advancedSourceObjectSelect').value = 'dbo.AlertView';
+sqlWindow.document.getElementById('advancedSourceObjectSelect').dispatchEvent(new sqlWindow.Event('change', { bubbles: true }));
+sqlWindow.document.getElementById('targetJoinColumnSelect').value = 'AlertId';
+sqlWindow.document.getElementById('targetJoinColumnSelect').dispatchEvent(new sqlWindow.Event('change', { bubbles: true }));
+sqlWindow.document.getElementById('sourceJoinColumnInput').value = 'AlertId';
+sqlWindow.document.getElementById('sourceJoinColumnInput').dispatchEvent(new sqlWindow.Event('input', { bubbles: true }));
+
+sqlWindow.document.getElementById('insertSelectTemplateBtn').click();
+if (!sqlWindow.document.getElementById('queryEditor').value.includes('INSERT INTO [dbo].[Alerts]')) {
+  throw new Error('Insert SELECT template was not generated.');
+}
+if (!sqlWindow.document.getElementById('queryEditor').value.includes('FROM [dbo].[AlertView] AS src')) {
+  throw new Error('Insert SELECT template did not use the selected source object.');
+}
+
+sqlWindow.document.getElementById('updateJoinTemplateBtn').click();
+if (!sqlWindow.document.getElementById('queryEditor').value.includes('UPDATE tgt')) {
+  throw new Error('Update JOIN template was not generated.');
+}
+if (!sqlWindow.document.getElementById('queryEditor').value.includes('INNER JOIN [dbo].[AlertView] AS src')) {
+  throw new Error('Update JOIN template did not use the selected source object.');
+}
+
+sqlWindow.document.getElementById('mergePreviewBtn').click();
+if (!sqlWindow.document.getElementById('queryEditor').value.includes('MERGE [dbo].[Alerts] AS tgt')) {
+  throw new Error('MERGE preview template was not generated.');
+}
+if (!sqlWindow.document.getElementById('queryEditor').value.includes('execution is blocked in this app')) {
+  throw new Error('MERGE preview template is missing the safety warning.');
+}
+
+sqlWindow.document.getElementById('profileObjectBtn').click();
+await flush();
+if (!sqlWindow.document.getElementById('statusText').textContent.includes('Profiled dbo.Alerts')) {
+  throw new Error('Object profile action did not update the status text.');
+}
+if (!sqlWindow.document.querySelector('.results-table')?.textContent.includes('AlertId')) {
+  throw new Error('Object profile action did not render profile results.');
+}
+if (!sqlWindow.document.querySelector('.visual-helper-card')?.textContent.includes('Profile summary')) {
+  throw new Error('Object profile action did not render visual helper cards.');
+}
+
+sqlWindow.document.getElementById('dependencyViewBtn').click();
+await flush();
+if (!sqlWindow.document.getElementById('statusText').textContent.includes('dependency row')) {
+  throw new Error('Dependency view action did not update the status text.');
+}
+if (!sqlWindow.document.querySelector('.results-table')?.textContent.includes('dbo.AlertView')) {
+  throw new Error('Dependency view action did not render dependency results.');
+}
+if (!sqlWindow.document.querySelector('.dependency-visual')?.textContent.includes('Dependency map')) {
+  throw new Error('Dependency view action did not render the dependency visual helper.');
+}
+
+const editor = sqlWindow.document.getElementById('queryEditor');
+editor.value = 'SELECT *\nFROM dbo.Alerts';
+editor.selectionStart = editor.selectionEnd = editor.value.length;
+sqlWindow.document.getElementById('insertWhereBtn').click();
+
+if (editor.value.includes('WHERE')) {
+  throw new Error('INSERT WHERE should not inject a raw WHERE clause before the filter is complete.');
+}
+if (!sqlWindow.document.querySelector('.filter-row')) {
+  throw new Error('INSERT WHERE did not create a filter row when no filters existed.');
+}
+
+const filterRow = sqlWindow.document.querySelector('.filter-row');
+filterRow.querySelector('.filter-column').value = 'Status';
+filterRow.querySelector('.filter-column').dispatchEvent(new sqlWindow.Event('change', { bubbles: true }));
+filterRow.querySelector('.filter-operator').value = 'LIKE';
+filterRow.querySelector('.filter-operator').dispatchEvent(new sqlWindow.Event('change', { bubbles: true }));
+filterRow.querySelector('.filter-value').value = 'FAIL';
+filterRow.querySelector('.filter-value').dispatchEvent(new sqlWindow.Event('input', { bubbles: true }));
+filterRow.querySelector('.filter-value').dispatchEvent(new sqlWindow.Event('change', { bubbles: true }));
+
+if (!editor.value.includes("WHERE [Status] LIKE '%FAIL%'")) {
+  throw new Error(`Live filter editing did not rebuild the SQL automatically. SQL was: ${editor.value}`);
+}
+
+sqlWindow.document.getElementById('generateQueryBtn').click();
+if (!editor.value.includes("WHERE [Status] LIKE '%FAIL%'")) {
+  throw new Error(`Generate SQL did not build the LIKE filter correctly. SQL was: ${editor.value}`);
+}
+
+sqlWindow.document.getElementById('sqlHelperSelect').value = 'replace';
+editor.selectionStart = editor.selectionEnd = editor.value.length;
+sqlWindow.document.getElementById('insertSqlHelperBtn').click();
+if (!editor.value.includes('REPLACE([AlertId]')) {
+  throw new Error(`SQL helper did not insert a REPLACE expression. SQL was: ${editor.value}`);
+}
+
+sqlWindow.document.querySelector('[data-mode="delete"]').click();
+if (!editor.value.includes('DELETE FROM [dbo].[Alerts]') || !editor.value.includes("WHERE [Status] LIKE '%FAIL%'")) {
+  throw new Error(`Delete mode did not rebuild the filtered DELETE statement correctly. SQL was: ${editor.value}`);
+}
+
+sqlWindow.document.querySelector('[data-mode="update"]').click();
+const updateRow = sqlWindow.document.querySelector('.filter-row');
+updateRow.querySelector('.filter-column').value = 'AlertId';
+updateRow.querySelector('.filter-column').dispatchEvent(new sqlWindow.Event('change', { bubbles: true }));
+updateRow.querySelector('.filter-operator').value = '=';
+updateRow.querySelector('.filter-operator').dispatchEvent(new sqlWindow.Event('change', { bubbles: true }));
+updateRow.querySelector('.filter-value').value = '42';
+updateRow.querySelector('.filter-value').dispatchEvent(new sqlWindow.Event('input', { bubbles: true }));
+updateRow.querySelector('.filter-value').dispatchEvent(new sqlWindow.Event('change', { bubbles: true }));
+
+if (!editor.value.includes('UPDATE [dbo].[Alerts]') || !editor.value.includes("SET [Status] = ''") || !editor.value.includes('WHERE [AlertId] = 42;')) {
+  throw new Error(`Update mode did not rebuild the WHERE clause correctly. SQL was: ${editor.value}`);
+}
+
+sqlWindow.document.getElementById('runQueryBtn').click();
+await flush();
+
+if (!sqlWindow.document.querySelector('.results-table')) {
+  throw new Error('Run query did not render the results table.');
+}
+if (sqlWindow.document.querySelector('.results-card')?.dataset.resultsState !== 'table') {
+  throw new Error('Populated results should mark the results card as table state for runtime sizing.');
+}
+if (!sqlWindow.document.querySelector('.result-null')) {
+  throw new Error('Null results are not rendered with the structured null style.');
+}
+if (!sqlWindow.document.querySelector('.row-index')) {
+  throw new Error('Results table row indexes are missing.');
+}
+if (!sqlWindow.document.querySelector('.page-link.active')?.textContent.includes('SQL Studio')) {
+  throw new Error('SQL page navigation did not highlight the active page.');
+}
+
+const proceduresHtml = await readBuiltHtml(['procedures']);
+sqlWindow.document.body.innerHTML = extractBody(proceduresHtml);
+await sqlWindow.initConsoleApp('/procedures');
+await flush();
+
+if (sqlWindow.document.getElementById('serverInput').value !== 'demo' || sqlWindow.document.getElementById('databaseInput').value !== 'meta_store') {
+  throw new Error('Active connection was not restored after switching to the procedure page.');
+}
+if (!sqlWindow.document.getElementById('savedConnections').textContent.includes('meta_store')) {
+  throw new Error('Saved connections were not restored after switching to the procedure page.');
+}
+if (!sqlWindow.document.querySelector('[data-procedure="dbo.usp_ProcessAlert"]')) {
+  throw new Error('Procedure catalog was not restored automatically on the procedure page.');
+}
+if (sqlWindow.document.querySelectorAll('#themeList .theme-chip').length !== 6) {
+  throw new Error('Theme chips did not render after switching to the procedure page.');
+}
+if (sqlWindow.document.getElementById('advancedOperationsContent').classList.contains('hidden')) {
+  throw new Error('Advanced operations visibility was not restored after switching pages.');
+}
+if (sqlWindow.document.querySelector('.app-shell').style.getPropertyValue('--control-rail-width') !== '390px') {
+  throw new Error('Control rail width was not restored after switching to the procedure page.');
+}
+if (sqlWindow.document.querySelector('.app-shell').style.getPropertyValue('--explorer-width') !== '360px') {
+  throw new Error('Explorer width was not restored after switching to the procedure page.');
+}
+if (sqlWindow.document.querySelector('.app-shell').style.getPropertyValue('--activity-width') !== '370px') {
+  throw new Error('Activity width was not restored after switching to the procedure page.');
+}
+if (sqlWindow.document.querySelector('.app-shell').style.getPropertyValue('--results-height') !== '200px') {
+  throw new Error('Results height was not restored after switching to the procedure page.');
+}
+
+const procedureWindow = await createWindow(
+  'http://127.0.0.1:3100/procedures',
+  ['procedures'],
+  { width: 1880, height: 980 },
+  (window) => {
+    window.localStorage.setItem('dataWorkbenchSidePanelVisibilityV1', JSON.stringify({
+      controlRailCollapsed: true,
+      activityPanelCollapsed: false
+    }));
+  }
+);
+if (procedureWindow.document.querySelectorAll('#themeList .theme-chip').length !== 6) {
+  throw new Error('Theme chips did not render on the procedure page.');
+}
+['saveConnectionBtn', 'testConnectionBtn', 'loadTablesBtn', 'runProcedureBtn', 'clearHistoryBtn', 'confirmModalBtn'].forEach((id) => {
+  const element = procedureWindow.document.getElementById(id);
+  if (!element || typeof element.onclick !== 'function') {
+    throw new Error(`Expected ${id} to be wired on the procedure page.`);
+  }
+});
+procedureWindow.document.getElementById('serverInput').value = 'demo';
+procedureWindow.document.getElementById('databaseInput').value = 'meta_store';
+procedureWindow.document.getElementById('loadTablesBtn').click();
+await flush();
+
+procedureWindow.document.getElementById('sourceTypeSelect').value = 'sql-server';
+procedureWindow.document.getElementById('sourceTypeSelect').dispatchEvent(new procedureWindow.Event('change', { bubbles: true }));
+procedureWindow.document.getElementById('authModeSelect').value = 'sqlLogin';
+procedureWindow.document.getElementById('authModeSelect').dispatchEvent(new procedureWindow.Event('change', { bubbles: true }));
+procedureWindow.document.getElementById('usernameInput').value = 'demo_user';
+procedureWindow.document.getElementById('passwordInput').value = 'demo_password';
+procedureWindow.document.getElementById('usernameInput').dispatchEvent(new procedureWindow.Event('input', { bubbles: true }));
+procedureWindow.document.getElementById('passwordInput').dispatchEvent(new procedureWindow.Event('input', { bubbles: true }));
+await flush();
+
+if (procedureWindow.document.getElementById('usernameInput').disabled || procedureWindow.document.getElementById('passwordInput').disabled) {
+  throw new Error('SQL login inputs should be enabled when SQL login is selected.');
+}
+if (procedureWindow.document.getElementById('trustServerCertificateField').classList.contains('hidden')) {
+  throw new Error('SQL Server trust certificate toggle should be visible for SQL Server connections.');
+}
+
+if (!procedureWindow.document.querySelector('.page-link.active')?.textContent.includes('Procedure Runner')) {
+  throw new Error('Procedure page navigation did not highlight the active page.');
+}
+const procedureResizeHandle = procedureWindow.document.querySelector('[data-resize-handle="procedure"]');
+if (!procedureResizeHandle || typeof procedureResizeHandle.onpointerdown !== 'function') {
+  throw new Error('Expected the procedure resize handle to be wired on the procedure page.');
+}
+dragHandle(procedureWindow, 'procedure', { x: 760, y: 180 }, { x: 720, y: 180 });
+if (procedureWindow.document.querySelector('.app-shell').style.getPropertyValue('--procedure-panel-width') !== '320px') {
+  throw new Error('Procedure runner resize did not update the persisted width.');
+}
+
+procedureWindow.document.querySelector('[data-procedure="dbo.usp_ProcessAlert"]').click();
+await flush();
+
+if (!procedureWindow.document.getElementById('procedureSummary').textContent.includes('dbo.usp_ProcessAlert')) {
+  throw new Error('Selecting a procedure did not update the procedure summary.');
+}
+
+const paramInput = procedureWindow.document.querySelector('[data-procedure-param="AlertId"]');
+if (!paramInput) {
+  throw new Error('Procedure input field was not rendered.');
+}
+paramInput.value = '42';
+paramInput.dispatchEvent(new procedureWindow.Event('input', { bubbles: true }));
+
+procedureWindow.document.getElementById('runProcedureBtn').click();
+await flush();
+
+if (procedureWindow.document.getElementById('confirmModal').classList.contains('hidden')) {
+  throw new Error('Running a procedure did not open the confirmation modal.');
+}
+
+procedureWindow.document.getElementById('secondConfirmInput').value = 'RUN DBO.USP_PROCESSALERT';
+procedureWindow.document.getElementById('confirmModalBtn').click();
+await flush();
+
+if (!procedureWindow.document.querySelector('.artifact-card')) {
+  throw new Error('Procedure execution did not render output artifacts.');
+}
+if (!procedureWindow.document.getElementById('statusText').textContent.includes('executed successfully')) {
+  throw new Error('Procedure execution did not update the status text.');
+}
+
+const mediumWindow = await createWindow('http://127.0.0.1:3100/', [], { width: 1300, height: 980 });
+if (mediumWindow.document.querySelector('[data-resize-handle="activity"]')?.getAttribute('aria-hidden') !== 'true') {
+  throw new Error('Activity resize handle should be disabled below the wide desktop breakpoint.');
+}
+
+const maxPanelsWindow = await createWindow(
+  'http://127.0.0.1:3100/',
+  [],
+  { width: 1680, height: 980 },
+  (window) => {
+    window.localStorage.setItem('dataWorkbenchPanelLayoutV1', JSON.stringify({
+      controlRail: 460,
+      explorer: 420,
+      activity: 420,
+      results: 300,
+      builder: 760
+    }));
+  }
+);
+if (maxPanelsWindow.document.querySelector('.app-shell')?.dataset.workspaceMode === 'wide') {
+  throw new Error('Max-width visible panels should not leave the workspace in wide mode.');
+}
+if (maxPanelsWindow.document.querySelector('.app-shell')?.dataset.studioMode !== 'stacked') {
+  throw new Error('Max-width visible panels should stack the studio area before controls can overlap.');
+}
+if (maxPanelsWindow.document.querySelector('[data-resize-handle="activity"]')?.getAttribute('aria-hidden') !== 'true') {
+  throw new Error('Activity resize handle should be disabled once max-width visible panels force a non-wide workspace layout.');
+}
+
+const narrowStudioWindow = await createWindow(
+  'http://127.0.0.1:3100/',
+  [],
+  { width: 1500, height: 980 },
+  (window) => {
+    window.localStorage.setItem('dataWorkbenchSidePanelVisibilityV1', JSON.stringify({
+      controlRailCollapsed: true,
+      activityPanelCollapsed: true
+    }));
+  }
+);
+if (narrowStudioWindow.document.querySelector('.app-shell')?.dataset.studioMode !== 'stacked') {
+  throw new Error('Studio area should stack builder and editor earlier when side panels leave the main studio too narrow.');
+}
+
+const zoomWindow = await createWindow(
+  'http://127.0.0.1:3100/',
+  [],
+  { width: 1500, height: 980, visualWidth: 1080, scale: 1.25 },
+  (window) => {
+    window.localStorage.setItem('dataWorkbenchPanelLayoutV1', JSON.stringify({
+      controlRail: 420,
+      explorer: 420,
+      activity: 420,
+      results: 520,
+      builder: 760
+    }));
+  }
+);
+if (zoomWindow.document.querySelector('.app-shell')?.dataset.layoutMode !== 'stacked') {
+  throw new Error('Zoom-like reduced visual viewport width should force the stacked shell layout.');
+}
+if (zoomWindow.document.querySelector('.app-shell')?.style.getPropertyValue('--control-rail-width') !== '340px') {
+  throw new Error('Stacked zoom layout should reset stale persisted control rail widths.');
+}
+if (zoomWindow.document.querySelector('.app-shell')?.style.getPropertyValue('--results-height') !== '300px') {
+  throw new Error('Stacked zoom layout should reset stale persisted results height.');
+}
+if (zoomWindow.document.querySelector('[data-resize-handle="controlRail"]')?.getAttribute('aria-hidden') !== 'true') {
+  throw new Error('Stacked zoom layout should hide the control rail resize handle.');
+}
+
+const narrowWindow = await createWindow('http://127.0.0.1:3100/', [], { width: 1000, height: 980 });
+if (!narrowWindow.document.querySelector('.app-shell')?.classList.contains('panel-resize-disabled')) {
+  throw new Error('Resize handles should be disabled on stacked/mobile layouts.');
+}
+['controlRail', 'explorer', 'results'].forEach((name) => {
+  const handle = narrowWindow.document.querySelector(`[data-resize-handle="${name}"]`);
+  if (handle?.getAttribute('aria-hidden') !== 'true') {
+    throw new Error(`${name} resize handle should be hidden on narrow layouts.`);
+  }
+});
+
+console.log('UI smoke test passed.');

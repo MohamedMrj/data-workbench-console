@@ -1,0 +1,37 @@
+{
+  "name": "db_interface",
+  "version": "1.1.0",
+  "description": "Production-safe multi-source SQL and procedure workbench for Fabric and SQL Server",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "clean": "node -e \"require('fs').rmSync('.next', { recursive: true, force: true })\"",
+    "verify": "npm run clean && npm run build && node scripts/smoke-test.mjs && node scripts/ui-smoke.mjs"
+  },
+  "keywords": [
+    "fabric",
+    "sql",
+    "meta_store",
+    "internal-tool"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@azure/identity": "^4.13.1",
+    "@azure/keyvault-secrets": "^4.11.1",
+    "dotenv": "^16.4.7",
+    "mssql": "^12.2.1",
+    "next": "^15.5.0",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0"
+  },
+  "devDependencies": {
+    "jsdom": "^26.1.0",
+    "playwright": "^1.59.1",
+    "sql.js": "^1.13.0"
+  }
+}

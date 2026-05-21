@@ -1,0 +1,3408 @@
+window.createConsoleApp = function createConsoleApp() {
+  const HISTORY_KEY = 'dataWorkbenchConnectionsV2';
+  const LEGACY_HISTORY_KEYS = ['dataWorkbenchConnectionsV0', 'dataWorkbenchConnections', 'savedConnections'];
+  const QUERY_HISTORY_KEY = 'dataWorkbenchQueryHistoryV3';
+  const THEME_KEY = 'dataWorkbenchThemeV2';
+  const EDITOR_TEXT_SIZE_KEY = 'dataWorkbenchEditorTextSizeV1';
+  const RESULTS_TEXT_SIZE_KEY = 'dataWorkbenchResultsTextSizeV1';
+  const ACTIVE_CONNECTION_KEY = 'dataWorkbenchActiveConnectionV1';
+  const CATALOG_STATE_KEY = 'dataWorkbenchCatalogStateV1';
+  const PANEL_LAYOUT_KEY = 'dataWorkbenchPanelLayoutV1';
+  const SIDE_PANEL_VISIBILITY_KEY = 'dataWorkbenchSidePanelVisibilityV1';
+  const ADVANCED_OPERATIONS_VISIBILITY_KEY = 'dataWorkbenchAdvancedOperationsVisibleV1';
+  const THEMES = ['midnight', 'harbor', 'forge', 'field', 'ink', 'paper'];
+  const CONNECTION_HISTORY_MAX = 12;
+  const QUERY_HISTORY_MAX = 20;
+  const QUERY_HISTORY_RETENTION_MS = 14 * 24 * 60 * 60 * 1000;
+  const DEFAULT_PANEL_LAYOUT = {
+    controlRail: 340,
+    explorer: 300,
+    activity: 320,
+    results: 300,
+    builder: 420,
+    procedure: 360
+  };
+  const FALLBACK_SOURCES = [
+    { id: 'fabric-sql', label: 'Fabric SQL endpoint', authModes: ['servicePrincipal'], supportsProcedures: true },
+    { id: 'fabric-lakehouse', label: 'Fabric Lakehouse SQL endpoint', authModes: ['servicePrincipal'], supportsProcedures: false },
+    { id: 'sql-server', label: 'SQL Server', authModes: ['sqlLogin', 'servicePrincipal'], supportsProcedures: true }
+  ];
+  const FALLBACK_AUTH = [
+    { id: 'servicePrincipal', label: 'Azure service principal' },
+    { id: 'sqlLogin', label: 'SQL login' }
+  ];
+  const DEFAULT_QUERY = `-- Connect to a source and load the catalog to get started.\n-- Select a table or view from the explorer to generate SQL automatically.\n-- You can also write or paste SQL directly here.\nSELECT TOP 100 *\nFROM dbo.YourTableName;`;
+  const SNIPPETS = {};
+  const SQL_HELPER_LABELS = {
+    concat: 'CONCAT',
+    replace: 'REPLACE',
+    trim: 'TRIM',
+    cast: 'CAST',
+    tryConvert: 'TRY_CONVERT',
+    coalesce: 'COALESCE',
+    nullif: 'NULLIF blank',
+    caseWhen: 'CASE',
+    dateadd: 'DATEADD',
+    datediff: 'DATEDIFF',
+    sha2Key: 'SHA2 key'
+  };
+
+  const state = {
+    health: null,
+    currentTheme: 'midnight',
+    editorTextSize: 0.95,
+    resultsTextSize: 0.9,
+    queryMode: 'select',
+    workspace: 'sql',
+    explorer: 'objects',
+    connectionHistory: [],
+    queryHistory: [],
+    objects: [],
+    filteredObjects: [],
+    procedures: [],
+    filteredProcedures: [],
+    procedureNote: '',
+    activeObject: null,
+    activeObjectType: '',
+    activeColumns: [],
+    selectedColumns: new Set(),
+    activeProcedure: null,
+    procedureParameters: [],
+    procedureValues: {},
+    pendingAction: null,
+    lastFocusedElement: null,
+    connectionTest: null,
+    advancedOperationsVisible: false,
+    sidePanels: {
+      controlRailCollapsed: false,
+      activityPanelCollapsed: false
+    },
+    results: {
+      columns: [],
+      rows: [],
+      output: {},
+      returnValue: null,
+      rowsAffected: 0,
+      totalRows: 0,
+      truncated: false,
+      page: 1,
+      pageSize: 50,
+      columnWidths: {},
+      expandedCells: {},
+      sortColumn: '',
+      sortDirection: 'asc',
+      visualKind: '',
+      visualObject: ''
+    },
+    confirmCountdownTimer: null,
+    historyFilter: ''
+  };
+
+  const $ = (id) => document.getElementById(id);
+  const esc = (value) => String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+  const safeGet = (key) => {
+    try { return localStorage.getItem(key); } catch { return null; }
+  };
+  const safeSet = (key, value) => {
+    try {
+      localStorage.setItem(key, value);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+  const safeSessionGet = (key) => {
+    try { return sessionStorage.getItem(key); } catch { return null; }
+  };
+  const safeSessionSet = (key, value) => {
+    try { sessionStorage.setItem(key, value); } catch {}
+  };
+  const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
+  const debounce = (fn, wait = 120) => {
+    let timeout;
+    return (...args) => {
+      clearTimeout(timeout);
+      timeout = setTimeout(() => fn(...args), wait);
+    };
+  };
+  const utcFormatter = new Intl.DateTimeFormat(undefined, {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+    timeZone: 'UTC',
+    timeZoneName: 'short'
+  });
+  let panelLayout = { ...DEFAULT_PANEL_LAYOUT };
+
+  function loadPanelLayout() {
+    try {
+      const saved = JSON.parse(safeGet(PANEL_LAYOUT_KEY) || 'null');
+      if (!saved || typeof saved !== 'object') {
+        panelLayout = { ...DEFAULT_PANEL_LAYOUT };
+        return;
+      }
+      panelLayout = {
+        controlRail: Number(saved.controlRail) || DEFAULT_PANEL_LAYOUT.controlRail,
+        explorer: Number(saved.explorer) || DEFAULT_PANEL_LAYOUT.explorer,
+        activity: Number(saved.activity) || DEFAULT_PANEL_LAYOUT.activity,
+        results: Number(saved.results) || DEFAULT_PANEL_LAYOUT.results,
+        builder: Number(saved.builder) || DEFAULT_PANEL_LAYOUT.builder,
+        procedure: Number(saved.procedure) || DEFAULT_PANEL_LAYOUT.procedure
+      };
+    } catch {
+      panelLayout = { ...DEFAULT_PANEL_LAYOUT };
+    }
+  }
+
+  function loadAdvancedOperationsVisibility() {
+    state.advancedOperationsVisible = safeGet(ADVANCED_OPERATIONS_VISIBILITY_KEY) === 'true';
+  }
+
+  function loadTextPreferences() {
+    state.editorTextSize = clamp(Number(safeGet(EDITOR_TEXT_SIZE_KEY)) || 0.95, 0.8, 1.35);
+    state.resultsTextSize = clamp(Number(safeGet(RESULTS_TEXT_SIZE_KEY)) || 0.9, 0.78, 1.25);
+  }
+
+  function applyTextPreferences() {
+    const shell = document.querySelector('.app-shell');
+    if (!shell) {
+      return;
+    }
+    shell.style.setProperty('--sql-editor-font-size', `${state.editorTextSize}rem`);
+    shell.style.setProperty('--results-font-size', `${state.resultsTextSize}rem`);
+  }
+
+  function changeEditorTextSize(delta) {
+    state.editorTextSize = clamp(Math.round((state.editorTextSize + delta) * 100) / 100, 0.8, 1.35);
+    safeSet(EDITOR_TEXT_SIZE_KEY, String(state.editorTextSize));
+    applyTextPreferences();
+    setStatus('success', `SQL editor text size set to ${state.editorTextSize.toFixed(2)}rem.`);
+  }
+
+  function changeResultsTextSize(delta) {
+    state.resultsTextSize = clamp(Math.round((state.resultsTextSize + delta) * 100) / 100, 0.78, 1.25);
+    safeSet(RESULTS_TEXT_SIZE_KEY, String(state.resultsTextSize));
+    applyTextPreferences();
+    setStatus('success', `Results text size set to ${state.resultsTextSize.toFixed(2)}rem.`);
+  }
+
+  function loadSidePanelVisibility() {
+    try {
+      const saved = JSON.parse(safeGet(SIDE_PANEL_VISIBILITY_KEY) || 'null');
+      state.sidePanels.controlRailCollapsed = Boolean(saved?.controlRailCollapsed);
+      state.sidePanels.activityPanelCollapsed = Boolean(saved?.activityPanelCollapsed);
+    } catch {
+      state.sidePanels.controlRailCollapsed = false;
+      state.sidePanels.activityPanelCollapsed = false;
+    }
+  }
+
+  function saveAdvancedOperationsVisibility() {
+    safeSet(ADVANCED_OPERATIONS_VISIBILITY_KEY, state.advancedOperationsVisible ? 'true' : 'false');
+  }
+
+  function saveSidePanelVisibility() {
+    safeSet(SIDE_PANEL_VISIBILITY_KEY, JSON.stringify(state.sidePanels));
+  }
+
+  function savePanelLayout() {
+    safeSet(PANEL_LAYOUT_KEY, JSON.stringify(panelLayout));
+  }
+
+  function getViewportMetrics() {
+    const visualViewport = window.visualViewport;
+    const width = visualViewport?.width || window.innerWidth || document.documentElement.clientWidth || 0;
+    const height = visualViewport?.height || window.innerHeight || document.documentElement.clientHeight || 0;
+    return {
+      width,
+      height,
+      scale: visualViewport?.scale || 1
+    };
+  }
+
+  function getViewportWidth() {
+    return getViewportMetrics().width;
+  }
+
+  function getShellWidth() {
+    return document.querySelector('.app-shell')?.clientWidth || getViewportWidth();
+  }
+
+  function getWorkspaceWidth() {
+    return document.querySelector('.workspace-shell')?.clientWidth || getViewportWidth();
+  }
+
+  function getWorkspaceGridWidth() {
+    return document.querySelector('.workspace-grid')?.clientWidth || getWorkspaceWidth();
+  }
+
+  function getStudioWidth() {
+    return document.querySelector('.studio-stack')?.clientWidth || getWorkspaceWidth();
+  }
+
+  function getSqlWorkspaceWidth() {
+    return document.querySelector('#sqlWorkspace:not(.hidden)')?.clientWidth || getStudioWidth();
+  }
+
+  function getProcedureStudioWidth() {
+    return document.querySelector('.procedure-studio-grid')?.clientWidth || getStudioWidth();
+  }
+
+  function getEffectivePanelWidths() {
+    return {
+      controlRail: clamp(panelLayout.controlRail || DEFAULT_PANEL_LAYOUT.controlRail, 300, 460),
+      explorer: clamp(panelLayout.explorer || DEFAULT_PANEL_LAYOUT.explorer, 240, 420),
+      activity: clamp(panelLayout.activity || DEFAULT_PANEL_LAYOUT.activity, 260, 420),
+      builder: clamp(panelLayout.builder || DEFAULT_PANEL_LAYOUT.builder, 320, 760),
+      procedure: clamp(panelLayout.procedure || DEFAULT_PANEL_LAYOUT.procedure, 320, 640)
+    };
+  }
+
+  function getLayoutMode() {
+    const viewport = getViewportMetrics();
+    const shellWidth = getShellWidth();
+    const workspaceWidth = getWorkspaceGridWidth();
+    const studioWidth = getSqlWorkspaceWidth();
+    const widths = getEffectivePanelWidths();
+    const controlRailDelta = state.sidePanels.controlRailCollapsed ? 0 : Math.max(0, widths.controlRail - DEFAULT_PANEL_LAYOUT.controlRail);
+    const explorerDelta = Math.max(0, widths.explorer - DEFAULT_PANEL_LAYOUT.explorer);
+    const activityDelta = state.sidePanels.activityPanelCollapsed ? 0 : Math.max(0, widths.activity - DEFAULT_PANEL_LAYOUT.activity);
+    const builderDelta = Math.max(0, widths.builder - DEFAULT_PANEL_LAYOUT.builder);
+    const shellStackThreshold = 1180 + controlRailDelta;
+    const workspaceStackThreshold = 1180 + explorerDelta;
+    const workspaceWideThreshold = 1500 + explorerDelta + activityDelta;
+    const studioWideThreshold = 1360 + builderDelta;
+
+    return {
+      viewportWidth: viewport.width,
+      viewportScale: viewport.scale,
+      shellMode: shellWidth <= shellStackThreshold || viewport.width <= 1120 ? 'stacked' : 'split',
+      workspaceMode: workspaceWidth <= workspaceStackThreshold ? 'stacked' : workspaceWidth <= workspaceWideThreshold ? 'compressed' : 'wide',
+      studioMode: studioWidth <= studioWideThreshold || workspaceWidth <= workspaceWideThreshold ? 'stacked' : 'wide'
+    };
+  }
+
+  function normalizePanelLayoutForViewport() {
+    const layoutMode = getLayoutMode();
+    const shellWidth = getShellWidth();
+    const workspaceWidth = getWorkspaceGridWidth();
+    const studioWidth = getSqlWorkspaceWidth();
+    const procedureStudioWidth = getProcedureStudioWidth();
+    const shellWide = layoutMode.shellMode !== 'stacked';
+    const workspaceWide = layoutMode.workspaceMode === 'wide';
+    const workspaceCompressed = layoutMode.workspaceMode === 'compressed';
+    const studioWide = layoutMode.studioMode === 'wide';
+
+    if (!shellWide) {
+      panelLayout.controlRail = DEFAULT_PANEL_LAYOUT.controlRail;
+    } else {
+      const maxControlRail = Math.max(320, Math.min(460, Math.floor(shellWidth * 0.34)));
+      panelLayout.controlRail = clamp(panelLayout.controlRail, 300, maxControlRail);
+    }
+
+    if (!workspaceWide && !workspaceCompressed) {
+      panelLayout.explorer = DEFAULT_PANEL_LAYOUT.explorer;
+      panelLayout.activity = DEFAULT_PANEL_LAYOUT.activity;
+      panelLayout.builder = DEFAULT_PANEL_LAYOUT.builder;
+      panelLayout.procedure = DEFAULT_PANEL_LAYOUT.procedure;
+    } else {
+      const maxExplorer = Math.max(280, Math.min(420, Math.floor(workspaceWidth * (workspaceWide ? 0.28 : 0.32))));
+      const maxActivity = Math.max(280, Math.min(420, Math.floor(workspaceWidth * 0.3)));
+      const maxBuilder = Math.max(360, Math.min(760, Math.floor(studioWidth * (studioWide ? 0.58 : 0.5))));
+      const maxProcedure = Math.max(360, Math.min(640, Math.floor(procedureStudioWidth * 0.42)));
+
+      panelLayout.explorer = clamp(panelLayout.explorer, 240, maxExplorer);
+      panelLayout.activity = clamp(panelLayout.activity, 260, maxActivity);
+      panelLayout.builder = clamp(panelLayout.builder, 320, maxBuilder);
+      panelLayout.procedure = clamp(panelLayout.procedure, 320, maxProcedure);
+    }
+
+    if (layoutMode.shellMode === 'stacked') {
+      panelLayout.results = DEFAULT_PANEL_LAYOUT.results;
+    } else if (!state.results.columns.length && !state.results.rowsAffected && !Object.keys(state.results.output || {}).length && state.results.returnValue == null) {
+      panelLayout.results = Math.min(panelLayout.results, 200);
+    } else if (!state.results.rows.length) {
+      panelLayout.results = Math.min(panelLayout.results, 240);
+    } else if (layoutMode.viewportWidth <= 900) {
+      panelLayout.results = clamp(Math.max(panelLayout.results, 260), 220, 380);
+    } else {
+      panelLayout.results = clamp(Math.max(panelLayout.results, DEFAULT_PANEL_LAYOUT.results), 260, 460);
+    }
+  }
+
+  function resizeEnabled(handleName) {
+    const layoutMode = getLayoutMode();
+    const shellWidth = getShellWidth();
+    const workspaceWidth = getWorkspaceGridWidth();
+    const studioWidth = getSqlWorkspaceWidth();
+    const procedureStudioWidth = getProcedureStudioWidth();
+
+    if (handleName === 'activity') {
+      return layoutMode.workspaceMode === 'wide' && workspaceWidth > 1500;
+    }
+    if (handleName === 'builder') {
+      return layoutMode.studioMode === 'wide' && studioWidth > 1180;
+    }
+    if (handleName === 'procedure') {
+      return layoutMode.shellMode !== 'stacked' && procedureStudioWidth > 920;
+    }
+    if (handleName === 'explorer') {
+      return layoutMode.workspaceMode !== 'stacked' && workspaceWidth > 1180;
+    }
+    if (handleName === 'results') {
+      return layoutMode.shellMode !== 'stacked' && shellWidth > 1180;
+    }
+    return layoutMode.shellMode !== 'stacked' && shellWidth > 1180;
+  }
+
+  function applyPanelLayout() {
+    const shell = document.querySelector('.app-shell');
+    const resultsCard = $('resultsPanel')?.closest('.results-card');
+    if (!shell || !resultsCard) {
+      return;
+    }
+
+    normalizePanelLayoutForViewport();
+    panelLayout.controlRail = clamp(panelLayout.controlRail, 300, 460);
+    panelLayout.explorer = clamp(panelLayout.explorer, 240, 420);
+    panelLayout.activity = clamp(panelLayout.activity, 260, 420);
+    panelLayout.results = clamp(panelLayout.results, 140, 460);
+    panelLayout.builder = clamp(panelLayout.builder, 320, 760);
+    panelLayout.procedure = clamp(panelLayout.procedure, 320, 640);
+
+    shell.style.setProperty('--control-rail-width', `${panelLayout.controlRail}px`);
+    shell.style.setProperty('--explorer-width', `${panelLayout.explorer}px`);
+    shell.style.setProperty('--activity-width', `${panelLayout.activity}px`);
+    shell.style.setProperty('--procedure-panel-width', `${panelLayout.procedure}px`);
+    shell.style.setProperty('--results-height', `${panelLayout.results}px`);
+    shell.style.setProperty('--builder-primary-width', `${panelLayout.builder}px`);
+    shell.classList.toggle('control-rail-collapsed', state.sidePanels.controlRailCollapsed);
+    shell.classList.toggle('activity-panel-collapsed', state.sidePanels.activityPanelCollapsed);
+    const layoutMode = getLayoutMode();
+    const procedureLayoutMode = layoutMode.shellMode === 'stacked' || getProcedureStudioWidth() <= 920 ? 'stacked' : 'split';
+    shell.dataset.layoutMode = layoutMode.shellMode;
+    shell.dataset.workspaceMode = layoutMode.workspaceMode;
+    shell.dataset.studioMode = layoutMode.studioMode;
+    shell.dataset.procedureLayoutMode = procedureLayoutMode;
+    shell.dataset.viewportScale = String(Math.round(layoutMode.viewportScale * 100) / 100);
+
+    document.querySelectorAll('[data-resize-handle]').forEach((handle) => {
+      const enabled = resizeEnabled(handle.dataset.resizeHandle);
+      const hiddenByPanelState =
+        (handle.dataset.resizeHandle === 'controlRail' && state.sidePanels.controlRailCollapsed) ||
+        (handle.dataset.resizeHandle === 'activity' && state.sidePanels.activityPanelCollapsed);
+      handle.classList.toggle('is-active', enabled);
+      handle.setAttribute('aria-hidden', enabled && !hiddenByPanelState ? 'false' : 'true');
+    });
+
+    renderSidePanelToggles();
+  }
+
+  function renderSidePanelToggles() {
+    const leftButton = $('toggleControlRailBtn');
+    const rightButton = $('toggleActivityPanelBtn');
+
+    if (leftButton) {
+      leftButton.textContent = state.sidePanels.controlRailCollapsed ? 'Show connection panel' : 'Hide connection panel';
+      leftButton.setAttribute('aria-pressed', state.sidePanels.controlRailCollapsed ? 'true' : 'false');
+    }
+
+    if (rightButton) {
+      rightButton.textContent = state.sidePanels.activityPanelCollapsed ? 'Show themes & history' : 'Hide themes & history';
+      rightButton.setAttribute('aria-pressed', state.sidePanels.activityPanelCollapsed ? 'true' : 'false');
+    }
+  }
+
+  function toggleSidePanel(panelName) {
+    if (panelName === 'controlRail') {
+      state.sidePanels.controlRailCollapsed = !state.sidePanels.controlRailCollapsed;
+      saveSidePanelVisibility();
+      syncResizablePanels();
+      setStatus('success', state.sidePanels.controlRailCollapsed ? 'Connection panel hidden.' : 'Connection panel restored.');
+      return;
+    }
+
+    if (panelName === 'activity') {
+      state.sidePanels.activityPanelCollapsed = !state.sidePanels.activityPanelCollapsed;
+      saveSidePanelVisibility();
+      syncResizablePanels();
+      setStatus('success', state.sidePanels.activityPanelCollapsed ? 'Themes and history panel hidden.' : 'Themes and history panel restored.');
+    }
+  }
+
+  function syncResizablePanels() {
+    const shell = document.querySelector('.app-shell');
+    if (!shell) {
+      return;
+    }
+    shell.classList.toggle('panel-resize-disabled', !resizeEnabled('controlRail'));
+    applyPanelLayout();
+  }
+
+  function handleBounds(handleName) {
+    if (handleName === 'controlRail') {
+      return { min: 300, max: 460 };
+    }
+    if (handleName === 'explorer') {
+      return { min: 240, max: 420 };
+    }
+    if (handleName === 'activity') {
+      return { min: 260, max: 420 };
+    }
+    if (handleName === 'builder') {
+      return { min: 320, max: 760 };
+    }
+    if (handleName === 'procedure') {
+      return { min: 320, max: 640 };
+    }
+    return { min: 140, max: 460 };
+  }
+
+  function setupResizablePanels() {
+    syncResizablePanels();
+
+    document.querySelectorAll('[data-resize-handle]').forEach((handle) => {
+      handle.onpointerdown = null;
+      handle.onpointermove = null;
+      handle.onpointerup = null;
+      handle.onpointercancel = null;
+      handle.ondblclick = null;
+
+      handle.onpointerdown = (event) => {
+        const handleName = handle.dataset.resizeHandle;
+        if (!resizeEnabled(handleName)) {
+          return;
+        }
+        const shell = document.querySelector('.app-shell');
+        const resultsCard = $('resultsPanel')?.closest('.results-card');
+        if (!shell || !resultsCard) {
+          return;
+        }
+
+        const startX = event.clientX;
+        const startY = event.clientY;
+        const startValue = panelLayout[handleName];
+        const bounds = handleBounds(handleName);
+
+        handle.classList.add('is-dragging');
+        handle.setPointerCapture?.(event.pointerId);
+        document.body.classList.add('panel-resize-dragging');
+        document.body.style.cursor = handleName === 'results' ? 'row-resize' : 'col-resize';
+
+        handle.onpointermove = (moveEvent) => {
+          let nextValue = startValue;
+          if (handleName === 'controlRail' || handleName === 'explorer' || handleName === 'builder' || handleName === 'procedure') {
+            nextValue = startValue + (moveEvent.clientX - startX);
+          } else if (handleName === 'activity') {
+            nextValue = startValue - (moveEvent.clientX - startX);
+          } else if (handleName === 'results') {
+            nextValue = startValue + (startY - moveEvent.clientY);
+          }
+
+          panelLayout[handleName] = clamp(Math.round(nextValue), bounds.min, bounds.max);
+          applyPanelLayout();
+        };
+
+        const finish = () => {
+          handle.classList.remove('is-dragging');
+          handle.onpointermove = null;
+          handle.onpointerup = null;
+          handle.onpointercancel = null;
+          document.body.classList.remove('panel-resize-dragging');
+          document.body.style.cursor = '';
+          savePanelLayout();
+        };
+
+        handle.onpointerup = finish;
+        handle.onpointercancel = finish;
+      };
+
+      handle.ondblclick = () => {
+        const handleName = handle.dataset.resizeHandle;
+        panelLayout[handleName] = DEFAULT_PANEL_LAYOUT[handleName];
+        applyPanelLayout();
+        savePanelLayout();
+        setStatus('success', 'Panel size reset.');
+      };
+    });
+
+    if (!window.__dataWorkbenchResizeBinding) {
+      const syncLayout = debounce(() => {
+        if (typeof window.__dataWorkbenchResizeBinding === 'function') {
+          window.__dataWorkbenchResizeBinding();
+        }
+      }, 40);
+      window.addEventListener('resize', syncLayout);
+      window.visualViewport?.addEventListener?.('resize', syncLayout);
+      window.visualViewport?.addEventListener?.('scroll', syncLayout);
+
+      if (typeof window.ResizeObserver === 'function') {
+        const resizeObserver = new window.ResizeObserver(() => syncLayout());
+        const observeWhenReady = () => {
+          document.querySelectorAll('.app-shell, .workspace-shell, .workspace-grid, .studio-stack, #sqlWorkspace, .procedure-studio-grid').forEach((element) => {
+            if (element) {
+              resizeObserver.observe(element);
+            }
+          });
+        };
+        observeWhenReady();
+        window.__dataWorkbenchResizeObserver = resizeObserver;
+      }
+    }
+    window.__dataWorkbenchResizeBinding = syncResizablePanels;
+  }
+
+  function bid(value) {
+    return `[${String(value || '').replace(/]/g, ']]')}]`;
+  }
+
+  function quoteValue(value) {
+    const raw = String(value ?? '').trim();
+    if (!raw) return `''`;
+    if (/^null$/i.test(raw)) return 'NULL';
+    if (/^-?\d+(\.\d+)?$/.test(raw)) return raw;
+    return `'${raw.replace(/'/g, "''")}'`;
+  }
+
+  function templateLiteralForColumn(columnName) {
+    const metadata = state.activeColumns.find((column) => column.name === columnName);
+    const dataType = String(metadata?.type || '').toLowerCase();
+    if (/(int|decimal|numeric|float|real|money)/.test(dataType)) return '0';
+    if (dataType === 'bit') return '0';
+    if (/(date|time)/.test(dataType)) return `'2000-01-01'`;
+    if (dataType === 'uniqueidentifier') return `'00000000-0000-0000-0000-000000000000'`;
+    if (/(char|text|xml)/.test(dataType)) return `''`;
+    return 'NULL';
+  }
+
+  function formatTimestamp(value) {
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) {
+      return String(value || '');
+    }
+    return utcFormatter.format(date);
+  }
+
+  function setStatus(kind, message) {
+    $('statusBadge').className = `status-badge ${kind}`;
+    $('statusBadge').textContent = kind === 'success' ? 'Success' : kind === 'error' ? 'Error' : kind === 'loading' ? 'Working' : 'Idle';
+    $('statusText').textContent = message;
+  }
+
+  function renderSaveConnectionResult(info = null) {
+    const panel = $('saveConnectionResult');
+    if (!panel) {
+      return;
+    }
+
+    if (!info) {
+      panel.className = 'connection-test-panel empty-note';
+      panel.innerHTML = 'Save stores this connection in the app database so it is available every time the project starts.';
+      return;
+    }
+
+    const stateClass = ['success', 'error'].includes(info.state) ? info.state : '';
+    panel.className = `connection-test-panel empty-note${stateClass ? ` ${stateClass}` : ''}`;
+    panel.innerHTML = `<strong>${esc(info.title || 'Save connection')}</strong><span>${esc(info.message || '')}</span>`;
+  }
+
+  async function api(url, { method = 'GET', data } = {}) {
+    const response = await fetch(url, {
+      method,
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: data ? JSON.stringify(data) : undefined
+    });
+    const contentType = response.headers.get('content-type') || '';
+    const payload = contentType.includes('application/json')
+      ? await response.json()
+      : { success: false, error: await response.text() };
+    if (!response.ok || payload.success === false) {
+      const error = new Error(payload.error || `Request failed with status ${response.status}`);
+      Object.assign(error, payload);
+      throw error;
+    }
+    return payload;
+  }
+
+
+  function sourceOptions() {
+    return state.health?.supportedSourceTypes || FALLBACK_SOURCES;
+  }
+
+  function authOptionsForSource(sourceType) {
+    const source = sourceOptions().find((item) => item.id === sourceType) || sourceOptions()[0];
+    return (source?.authModes || ['servicePrincipal']).map((id) => (
+      (state.health?.supportedAuthModes || FALLBACK_AUTH).find((option) => option.id === id) || { id, label: id }
+    ));
+  }
+  function renderConnectionSelectors() {
+    const sourceSelect = $('sourceTypeSelect');
+    const authSelect = $('authModeSelect');
+    if (!sourceSelect || !authSelect) {
+      return;
+    }
+
+    const currentSource = sourceSelect.value;
+    const sources = sourceOptions();
+
+    sourceSelect.innerHTML = sources
+      .map((source) => `<option value="${esc(source.id)}">${esc(source.label || source.id)}</option>`)
+      .join('');
+
+    const nextSource = sources.some((source) => source.id === currentSource)
+      ? currentSource
+      : (sources[0]?.id || 'fabric-sql');
+
+    sourceSelect.value = nextSource;
+    renderAuthOptions();
+    renderConnectionSummary();
+  }
+
+  function renderAuthOptions() {
+    const sourceType = selectedSourceType();
+    const authSelect = $('authModeSelect');
+    if (!authSelect) {
+      return;
+    }
+
+    const currentAuth = authSelect.value;
+    const options = authOptionsForSource(sourceType);
+
+    authSelect.innerHTML = options
+      .map((option) => `<option value="${esc(option.id)}">${esc(option.label || option.id)}</option>`)
+      .join('');
+
+    const nextAuth = options.some((option) => option.id === currentAuth)
+      ? currentAuth
+      : (options[0]?.id || 'servicePrincipal');
+
+    authSelect.value = nextAuth;
+    syncAuthFields();
+  }
+
+  function syncAuthFields() {
+    const sourceType = selectedSourceType();
+    const authMode = selectedAuthMode(sourceType);
+
+    const authFields = $('authFields');
+    const usernameField = $('usernameField');
+    const passwordField = $('passwordField');
+    const trustField = $('trustServerCertificateField');
+    const usernameInput = $('usernameInput');
+    const passwordInput = $('passwordInput');
+
+    if (!authFields || !usernameField || !passwordField || !trustField) {
+      return;
+    }
+
+    const isSqlLogin = authMode === 'sqlLogin';
+    const sourceLabel =
+      sourceOptions().find((source) => source.id === sourceType)?.label || sourceType;
+
+    authFields.classList.toggle('hidden', false);
+    usernameField.classList.toggle('hidden', false);
+    passwordField.classList.toggle('hidden', !isSqlLogin);
+    trustField.classList.toggle('hidden', sourceType !== 'sql-server');
+
+    const usernameLabel = usernameField.querySelector('span');
+    const passwordLabel = passwordField.querySelector('span');
+
+    if (usernameLabel) {
+      usernameLabel.textContent = isSqlLogin ? 'Username' : 'Client / app id';
+    }
+    if (passwordLabel) {
+      passwordLabel.textContent = isSqlLogin ? 'Password' : 'Client secret';
+    }
+
+    if (usernameInput) {
+      usernameInput.placeholder = isSqlLogin ? 'sql_login' : 'service principal client id';
+      usernameInput.disabled = !isSqlLogin;
+    }
+    if (passwordInput) {
+      passwordInput.placeholder = isSqlLogin ? 'password' : 'service principal client secret';
+      passwordInput.disabled = !isSqlLogin;
+    }
+
+    if (!isSqlLogin) {
+      usernameInput.value = '';
+      passwordInput.value = '';
+      window.__dataWorkbenchSessionPassword = '';
+    }
+
+    renderConnectionSummary();
+    clearConnectionTestResult();
+
+    const resultPanel = $('testConnectionResult');
+    if (resultPanel && !state.connectionTest) {
+      resultPanel.innerHTML = `<strong>Ready to test</strong><span>Current source: ${esc(sourceLabel)} using ${esc(authMode)}.</span>`;
+    }
+  }
+
+  function renderConnectionSummary() {
+    const panel = $('connectionSummary');
+    if (!panel) {
+      return;
+    }
+
+    const current = connection();
+    const sourceLabel =
+      sourceOptions().find((source) => source.id === current.sourceType)?.label || current.sourceType;
+
+    const authLabel =
+      authOptionsForSource(current.sourceType).find((auth) => auth.id === current.authMode)?.label || current.authMode;
+
+    const ready = Boolean(current.server && current.database);
+
+    panel.innerHTML = `
+      <div class="info-chip">
+        <strong>Session</strong>
+        <span>${ready ? `${esc(sourceLabel)} • ${esc(current.server)} • ${esc(current.database)}` : 'No active connection yet.'}</span>
+      </div>
+      <div class="info-chip">
+        <strong>Auth</strong>
+        <span>${esc(authLabel)}</span>
+      </div>
+    `;
+  }
+
+  function renderPolicy() {
+    const panel = $('policySummary');
+    if (!panel) {
+      return;
+    }
+
+    const policy = state.health?.safetyPolicy || state.health?.policy || null;
+
+    if (!policy) {
+      panel.innerHTML = `
+        <div class="info-chip">
+          <strong>Default policy</strong>
+          <span>SELECT-style reads run directly. Writes and procedures stay user-controlled through preview and button confirmation.</span>
+        </div>
+      `;
+      return;
+    }
+
+    const lines = [];
+    if (policy.writeRequiresPreview !== undefined) {
+      lines.push(`Write preview required: ${policy.writeRequiresPreview ? 'Yes' : 'No'}`);
+    }
+    if (policy.secondConfirmationRequired !== undefined) {
+      lines.push(`Button confirmation only: ${policy.confirmWithButtonOnly ? 'Yes' : 'No'}`);
+    }
+    if (Array.isArray(policy.blockedStatements) && policy.blockedStatements.length) {
+      lines.push(`Blocked: ${policy.blockedStatements.join(', ')}`);
+    }
+
+    panel.innerHTML = `
+      <div class="info-chip">
+        <strong>Active policy</strong>
+        <span>${esc(lines.join(' • ') || 'Safety checks are enabled.')}</span>
+      </div>
+    `;
+  }
+
+  function renderConnectionTestResult() {
+    const panel = $('testConnectionResult');
+    if (!panel) {
+      return;
+    }
+
+    const info = state.connectionTest;
+    if (!info) {
+      panel.className = 'connection-test-panel empty-note';
+      panel.innerHTML = 'Run a connection test to verify the current server, database, and authentication settings.';
+      return;
+    }
+
+    const stateClass = ['success', 'error'].includes(info.state) ? info.state : '';
+    panel.className = `connection-test-panel empty-note${stateClass ? ` ${stateClass}` : ''}`;
+    panel.innerHTML = `<strong>${esc(info.state === 'success' ? 'Connection verified' : info.state === 'error' ? 'Connection failed' : 'Testing connection')}</strong><span>${esc(info.message || '')}</span>`;
+  }
+
+  function clearConnectionTestResult() {
+    state.connectionTest = null;
+    renderConnectionTestResult();
+  }
+
+  function renderAdvancedOperationsVisibility() {
+    const button = $('toggleAdvancedOperationsBtn');
+    const content = $('advancedOperationsContent');
+    if (!button || !content) {
+      return;
+    }
+
+    content.classList.toggle('hidden', !state.advancedOperationsVisible);
+    button.setAttribute('aria-expanded', state.advancedOperationsVisible ? 'true' : 'false');
+    button.textContent = state.advancedOperationsVisible ? 'Hide advanced' : 'Show advanced';
+  }
+  function selectedSourceType() {
+    const options = sourceOptions();
+    const value = $('sourceTypeSelect').value;
+    const normalized = options.some((item) => item.id === value) ? value : (options[0]?.id || 'fabric-sql');
+    if ($('sourceTypeSelect').value !== normalized) {
+      $('sourceTypeSelect').value = normalized;
+    }
+    return normalized;
+  }
+
+  function selectedAuthMode(sourceType = selectedSourceType()) {
+    const options = authOptionsForSource(sourceType);
+    const value = $('authModeSelect').value;
+    const normalized = options.some((item) => item.id === value) ? value : (options[0]?.id || 'servicePrincipal');
+    if ($('authModeSelect').value !== normalized) {
+      $('authModeSelect').value = normalized;
+    }
+    return normalized;
+  }
+
+  function connection() {
+    const sourceType = selectedSourceType();
+    const authMode = selectedAuthMode(sourceType);
+    return {
+      sourceType,
+      authMode,
+      server: $('serverInput').value.trim(),
+      port: $('portInput').value.trim(),
+      database: $('databaseInput').value.trim(),
+      username: $('usernameInput').value.trim(),
+      password: $('passwordInput').value,
+      trustServerCertificate: $('trustServerCertificateInput').checked
+    };
+  }
+
+  function requestConnection(extra = {}) {
+    return { ...connection(), ...extra };
+  }
+
+  function storageConnection() {
+    const current = connection();
+    return {
+      sourceType: current.sourceType,
+      authMode: current.authMode,
+      server: current.server,
+      port: current.port,
+      database: current.database,
+      username: current.username,
+      trustServerCertificate: current.trustServerCertificate
+    };
+  }
+
+  function connectionSignature(snapshot = storageConnection()) {
+    return [
+      snapshot.sourceType || '',
+      snapshot.authMode || '',
+      snapshot.server || '',
+      snapshot.port || '',
+      snapshot.database || '',
+      snapshot.username || '',
+      snapshot.trustServerCertificate === false ? '0' : '1'
+    ].join('|');
+  }
+
+  function persistActiveConnection() {
+    const current = connection();
+    safeSessionSet(ACTIVE_CONNECTION_KEY, JSON.stringify(storageConnection()));
+    window.__dataWorkbenchSessionPassword = current.authMode === 'sqlLogin' ? current.password : '';
+  }
+
+  function persistCatalogState() {
+    safeSessionSet(CATALOG_STATE_KEY, JSON.stringify({
+      connectionSignature: connectionSignature(),
+      objects: state.objects,
+      procedures: state.procedures,
+      procedureNote: state.procedureNote,
+      activeObject: state.activeObject,
+      activeObjectType: state.activeObjectType,
+      activeColumns: state.activeColumns,
+      selectedColumns: [...state.selectedColumns],
+      activeProcedure: state.activeProcedure,
+      procedureParameters: state.procedureParameters,
+      procedureValues: state.procedureValues
+    }));
+  }
+
+  function restoreCatalogState() {
+    let saved = null;
+    try {
+      saved = JSON.parse(safeSessionGet(CATALOG_STATE_KEY) || 'null');
+    } catch {
+      saved = null;
+    }
+
+    if (!saved || saved.connectionSignature !== connectionSignature()) {
+      return false;
+    }
+
+    state.objects = Array.isArray(saved.objects) ? saved.objects : [];
+    state.filteredObjects = [...state.objects];
+    state.procedures = Array.isArray(saved.procedures) ? saved.procedures : [];
+    state.filteredProcedures = [...state.procedures];
+    state.procedureNote = String(saved.procedureNote || '');
+    state.activeObject = saved.activeObject || null;
+    state.activeObjectType = saved.activeObjectType || '';
+    state.activeColumns = Array.isArray(saved.activeColumns) ? saved.activeColumns : [];
+    state.selectedColumns = new Set(Array.isArray(saved.selectedColumns) ? saved.selectedColumns : []);
+    state.activeProcedure = saved.activeProcedure || null;
+    state.procedureParameters = Array.isArray(saved.procedureParameters) ? saved.procedureParameters : [];
+    state.procedureValues = saved.procedureValues && typeof saved.procedureValues === 'object' ? saved.procedureValues : {};
+
+    renderObjects();
+    renderProcedures();
+    if (state.activeObject) {
+      populateColumnInputs();
+      renderColumns();
+    } else {
+      resetActiveObject();
+    }
+    renderProcedureWorkspace();
+    populateAdvancedObjectOptions();
+    populateJoinColumnOptions();
+    renderExplorerSummary();
+    refreshActiveSummary();
+    return state.objects.length > 0 || state.procedures.length > 0;
+  }
+
+  function loadStoredConnectionHistory() {
+    for (const key of [HISTORY_KEY, ...LEGACY_HISTORY_KEYS]) {
+      try {
+        const normalized = normalizeConnectionHistory(JSON.parse(safeGet(key) || 'null'));
+        if (normalized.length) {
+          return normalized;
+        }
+      } catch {
+        // Ignore malformed local payloads and keep looking.
+      }
+    }
+    return [];
+  }
+
+  function saveStoredConnectionHistory(items) {
+    safeSet(HISTORY_KEY, JSON.stringify(normalizeConnectionHistory(items)));
+  }
+
+  function restoreActiveConnection() {
+    let saved = null;
+    try {
+      saved = JSON.parse(safeSessionGet(ACTIVE_CONNECTION_KEY) || 'null');
+    } catch {
+      saved = null;
+    }
+
+    const current = normalizeStoredConnection(saved) || loadStoredConnectionHistory()[0] || null;
+    if (!current) {
+      syncAuthFields();
+      return;
+    }
+
+    const sourceType = sourceOptions().some((source) => source.id === current.sourceType) ? current.sourceType : 'fabric-sql';
+    $('sourceTypeSelect').value = sourceType;
+    renderAuthOptions();
+    const authMode = authOptionsForSource(sourceType).some((auth) => auth.id === current.authMode) ? current.authMode : $('authModeSelect').value;
+    $('authModeSelect').value = authMode;
+    syncAuthFields();
+    $('serverInput').value = current.server || '';
+    $('portInput').value = current.port || '';
+    $('databaseInput').value = current.database || '';
+    $('usernameInput').value = current.username || '';
+    $('passwordInput').value = authMode === 'sqlLogin' ? (window.__dataWorkbenchSessionPassword || '') : '';
+    $('trustServerCertificateInput').checked = current.trustServerCertificate !== false;
+    renderConnectionSummary();
+  }
+
+  function normalizeStoredConnection(item) {
+    if (!item || typeof item !== 'object') {
+      return null;
+    }
+
+    const normalized = {
+      id: String(item.id || '').trim(),
+      profileName: String(item.profileName || item.profile_name || item.name || item.database || item.db || '').trim(),
+      sourceType: String(item.sourceType || item.source || item.source_type || 'fabric-sql').trim() || 'fabric-sql',
+      authMode: String(item.authMode || item.auth || item.auth_mode || 'servicePrincipal').trim() || 'servicePrincipal',
+      server: String(item.server || item.host || '').trim(),
+      port: String(item.port || '').trim(),
+      database: String(item.database || item.database_name || item.db || item.name || '').trim(),
+      username: String(item.username || item.user || '').trim(),
+      trustServerCertificate: item.trustServerCertificate !== false && item.trust_server_certificate !== 0
+    };
+
+    if (!normalized.server || !normalized.database) {
+      return null;
+    }
+
+    return normalized;
+  }
+
+  function normalizeConnectionHistory(raw) {
+    const items = Array.isArray(raw)
+      ? raw
+      : Array.isArray(raw?.connections)
+        ? raw.connections
+        : raw && typeof raw === 'object'
+          ? Object.values(raw)
+          : [];
+
+    return items
+      .map((item) => normalizeStoredConnection(item))
+      .filter(Boolean)
+      .slice(0, CONNECTION_HISTORY_MAX);
+  }
+
+  function normalizeQueryHistory(raw) {
+    const now = Date.now();
+    return (Array.isArray(raw) ? raw : [])
+      .filter((item) => item && typeof item === 'object' && typeof item.query === 'string')
+      .map((item) => ({
+        id: String(item.id || `${Date.now()}-${Math.random().toString(16).slice(2, 7)}`),
+        query: String(item.query || '').slice(0, 20000),
+        timestamp: String(item.timestamp || new Date().toISOString())
+      }))
+      .filter((item) => item.query.trim())
+      .filter((item) => {
+        const time = new Date(item.timestamp).getTime();
+        return Number.isFinite(time) && (now - time) <= QUERY_HISTORY_RETENTION_MS;
+      })
+      .slice(0, QUERY_HISTORY_MAX);
+  }
+
+  async function fetchSavedConnections() {
+    try {
+      const payload = await api('/api/saved-connections');
+      const items = normalizeConnectionHistory(payload.items || []);
+      saveStoredConnectionHistory(items);
+      return items;
+    } catch (error) {
+      const fallback = loadStoredConnectionHistory();
+      if (fallback.length) {
+        return fallback;
+      }
+      throw error;
+    }
+  }
+
+  async function loadConnectionHistory() {
+    try {
+      state.connectionHistory = await fetchSavedConnections();
+      saveStoredConnectionHistory(state.connectionHistory);
+      renderConnectionHistory();
+    } catch (error) {
+      state.connectionHistory = [];
+      renderConnectionHistory();
+      setStatus('error', `Could not load saved connections: ${error.message}`);
+    }
+  }
+
+  async function deleteSavedConnectionProfile(id) {
+    try {
+      await api('/api/saved-connections', {
+        method: 'DELETE',
+        data: { id }
+      });
+    } catch (error) {
+      if (!loadStoredConnectionHistory().some((item) => item.id === id)) {
+        throw error;
+      }
+    }
+  }
+
+  function renderConnectionHistory() {
+    const container = $('savedConnections');
+    if (!state.connectionHistory.length) {
+      container.innerHTML = '<div class="empty-note">Saved connections will appear here. They are stored in the app database and survive restarts.</div>';
+      return;
+    }
+    container.innerHTML = state.connectionHistory.map((item, index) => (
+      `<div class="saved-item"><button class="saved-item-main" data-connection-index="${index}" type="button"><strong>${esc(item.profileName || item.database)}</strong><span>${esc((sourceOptions().find((source) => source.id === item.sourceType)?.label) || item.sourceType)} • ${esc(item.server)} • ${esc(item.database)}</span></button><button class="saved-item-delete" data-delete-index="${index}" type="button">×</button></div>`
+    )).join('');
+    container.querySelectorAll('[data-connection-index]').forEach((button) => {
+      button.onclick = () => applySavedConnection(state.connectionHistory[Number(button.dataset.connectionIndex)]);
+    });
+    container.querySelectorAll('[data-delete-index]').forEach((button) => {
+      button.onclick = async (event) => {
+        event.stopPropagation();
+        const index = Number(button.dataset.deleteIndex);
+        const item = state.connectionHistory[index];
+        if (!item?.id) {
+          setStatus('error', 'Saved connection id is missing.');
+          return;
+        }
+        try {
+          await deleteSavedConnectionProfile(item.id);
+          state.connectionHistory.splice(index, 1);
+          saveStoredConnectionHistory(state.connectionHistory);
+          renderConnectionHistory();
+          setStatus('success', `Deleted saved connection for ${item.profileName || item.database}.`);
+        } catch (error) {
+          setStatus('error', `Could not delete saved connection: ${error.message}`);
+        }
+      };
+    });
+  }
+
+  function applySavedConnection(item) {
+    const sourceType = sourceOptions().some((source) => source.id === item.sourceType) ? item.sourceType : 'fabric-sql';
+    $('sourceTypeSelect').value = sourceType;
+    renderAuthOptions();
+    const authMode = authOptionsForSource(sourceType).some((auth) => auth.id === item.authMode) ? item.authMode : $('authModeSelect').value;
+    $('authModeSelect').value = authMode;
+    syncAuthFields();
+    $('serverInput').value = item.server || '';
+    $('portInput').value = item.port || '';
+    $('databaseInput').value = item.database || '';
+    $('usernameInput').value = item.username || '';
+    $('passwordInput').value = '';
+    $('trustServerCertificateInput').checked = item.trustServerCertificate !== false;
+    window.__dataWorkbenchSessionPassword = '';
+    persistActiveConnection();
+    renderConnectionSummary();
+    setStatus('success', `Loaded saved connection for ${item.profileName || item.database}.`);
+  }
+
+  async function saveCurrentConnection() {
+    const current = storageConnection();
+    if (!current.server || !current.database) {
+      renderSaveConnectionResult({
+        state: 'error',
+        title: 'Connection not saved',
+        message: 'Enter source, server, and database before saving.'
+      });
+      setStatus('error', 'Enter source, server, and database before saving.');
+      return;
+    }
+
+    // Use the profile name input if the user filled it in, else fall back to database name.
+    const profileNameRaw = ($('profileNameInput')?.value || '').trim();
+    const profileName = profileNameRaw || current.database;
+
+    try {
+      let saved;
+      try {
+        const payload = await api('/api/saved-connections', {
+          method: 'POST',
+          data: {
+            ...current,
+            profileName
+          }
+        });
+        saved = normalizeStoredConnection(payload.item || current);
+        if (!saved) {
+          throw new Error('Saved connection response was invalid.');
+        }
+        saved.id = payload.item?.id || saved.id;
+        saved.profileName = payload.item?.profileName || profileName;
+        saved.createdAt = payload.item?.createdAt || '';
+        saved.updatedAt = payload.item?.updatedAt || '';
+      } catch (error) {
+        saved = normalizeStoredConnection({
+          ...current,
+          id: `${Date.now()}-${Math.random().toString(16).slice(2, 10)}`,
+          profileName
+        });
+        if (!saved) {
+          throw error;
+        }
+      }
+      const signature = [saved.sourceType, saved.authMode, saved.server, saved.port, saved.database, saved.username].join('|');
+      state.connectionHistory = [saved, ...state.connectionHistory.filter((item) => [item.sourceType, item.authMode, item.server, item.port, item.database, item.username].join('|') !== signature)].slice(0, CONNECTION_HISTORY_MAX);
+      saveStoredConnectionHistory(state.connectionHistory);
+      renderConnectionHistory();
+      // Clear the profile name input after a successful save.
+      if ($('profileNameInput')) {
+        $('profileNameInput').value = '';
+      }
+      renderSaveConnectionResult({
+        state: 'success',
+        title: 'Profile saved',
+        message: `"${saved.profileName}" is now in the app database and will survive restarts.`
+      });
+      // Scroll the saved list into view so the user can see the result.
+      setTimeout(() => {
+        const savedConnections = $('savedConnections');
+        if (typeof savedConnections?.scrollIntoView === 'function') {
+          savedConnections.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+        }
+      }, 80);
+      setStatus('success', `Connection profile "${saved.profileName}" saved.`);
+    } catch (error) {
+      renderSaveConnectionResult({
+        state: 'error',
+        title: 'Profile not saved',
+        message: error.message || 'The connection profile could not be persisted.'
+      });
+      setStatus('error', `Connection profile could not be saved: ${error.message}`);
+    }
+  }
+
+  function saveQueryHistory() {
+    safeSet(QUERY_HISTORY_KEY, JSON.stringify(state.queryHistory));
+  }
+
+  function addQueryHistory(query) {
+    const clean = String(query || '').trim();
+    if (!clean) return;
+    state.queryHistory = [{ id: `${Date.now()}-${Math.random().toString(16).slice(2, 7)}`, query: clean.slice(0, 20000), timestamp: new Date().toISOString() }, ...state.queryHistory.filter((item) => item.query !== clean)].slice(0, QUERY_HISTORY_MAX);
+    saveQueryHistory();
+    renderQueryHistory();
+  }
+
+  function renderQueryHistory() {
+    const container = $('queryHistory');
+    const filtered = state.historyFilter
+      ? state.queryHistory.filter((item) => item.query.toLowerCase().includes(state.historyFilter))
+      : state.queryHistory;
+    if (!filtered.length) {
+      container.innerHTML = state.historyFilter
+        ? '<div class="empty-note">No history matches the search.</div>'
+        : '<div class="empty-note">Recent SQL will appear here.</div>';
+      return;
+    }
+    container.innerHTML = filtered.map((item) => `<button class="history-item" data-history-id="${item.id}" type="button" title="${esc(item.query)}"><strong>${esc((item.query.split('\n')[0] || 'Query').slice(0, 54))}</strong><span>${esc(formatTimestamp(item.timestamp))}</span></button>`).join('');
+    container.querySelectorAll('[data-history-id]').forEach((button) => {
+      button.onclick = () => {
+        const item = state.queryHistory.find((candidate) => candidate.id === button.dataset.historyId);
+        if (item) {
+          setWorkspace('sql');
+          setQuery(item.query);
+          setStatus('success', 'Loaded SQL from recent history.');
+        }
+      };
+    });
+  }
+
+  function loadQueryHistory() {
+    try { state.queryHistory = normalizeQueryHistory(JSON.parse(safeGet(QUERY_HISTORY_KEY) || '[]')); } catch { state.queryHistory = []; }
+    renderQueryHistory();
+  }
+
+  function clearQueryHistory() {
+    state.queryHistory = [];
+    saveQueryHistory();
+    renderQueryHistory();
+    setStatus('success', 'Recent SQL history cleared.');
+  }
+
+  function resetActiveObject() {
+    state.activeObject = null;
+    state.activeObjectType = '';
+    state.activeColumns = [];
+    state.selectedColumns.clear();
+    $('columnsPanel').innerHTML = '<div class="empty-note">Load a table or view to see columns.</div>';
+    $('selectedColumnsSummary').textContent = 'All columns will be used.';
+    $('sortColumnSelect').innerHTML = '<option value="">None</option>';
+    $('filtersList').innerHTML = '<div class="empty-note">No filters yet. Add one when you want a WHERE clause.</div>';
+    populateJoinColumnOptions();
+    updateAdvancedOperationsSummary();
+    refreshActiveSummary();
+    persistCatalogState();
+  }
+
+  function renderExplorerSummary() {
+    const source = sourceOptions().find((item) => item.id === connection().sourceType);
+    const objectsLabel = state.objects.length ? `${state.objects.length} objects` : 'no objects loaded';
+    const proceduresLabel = source?.supportsProcedures ? `${state.procedures.length} procedures` : 'procedures unavailable for this source';
+    $('explorerSummary').textContent = `${objectsLabel} • ${proceduresLabel}`;
+  }
+
+  function renderObjects() {
+    const container = $('tableList');
+    if (!state.filteredObjects.length) {
+      container.innerHTML = '<div class="empty-note">No objects loaded.</div>';
+      return;
+    }
+    container.innerHTML = state.filteredObjects.map((item) => `<button class="table-item ${state.activeObject === item.fullName ? 'active' : ''}" data-object="${esc(item.fullName)}" data-object-type="${esc(item.objectType)}" type="button" title="${esc(item.fullName)}"><strong>${esc(item.fullName)}</strong><span>${esc(item.objectType)}</span></button>`).join('');
+    container.querySelectorAll('[data-object]').forEach((button) => {
+      button.onclick = () => selectObject(button.dataset.object, button.dataset.objectType).catch((error) => setStatus('error', error.message));
+    });
+  }
+
+  function renderProcedures() {
+    const container = $('procedureList');
+    if (state.procedureNote) {
+      container.innerHTML = `<div class="empty-note">${esc(state.procedureNote)}</div>`;
+      return;
+    }
+    if (!state.filteredProcedures.length) {
+      container.innerHTML = '<div class="empty-note">No procedures loaded.</div>';
+      return;
+    }
+    container.innerHTML = state.filteredProcedures.map((item) => `<button class="procedure-item ${state.activeProcedure === item.fullName ? 'active' : ''}" data-procedure="${esc(item.fullName)}" type="button" title="${esc(item.fullName)}"><strong>${esc(item.fullName)}</strong><span>Stored procedure</span></button>`).join('');
+    container.querySelectorAll('[data-procedure]').forEach((button) => {
+      button.onclick = () => selectProcedure(button.dataset.procedure).catch((error) => setStatus('error', error.message));
+    });
+  }
+
+  function filterObjects() {
+    const search = $('tableSearchInput').value.trim().toLowerCase();
+    state.filteredObjects = state.objects.filter((item) => item.fullName.toLowerCase().includes(search));
+    renderObjects();
+  }
+
+  function filterProcedures() {
+    const search = $('procedureSearchInput').value.trim().toLowerCase();
+    state.filteredProcedures = state.procedures.filter((item) => item.fullName.toLowerCase().includes(search));
+    renderProcedures();
+  }
+
+  function getFilters() {
+    return Array.from(document.querySelectorAll('.filter-row')).map((row) => ({
+      column: row.querySelector('.filter-column').value,
+      operator: row.querySelector('.filter-operator').value,
+      value: row.querySelector('.filter-value').value
+    })).filter((item) => item.column && item.operator);
+  }
+
+  function renderFilters() {
+    if (!$('filtersList').querySelector('.filter-row')) {
+      $('filtersList').innerHTML = '<div class="empty-note">No filters yet. Add one when you want a WHERE clause.</div>';
+    }
+  }
+
+  function createFilterRow(initial = {}) {
+    const row = document.createElement('div');
+    row.className = 'filter-row';
+
+    const column = document.createElement('select');
+    column.className = 'filter-column';
+    column.innerHTML = ['<option value="">Column</option>'].concat(state.activeColumns.map((item) => `<option value="${esc(item.name)}">${esc(item.name)}</option>`)).join('');
+    column.value = initial.column || '';
+
+    const operator = document.createElement('select');
+    operator.className = 'filter-operator';
+    operator.innerHTML = '<option value="=">=</option><option value="<>">&lt;&gt;</option><option value=">">&gt;</option><option value="<">&lt;</option><option value=">=">&gt;=</option><option value="<=">&lt;=</option><option value="LIKE">LIKE</option><option value="IS NULL">IS NULL</option><option value="IS NOT NULL">IS NOT NULL</option>';
+    operator.value = initial.operator || '=';
+
+    const value = document.createElement('input');
+    value.className = 'filter-value';
+    value.type = 'text';
+    value.placeholder = 'Value';
+    value.value = initial.value || '';
+
+    const remove = document.createElement('button');
+    remove.className = 'ghost-btn small';
+    remove.type = 'button';
+    remove.textContent = 'Remove';
+
+    const sync = () => {
+      const unary = operator.value === 'IS NULL' || operator.value === 'IS NOT NULL';
+      value.disabled = unary;
+      value.placeholder = unary ? 'Not needed' : 'Value';
+      if (unary) value.value = '';
+    };
+    const refresh = () => {
+      sync();
+      if (state.activeObject && (state.queryMode === 'select' || state.queryMode === 'update' || state.queryMode === 'delete')) {
+        generateQuery();
+      }
+    };
+
+    column.onchange = refresh;
+    operator.onchange = refresh;
+    value.oninput = refresh;
+    value.onchange = refresh;
+    remove.onclick = () => {
+      row.remove();
+      renderFilters();
+      refresh();
+    };
+
+    sync();
+    row.append(column, operator, value, remove);
+    return row;
+  }
+
+  function addFilter() {
+    const list = $('filtersList');
+    if (list.querySelector('.empty-note')) list.innerHTML = '';
+    const row = createFilterRow();
+    list.appendChild(row);
+    return row;
+  }
+
+  function qObject() {
+    if (!state.activeObject) return '';
+    const parts = state.activeObject.split('.');
+    return parts.length === 2 ? `${bid(parts[0])}.${bid(parts[1])}` : bid(state.activeObject);
+  }
+
+  function whereClause(filters) {
+    const ready = filters.filter((item) => item.column && item.operator && ((item.operator === 'IS NULL' || item.operator === 'IS NOT NULL') || String(item.value ?? '').trim() !== ''));
+    if (!ready.length) return '';
+    return `\nWHERE ${ready.map((item) => item.operator === 'IS NULL' || item.operator === 'IS NOT NULL' ? `${bid(item.column)} ${item.operator}` : `${bid(item.column)} ${item.operator} ${item.operator === 'LIKE' ? quoteValue(`%${String(item.value || '').trim()}%`) : quoteValue(item.value)}`).join('\n  AND ')}`;
+  }
+
+  function completedFilters(filters = getFilters()) {
+    return filters.filter((item) => item.column && item.operator && ((item.operator === 'IS NULL' || item.operator === 'IS NOT NULL') || String(item.value ?? '').trim() !== ''));
+  }
+
+  function selectedColumns() {
+    if (!state.selectedColumns.size) {
+      return state.activeColumns.map((column) => column.name);
+    }
+    return state.activeColumns
+      .map((column) => column.name)
+      .filter((columnName) => state.selectedColumns.has(columnName));
+  }
+
+  function updateSelectedColumnsSummary() {
+    if (!state.selectedColumns.size) {
+      $('selectedColumnsSummary').textContent = 'All columns will be used.';
+      return;
+    }
+    const columns = [...state.selectedColumns];
+    $('selectedColumnsSummary').textContent = `${columns.length} selected: ${columns.slice(0, 4).join(', ')}${columns.length > 4 ? '…' : ''}`;
+  }
+
+  function advancedSourceObject() {
+    return $('advancedSourceObjectSelect')?.value || '';
+  }
+
+  function targetJoinColumn() {
+    return $('targetJoinColumnSelect')?.value || '';
+  }
+
+  function sourceJoinColumn() {
+    const manual = $('sourceJoinColumnInput')?.value.trim();
+    return manual || targetJoinColumn();
+  }
+
+  function advancedTemplateColumns() {
+    const columns = selectedColumns();
+    return columns.length ? columns : state.activeColumns.map((column) => column.name);
+  }
+
+  function populateAdvancedObjectOptions() {
+    const select = $('advancedSourceObjectSelect');
+    if (!select) {
+      return;
+    }
+    const current = select.value;
+    const options = state.objects
+      .filter((item) => item.fullName !== state.activeObject)
+      .map((item) => `<option value="${esc(item.fullName)}">${esc(item.fullName)}</option>`);
+    select.innerHTML = ['<option value="">Select loaded object</option>', ...options].join('');
+    if (current && state.objects.some((item) => item.fullName === current && item.fullName !== state.activeObject)) {
+      select.value = current;
+    }
+    updateAdvancedOperationsSummary();
+  }
+
+  function populateJoinColumnOptions() {
+    const targetSelect = $('targetJoinColumnSelect');
+    if (!targetSelect) {
+      return;
+    }
+    const current = targetSelect.value;
+    targetSelect.innerHTML = ['<option value="">Select target key</option>']
+      .concat(state.activeColumns.map((column) => `<option value="${esc(column.name)}">${esc(column.name)}</option>`))
+      .join('');
+    if (current && state.activeColumns.some((column) => column.name === current)) {
+      targetSelect.value = current;
+    } else if (state.activeColumns.length) {
+      targetSelect.value = state.activeColumns[0].name;
+    }
+    if ($('sourceJoinColumnInput') && !$('sourceJoinColumnInput').value.trim()) {
+      $('sourceJoinColumnInput').value = targetSelect.value || '';
+    }
+    updateAdvancedOperationsSummary();
+  }
+
+  function updateAdvancedOperationsSummary() {
+    const summary = $('advancedOperationsSummary');
+    if (!summary) {
+      return;
+    }
+    if (!state.activeObject) {
+      summary.textContent = 'Choose a target object first. Cross-object templates need the current object metadata.';
+      return;
+    }
+    const sourceObject = advancedSourceObject();
+    const joinKey = targetJoinColumn();
+    const pieces = [
+      `Target: ${state.activeObject}`,
+      sourceObject ? `Source: ${sourceObject}` : 'Source: choose a loaded companion object',
+      joinKey ? `Join key: ${joinKey}${sourceJoinColumn() && sourceJoinColumn() !== joinKey ? ` -> ${sourceJoinColumn()}` : ''}` : 'Join key: choose a target key'
+    ];
+    summary.textContent = pieces.join(' • ');
+  }
+
+  function populateColumnInputs() {
+    const existingFilters = getFilters();
+    $('sortColumnSelect').innerHTML = ['<option value="">None</option>'].concat(state.activeColumns.map((column) => `<option value="${esc(column.name)}">${esc(column.name)}</option>`)).join('');
+    $('filtersList').innerHTML = '';
+    existingFilters.filter((filter) => state.activeColumns.some((column) => column.name === filter.column)).forEach((filter) => $('filtersList').appendChild(createFilterRow(filter)));
+    renderFilters();
+    populateJoinColumnOptions();
+  }
+
+  function renderColumns() {
+    const container = $('columnsPanel');
+    const panel = container?.closest('.builder-panel-columns');
+    if (!state.activeColumns.length) {
+      if (panel) {
+        panel.dataset.columnsState = 'empty';
+      }
+      container.innerHTML = '<div class="empty-note">No columns found.</div>';
+      $('selectedColumnsSummary').textContent = 'All columns will be used.';
+      return;
+    }
+    if (panel) {
+      panel.dataset.columnsState = 'loaded';
+    }
+    container.innerHTML = state.activeColumns.map((column) => `<button class="column-pill ${state.selectedColumns.has(column.name) ? 'active' : ''}" data-column="${esc(column.name)}" type="button"><strong>${esc(column.name)}</strong><span>${esc(column.type)}${column.nullable ? '' : ' • not null'}</span></button>`).join('');
+    container.querySelectorAll('[data-column]').forEach((button) => {
+      button.onclick = () => {
+        state.selectedColumns.has(button.dataset.column) ? state.selectedColumns.delete(button.dataset.column) : state.selectedColumns.add(button.dataset.column);
+        renderColumns();
+        if (state.activeObject) generateQuery();
+      };
+    });
+    updateSelectedColumnsSummary();
+    updateAdvancedOperationsSummary();
+  }
+
+  function buildSelect() {
+    const columns = selectedColumns();
+    const top = Math.max(1, Math.min(5000, Number($('topRowsInput').value || 100)));
+    const distinct = $('distinctSelect').value === 'true' ? 'DISTINCT ' : '';
+    const order = $('sortColumnSelect').value ? `\nORDER BY ${bid($('sortColumnSelect').value)} ${$('sortDirectionSelect').value || 'DESC'}` : '';
+    return `SELECT ${distinct}TOP (${top})\n       ${columns.length ? columns.map(bid).join(',\n       ') : '*'}\nFROM ${qObject()}${whereClause(getFilters())}${order};`;
+  }
+
+  function buildCount() {
+    return `SELECT COUNT(*) AS row_count\nFROM ${qObject()}${whereClause(getFilters())};`;
+  }
+
+  function buildInsert() {
+    const columns = selectedColumns();
+    if (!columns.length) return '-- Select a table or view and at least one column first.';
+    return `INSERT INTO ${qObject()} (\n    ${columns.map(bid).join(',\n    ')}\n)\nVALUES (\n    ${columns.map((column) => templateLiteralForColumn(column)).join(',\n    ')}\n);`;
+  }
+
+  function buildUpdate() {
+    const columns = selectedColumns();
+    if (!columns.length) return '-- Select a table or view and columns first.';
+    const readyFilters = completedFilters();
+    const filteredColumns = new Set(readyFilters.map((filter) => filter.column));
+    const setColumns = columns.filter((column) => !filteredColumns.has(column));
+    const updateColumns = setColumns.length ? setColumns : columns;
+    if (!updateColumns.length) {
+      return '-- Select one or more columns to update.';
+    }
+    if (!readyFilters.length) {
+      return `-- UPDATE requires at least one completed filter.\nUPDATE ${qObject()}\nSET ${updateColumns.map((column) => `${bid(column)} = ${templateLiteralForColumn(column)}`).join(',\n    ')}\nWHERE <add filter>;`;
+    }
+    return `UPDATE ${qObject()}\nSET ${updateColumns.map((column) => `${bid(column)} = ${templateLiteralForColumn(column)}`).join(',\n    ')}${whereClause(readyFilters)};`;
+  }
+
+  function buildDelete() {
+    const clause = whereClause(getFilters());
+    if (!clause) return `-- DELETE requires at least one completed filter.\nDELETE FROM ${qObject()}\nWHERE <add filter>;`;
+    return `DELETE FROM ${qObject()}${clause};`;
+  }
+
+  function buildInsertSelectTemplate() {
+    const sourceObject = advancedSourceObject();
+    const columns = advancedTemplateColumns();
+    if (!state.activeObject) return '-- Select a target object first.';
+    if (!sourceObject) return '-- Choose a source object from the loaded catalog first.';
+    if (!columns.length) return '-- Select one or more columns first.';
+    return `INSERT INTO ${qObject()} (\n    ${columns.map(bid).join(',\n    ')}\n)\nSELECT\n    ${columns.map((column) => `src.${bid(column)}`).join(',\n    ')}\nFROM ${qObjectFromFullName(sourceObject)} AS src\n-- Add source filters before running this insert-select template\n;`;
+  }
+
+  function qObjectFromFullName(fullName) {
+    if (!fullName) return '';
+    const parts = String(fullName).split('.');
+    return parts.length === 2 ? `${bid(parts[0])}.${bid(parts[1])}` : bid(fullName);
+  }
+
+  function buildUpdateJoinTemplate() {
+    const sourceObject = advancedSourceObject();
+    const keyColumn = targetJoinColumn();
+    const sourceKey = sourceJoinColumn();
+    const columns = advancedTemplateColumns().filter((column) => column !== keyColumn);
+    if (!state.activeObject) return '-- Select a target object first.';
+    if (!sourceObject) return '-- Choose a source object from the loaded catalog first.';
+    if (!keyColumn) return '-- Choose a target key column first.';
+    if (!columns.length) return '-- Select one or more non-key columns to update.';
+    return `UPDATE tgt\nSET ${columns.map((column) => `tgt.${bid(column)} = src.${bid(column)}`).join(',\n    ')}\nFROM ${qObject()} AS tgt\nINNER JOIN ${qObjectFromFullName(sourceObject)} AS src\n    ON tgt.${bid(keyColumn)} = src.${bid(sourceKey || keyColumn)}\nWHERE <review scope before execution>;`;
+  }
+
+  function buildMergePreviewTemplate() {
+    const sourceObject = advancedSourceObject();
+    const keyColumn = targetJoinColumn();
+    const sourceKey = sourceJoinColumn();
+    const columns = advancedTemplateColumns();
+    const updatableColumns = columns.filter((column) => column !== keyColumn);
+    if (!state.activeObject) return '-- Select a target object first.';
+    if (!sourceObject) return '-- Choose a source object from the loaded catalog first.';
+    if (!keyColumn) return '-- Choose a target key column first.';
+    if (!columns.length) return '-- Select one or more columns first.';
+    return `-- MERGE execution is blocked in this app. Review this template outside the preview-first runner before use.\nMERGE ${qObject()} AS tgt\nUSING ${qObjectFromFullName(sourceObject)} AS src\n    ON tgt.${bid(keyColumn)} = src.${bid(sourceKey || keyColumn)}\nWHEN MATCHED THEN\n    UPDATE SET ${updatableColumns.length ? updatableColumns.map((column) => `tgt.${bid(column)} = src.${bid(column)}`).join(',\n               ') : '-- no non-key columns selected'}\nWHEN NOT MATCHED BY TARGET THEN\n    INSERT (\n        ${columns.map(bid).join(',\n        ')}\n    )\n    VALUES (\n        ${columns.map((column) => `src.${bid(column)}`).join(',\n        ')}\n    )\n-- WHEN NOT MATCHED BY SOURCE THEN <optional cleanup clause>\n;`;
+  }
+
+  function currentPageMode() {
+    const shellMode = document.querySelector('.app-shell')?.dataset.pageMode;
+    if (shellMode === 'procedures' || shellMode === 'sql') {
+      return shellMode;
+    }
+    return /\/procedures(?:\/|$)/i.test(window.location.pathname || '') ? 'procedures' : 'sql';
+  }
+
+  function setWorkspace(workspace) {
+    state.workspace = workspace === 'procedure' ? 'procedure' : 'sql';
+    $('sqlWorkspace')?.classList.toggle('hidden', state.workspace !== 'sql');
+    $('procedureWorkspace')?.classList.toggle('hidden', state.workspace !== 'procedure');
+    document.querySelectorAll('.workspace-segment').forEach((button) => {
+      button.classList.toggle('active', button.dataset.workspace === state.workspace);
+    });
+  }
+
+  function setExplorer(explorer) {
+    state.explorer = explorer === 'procedures' ? 'procedures' : 'objects';
+    $('objectsExplorer')?.classList.toggle('hidden', state.explorer !== 'objects');
+    $('procedureExplorer')?.classList.toggle('hidden', state.explorer !== 'procedures');
+    document.querySelectorAll('.explorer-segment').forEach((button) => {
+      button.classList.toggle('active', button.dataset.explorer === state.explorer);
+    });
+  }
+
+  function getQuery() {
+    return $('queryEditor')?.value || '';
+  }
+
+  function highlightSql(text) {
+    if (!text) return '';
+    
+    const upper = text.toUpperCase();
+    const isUpdateOrDelete = upper.includes('UPDATE ') || upper.includes('DELETE FROM ') || upper.includes('DELETE ');
+    const hasWhere = upper.includes('WHERE ');
+    const isMissingWhere = isUpdateOrDelete && !hasWhere;
+    const hasDanger = upper.includes('DROP ') || upper.includes('TRUNCATE ');
+
+    let html = '';
+    let inString = false;
+    let currentString = '';
+    let currentCode = '';
+
+    const flushCode = () => {
+      if (!currentCode) return '';
+      let codeHtml = esc(currentCode);
+      
+      codeHtml = codeHtml.replace(/\b(\d+(?:\.\d+)?)\b/g, '<span class="sql-number">$1</span>');
+      
+      const keywords = ['SELECT', 'FROM', 'WHERE', 'INSERT', 'INTO', 'VALUES', 'UPDATE', 'SET', 'DELETE', 'JOIN', 'INNER', 'LEFT', 'RIGHT', 'OUTER', 'ON', 'AS', 'AND', 'OR', 'NOT', 'NULL', 'IS', 'ORDER', 'BY', 'GROUP', 'HAVING', 'LIMIT', 'TOP', 'DISTINCT', 'MERGE', 'DROP', 'TRUNCATE', 'CREATE', 'ALTER', 'EXEC', 'EXECUTE', 'WITH', 'THEN', 'WHEN', 'MATCHED', 'USING', 'ASC', 'DESC'];
+      const keywordRegex = new RegExp(`\\b(${keywords.join('|')})\\b`, 'gi');
+      codeHtml = codeHtml.replace(keywordRegex, '<span class="sql-keyword">$&</span>');
+      
+      const functions = ['COUNT', 'SUM', 'AVG', 'MIN', 'MAX', 'CAST', 'CONVERT', 'TRY_CONVERT', 'ISNULL', 'COALESCE', 'NULLIF', 'CONCAT', 'REPLACE', 'TRIM', 'LTRIM', 'RTRIM', 'DATEADD', 'DATEDIFF', 'HASHBYTES', 'UPPER', 'LOWER', 'LEFT', 'RIGHT', 'SUBSTRING'];
+      const funcRegex = new RegExp(`\\b(${functions.join('|')})\\b(?=\\s*\\()`, 'gi');
+      codeHtml = codeHtml.replace(funcRegex, '<span class="sql-function">$&</span>');
+
+      return codeHtml;
+    };
+
+    for (let i = 0; i < text.length; i++) {
+      if (text[i] === "'") {
+        if (!inString) {
+          html += flushCode();
+          currentCode = '';
+          inString = true;
+          currentString = "'";
+        } else {
+          if (i + 1 < text.length && text[i + 1] === "'") {
+            currentString += "''";
+            i++;
+          } else {
+            currentString += "'";
+            html += '<span class="sql-string">' + esc(currentString) + '</span>';
+            currentString = '';
+            inString = false;
+          }
+        }
+      } else {
+        if (inString) currentString += text[i];
+        else currentCode += text[i];
+      }
+    }
+    
+    if (inString) html += '<span class="sql-string">' + esc(currentString) + '</span>';
+    else html += flushCode();
+
+    if (isMissingWhere) {
+      html = html.replace(/(UPDATE |DELETE FROM |DELETE )/i, '<span class="sql-error-underline" title="Missing WHERE clause">$&</span>');
+    }
+    if (hasDanger) {
+      html = html.replace(/(DROP |TRUNCATE )/i, '<span class="sql-error-underline" title="Destructive command detected">$&</span>');
+    }
+
+    return html;
+  }
+
+  function syncEditorBackdrop() {
+    const editor = $('queryEditor');
+    const backdrop = $('queryEditorBackdrop');
+    if (!editor || !backdrop) return;
+    backdrop.innerHTML = highlightSql(editor.value) + '<br/>'; // Extra break for final newline scroll
+    backdrop.scrollTop = editor.scrollTop;
+    backdrop.scrollLeft = editor.scrollLeft;
+  }
+
+  function setQuery(query) {
+    if ($('queryEditor')) {
+      $('queryEditor').value = String(query || '');
+      syncEditorBackdrop();
+    }
+    updateEditorStats();
+  }
+
+  function hasReadyConnection() {
+    const current = connection();
+    return Boolean(current.server && current.database);
+  }
+
+  function ensureReadyConnection(action) {
+    if (hasReadyConnection()) {
+      return true;
+    }
+    setStatus('error', `Enter server and database before ${action}.`);
+    return false;
+  }
+
+  function refreshActiveSummary() {
+    const target = $('activeTarget');
+    const meta = $('activeMeta');
+    if (!target || !meta) {
+      return;
+    }
+
+    if (state.workspace === 'procedure' && state.activeProcedure) {
+      target.textContent = state.activeProcedure;
+      meta.textContent = `Procedure selected with ${state.procedureParameters.length} discovered parameter${state.procedureParameters.length === 1 ? '' : 's'}. Execution stays behind review and button confirmation.`;
+      return;
+    }
+
+    if (state.activeObject) {
+      target.textContent = state.activeObject;
+      meta.textContent = `${state.activeObjectType || 'object'} selected with ${state.activeColumns.length} loaded column${state.activeColumns.length === 1 ? '' : 's'}.`;
+      return;
+    }
+
+    target.textContent = 'No object or procedure selected';
+    meta.textContent = state.workspace === 'procedure'
+      ? 'Connect to a source and load procedures to execute routines with clear parameter inspection and button confirmation.'
+      : 'Connect to a source and load a catalog to build, inspect, and run SQL with stronger guardrails.';
+  }
+
+  function applyTheme(themeId) {
+    state.currentTheme = THEMES.includes(themeId) ? themeId : 'midnight';
+    document.documentElement.setAttribute('data-theme', state.currentTheme);
+    safeSet(THEME_KEY, state.currentTheme);
+    const list = $('themeList');
+    if (!list) {
+      return;
+    }
+    list.querySelectorAll('.theme-chip').forEach((button) => {
+      const active = button.dataset.theme === state.currentTheme;
+      button.classList.toggle('active', active);
+      button.setAttribute('aria-pressed', active ? 'true' : 'false');
+    });
+  }
+
+  function loadTheme() {
+    const list = $('themeList');
+    state.currentTheme = THEMES.includes(safeGet(THEME_KEY)) ? safeGet(THEME_KEY) : 'midnight';
+    if (list) {
+      list.innerHTML = THEMES.map((theme) => (
+        `<button class="theme-chip${theme === state.currentTheme ? ' active' : ''}" data-theme="${theme}" type="button" aria-pressed="${theme === state.currentTheme ? 'true' : 'false'}"><span class="theme-dot theme-dot-${theme}" aria-hidden="true"></span><span>${theme[0].toUpperCase() + theme.slice(1)}</span></button>`
+      )).join('');
+      list.querySelectorAll('.theme-chip').forEach((button) => {
+        button.onclick = () => {
+          applyTheme(button.dataset.theme);
+          setStatus('success', `Theme changed to ${button.dataset.theme}.`);
+        };
+      });
+    }
+    applyTheme(state.currentTheme);
+  }
+
+  function modeWarning() {
+    const warning = $('modeWarning');
+    const messages = {
+      insert: 'Insert mode builds a parameterized template. The backend still previews the write before execution.',
+      update: 'Update mode treats selected columns as SET targets and uses completed filters for the WHERE clause.',
+      delete: 'Delete mode keeps you in control. The backend previews the delete first and then lets you decide whether to continue.'
+    };
+    if (!messages[state.queryMode]) {
+      warning.classList.add('hidden');
+      warning.textContent = '';
+      return;
+    }
+    warning.classList.remove('hidden');
+    warning.textContent = messages[state.queryMode];
+  }
+
+  function setMode(mode) {
+    state.queryMode = mode;
+    document.querySelectorAll('#queryModeSegment .segment-btn').forEach((button) => {
+      button.classList.toggle('active', button.dataset.mode === mode);
+    });
+    $('queryModeHint').textContent = `Mode: ${mode[0].toUpperCase() + mode.slice(1)}`;
+    modeWarning();
+    if (state.activeObject) generateQuery();
+  }
+
+  function generateQuery() {
+    if (!state.activeObject) {
+      setStatus('error', 'Select a table or view first.');
+      return;
+    }
+    const filters = getFilters();
+    const readyFilters = filters.filter((item) => item.column && item.operator && ((item.operator === 'IS NULL' || item.operator === 'IS NOT NULL') || String(item.value ?? '').trim() !== ''));
+    const query = state.queryMode === 'select' ? buildSelect() : state.queryMode === 'insert' ? buildInsert() : state.queryMode === 'update' ? buildUpdate() : buildDelete();
+    setQuery(query);
+    if (state.queryMode === 'insert' && filters.length) {
+      setStatus('error', 'Filters are not used in Insert mode.');
+      return;
+    }
+    if (state.queryMode === 'delete' && !readyFilters.length) {
+      setStatus('error', 'Delete mode requires at least one completed filter.');
+      return;
+    }
+    if ((state.queryMode === 'select' || state.queryMode === 'update') && filters.length && !readyFilters.length) {
+      setStatus('neutral', 'Filter row added. Pick a value to generate the WHERE clause.');
+      return;
+    }
+    setStatus('success', `${state.queryMode.toUpperCase()} query generated${readyFilters.length ? ` with ${readyFilters.length} filter${readyFilters.length === 1 ? '' : 's'}` : ''}.`);
+  }
+
+  function formatSql() {
+    const raw = getQuery().trim();
+    if (!raw) return;
+
+    const normalized = raw.replace(/\r\n/g, '\n');
+    const tokens = [];
+    const punct = new Set([',', '(', ')', ';']);
+
+    for (let index = 0; index < normalized.length; index += 1) {
+      const char = normalized[index];
+      const next = normalized[index + 1];
+
+      if (/\s/.test(char)) {
+        continue;
+      }
+
+      if (char === '-' && next === '-') {
+        let comment = char + next;
+        index += 2;
+        while (index < normalized.length && normalized[index] !== '\n') {
+          comment += normalized[index];
+          index += 1;
+        }
+        index -= 1;
+        tokens.push({ type: 'comment', value: comment.trimEnd() });
+        continue;
+      }
+
+      if (char === "'") {
+        let value = char;
+        index += 1;
+        while (index < normalized.length) {
+          value += normalized[index];
+          if (normalized[index] === "'" && normalized[index + 1] === "'") {
+            value += normalized[index + 1];
+            index += 2;
+            continue;
+          }
+          if (normalized[index] === "'") {
+            break;
+          }
+          index += 1;
+        }
+        tokens.push({ type: 'string', value });
+        continue;
+      }
+
+      if (char === '[') {
+        let value = char;
+        index += 1;
+        while (index < normalized.length) {
+          value += normalized[index];
+          if (normalized[index] === ']') {
+            break;
+          }
+          index += 1;
+        }
+        tokens.push({ type: 'identifier', value });
+        continue;
+      }
+
+      if (punct.has(char)) {
+        tokens.push({ type: 'punct', value: char });
+        continue;
+      }
+
+      let value = char;
+      while (index + 1 < normalized.length) {
+        const peek = normalized[index + 1];
+        if (/\s/.test(peek) || punct.has(peek) || peek === "'" || peek === '[' || (peek === '-' && normalized[index + 2] === '-')) {
+          break;
+        }
+        value += peek;
+        index += 1;
+      }
+      tokens.push({ type: 'word', value });
+    }
+
+    const merged = [];
+    for (let index = 0; index < tokens.length; index += 1) {
+      const current = tokens[index];
+      const next = tokens[index + 1];
+      const upper = String(current?.value || '').toUpperCase();
+      const nextUpper = String(next?.value || '').toUpperCase();
+      if (current?.type === 'word' && next?.type === 'word') {
+        const pair = `${upper} ${nextUpper}`;
+        if (['ORDER BY', 'GROUP BY', 'INNER JOIN', 'LEFT JOIN', 'RIGHT JOIN'].includes(pair)) {
+          merged.push({ type: 'keyword', value: pair });
+          index += 1;
+          continue;
+        }
+      }
+      if (current?.type === 'word') {
+        merged.push({ type: 'keyword', value: upper });
+      } else {
+        merged.push(current);
+      }
+    }
+
+    let formatted = '';
+    let clause = '';
+    const append = (text, { newline = false, space = false } = {}) => {
+      if (!text) return;
+      if (newline) {
+        formatted = formatted.replace(/[ \t]+$/g, '');
+        if (formatted && !formatted.endsWith('\n')) {
+          formatted += '\n';
+        }
+      } else if (space) {
+        if (formatted && !formatted.endsWith('\n') && !formatted.endsWith('(') && !formatted.endsWith(' ')) {
+          formatted += ' ';
+        }
+      }
+      formatted += text;
+    };
+
+    for (const token of merged) {
+      if (!token) continue;
+      if (token.type === 'comment') {
+        append(token.value, { newline: true });
+        continue;
+      }
+
+      if (token.type === 'keyword') {
+        const upper = token.value;
+        if (upper === 'SELECT') {
+          clause = 'SELECT';
+          append('SELECT', { newline: true });
+          continue;
+        }
+        if (['FROM', 'WHERE', 'GROUP BY', 'ORDER BY', 'HAVING', 'VALUES', 'SET', 'INNER JOIN', 'LEFT JOIN', 'RIGHT JOIN'].includes(upper)) {
+          clause = upper;
+          append(upper, { newline: true });
+          continue;
+        }
+        if (upper === 'AND') {
+          append('  AND', { newline: true });
+          continue;
+        }
+        append(upper, { space: true });
+        continue;
+      }
+
+      if (token.type === 'punct') {
+        if (token.value === ',') {
+          if (clause === 'SELECT') {
+            formatted += ',\n       ';
+          } else if (clause === 'SET' || clause === 'VALUES') {
+            formatted += ',\n    ';
+          } else {
+            formatted += ', ';
+          }
+          continue;
+        }
+        if (token.value === '(') {
+          append('(', {});
+          continue;
+        }
+        if (token.value === ')') {
+          formatted = formatted.replace(/[ \t]+$/g, '');
+          formatted += ')';
+          continue;
+        }
+        if (token.value === ';') {
+          formatted = formatted.replace(/[ \t]+$/g, '');
+          formatted += ';';
+          continue;
+        }
+      }
+
+      append(token.value, { space: true });
+    }
+
+    setQuery(formatted.replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim());
+    setStatus('success', 'SQL formatted.');
+  }
+
+  function updateEditorStats() {
+    const query = getQuery();
+    const lines = query ? query.split('\n').length : 0;
+    $('editorStats').textContent = `${lines} line${lines === 1 ? '' : 's'} • ${query.length} chars`;
+  }
+
+  function insertAtCursor(text) {
+    const editor = $('queryEditor');
+    const start = editor.selectionStart;
+    const end = editor.selectionEnd;
+    editor.value = `${editor.value.slice(0, start)}${text}${editor.value.slice(end)}`;
+    editor.focus();
+    editor.selectionStart = editor.selectionEnd = start + text.length;
+    updateEditorStats();
+    syncEditorBackdrop();
+  }
+
+  function preferredColumnExpression() {
+    const selected = selectedColumns();
+    const column = selected[0] || state.activeColumns[0]?.name || 'column_name';
+    return state.activeColumns.some((item) => item.name === column) ? bid(column) : column;
+  }
+
+  function editorSelectionOrColumn() {
+    const editor = $('queryEditor');
+    const selectedText = editor && editor.selectionStart !== editor.selectionEnd
+      ? editor.value.slice(editor.selectionStart, editor.selectionEnd).trim()
+      : '';
+    return selectedText || preferredColumnExpression();
+  }
+
+  function sqlHelperSnippet(helperId, subject = preferredColumnExpression()) {
+    const expression = subject || preferredColumnExpression();
+    const second = state.activeColumns[1]?.name ? bid(state.activeColumns[1].name) : 'other_column';
+    switch (helperId) {
+      case 'concat':
+        return `CONCAT(${expression}, ' ', ${second})`;
+      case 'replace':
+        return `REPLACE(${expression}, 'old_value', 'new_value')`;
+      case 'trim':
+        return `TRIM(${expression})`;
+      case 'cast':
+        return `CAST(${expression} AS varchar(100))`;
+      case 'tryConvert':
+        return `TRY_CONVERT(date, ${expression})`;
+      case 'coalesce':
+        return `COALESCE(${expression}, 'fallback_value')`;
+      case 'nullif':
+        return `NULLIF(${expression}, '')`;
+      case 'caseWhen':
+        return `CASE\n    WHEN ${expression} IS NULL THEN 'missing'\n    ELSE ${expression}\nEND`;
+      case 'dateadd':
+        return `DATEADD(day, 1, ${expression})`;
+      case 'datediff':
+        return `DATEDIFF(day, ${expression}, GETDATE())`;
+      case 'sha2Key':
+        return `CONVERT(varchar(64), HASHBYTES('SHA2_256', CONCAT(${expression}, '|', ${second})), 2)`;
+      default:
+        return expression;
+    }
+  }
+
+  function insertSqlHelper({ wrapSelection = false } = {}) {
+    const helperId = $('sqlHelperSelect')?.value || 'concat';
+    const subject = wrapSelection ? editorSelectionOrColumn() : preferredColumnExpression();
+    insertAtCursor(sqlHelperSnippet(helperId, subject));
+    syncEditorBackdrop();
+    setStatus('success', `${SQL_HELPER_LABELS[helperId] || 'SQL'} helper inserted.`);
+  }
+
+  async function loadCatalog() {
+    if (!ensureReadyConnection('loading the catalog')) {
+      return;
+    }
+    setStatus('loading', 'Loading catalog...');
+    resetActiveObject();
+    state.activeProcedure = null;
+    state.procedureParameters = [];
+    state.procedureValues = {};
+    state.procedureNote = '';
+    renderProcedureWorkspace();
+
+    const payload = requestConnection();
+    const [objectsResult, proceduresResult] = await Promise.allSettled([
+      api('/api/tables', { method: 'POST', data: payload }),
+      api('/api/procedures', { method: 'POST', data: payload })
+    ]);
+
+    const errors = [];
+
+    if (objectsResult.status === 'fulfilled') {
+      state.objects = objectsResult.value.objects || objectsResult.value.tables || [];
+      state.filteredObjects = [...state.objects];
+      renderObjects();
+      populateAdvancedObjectOptions();
+    } else {
+      state.objects = [];
+      state.filteredObjects = [];
+      renderObjects();
+      populateAdvancedObjectOptions();
+      errors.push(`Objects: ${objectsResult.reason.message}`);
+    }
+
+    if (proceduresResult.status === 'fulfilled') {
+      state.procedures = proceduresResult.value.procedures || [];
+      state.filteredProcedures = [...state.procedures];
+      state.procedureNote = proceduresResult.value.supported === false ? (proceduresResult.value.note || 'Procedures unavailable for this source.') : '';
+      renderProcedures();
+    } else {
+      state.procedures = [];
+      state.filteredProcedures = [];
+      state.procedureNote = proceduresResult.reason.message || 'Procedure catalog unavailable.';
+      renderProcedures();
+      errors.push(`Procedures: ${state.procedureNote}`);
+    }
+
+    renderExplorerSummary();
+    persistActiveConnection();
+    persistCatalogState();
+    if (errors.length) {
+      throw new Error(errors.join(' | '));
+    }
+    setStatus('success', `Loaded ${state.objects.length} objects${state.procedureNote ? '' : ` and ${state.procedures.length} procedures`}.`);
+  }
+
+  async function selectObject(fullName, objectType) {
+    if (!ensureReadyConnection('loading object metadata')) {
+      setStatus('error', 'Enter a connection first.');
+      return;
+    }
+    state.activeProcedure = null;
+    state.procedureParameters = [];
+    state.procedureValues = {};
+    state.activeObject = fullName;
+    state.activeObjectType = objectType || 'table';
+    state.selectedColumns.clear();
+    renderObjects();
+    renderProcedures();
+    renderProcedureWorkspace();
+    refreshActiveSummary();
+    persistCatalogState();
+    setWorkspace('sql');
+    setExplorer('objects');
+    state.activeColumns = [];
+    const columnsPanel = $('columnsPanel');
+    const builderColumnsPanel = columnsPanel?.closest('.builder-panel-columns');
+    if (builderColumnsPanel) {
+      builderColumnsPanel.dataset.columnsState = 'loading';
+    }
+    columnsPanel.innerHTML = '<div class="empty-note">Loading columns...</div>';
+    $('selectedColumnsSummary').textContent = 'Loading columns...';
+    $('sortColumnSelect').innerHTML = '<option value="">Loading...</option>';
+    try {
+      const payload = await api('/api/columns', { method: 'POST', data: requestConnection({ object: state.activeObject }) });
+      state.activeColumns = payload.columns || [];
+      populateColumnInputs();
+      renderColumns();
+      persistCatalogState();
+      generateQuery();
+    } catch (error) {
+      resetActiveObject();
+      renderObjects();
+      refreshActiveSummary();
+      throw error;
+    }
+  }
+
+  function renderProcedureWorkspace() {
+    if (!state.activeProcedure) {
+      $('procedureSummary').innerHTML = 'Select a stored procedure from the explorer to inspect its parameters.';
+      $('procedureParametersPanel').innerHTML = 'Procedure parameters will appear here.';
+      return;
+    }
+    const hasOutput = state.procedureParameters.some((parameter) => /OUT/i.test(parameter.mode));
+    $('procedureSummary').innerHTML = `<strong>${esc(state.activeProcedure)}</strong><span>Review the parameters, then execute with button confirmation. Leave a parameter blank to omit it, or type NULL to pass a null value.</span><div class="procedure-meta"><span class="procedure-badge">${state.procedureParameters.length} parameters</span>${hasOutput ? '<span class="procedure-badge">Contains output parameters</span>' : ''}</div>`;
+    if (!state.procedureParameters.length) {
+      $('procedureParametersPanel').innerHTML = '<div class="empty-note">This procedure does not expose parameters.</div>';
+      return;
+    }
+    $('procedureParametersPanel').innerHTML = state.procedureParameters.map((parameter) => {
+      const outputOnly = /OUT/i.test(parameter.mode);
+      const value = state.procedureValues[parameter.cleanName] || '';
+      return `<div class="param-card"><strong>${esc(parameter.name)}</strong><span>${esc(parameter.dataType || 'unknown')} • ${esc(parameter.mode || 'IN')}</span>${outputOnly ? '<div class="empty-note">Output parameter value is returned after execution.</div>' : `<label class="field compact-field"><span>Value</span><input data-procedure-param="${esc(parameter.cleanName)}" type="text" value="${esc(value)}" placeholder="Leave blank to omit or type NULL" /></label>`}</div>`;
+    }).join('');
+    $('procedureParametersPanel').querySelectorAll('[data-procedure-param]').forEach((input) => {
+      input.oninput = () => {
+        state.procedureValues[input.dataset.procedureParam] = input.value;
+        persistCatalogState();
+      };
+    });
+  }
+
+  async function selectProcedure(fullName) {
+    if (!ensureReadyConnection('loading procedure parameters')) {
+      setStatus('error', 'Enter a connection first.');
+      return;
+    }
+    setStatus('loading', `Loading parameters for ${fullName}...`);
+    const payload = await api('/api/procedure-parameters', { method: 'POST', data: requestConnection({ procedure: fullName }) });
+    resetActiveObject();
+    state.activeProcedure = fullName;
+    state.procedureParameters = payload.parameters || [];
+    state.procedureValues = {};
+    setWorkspace('procedure');
+    setExplorer('procedures');
+    renderObjects();
+    renderProcedures();
+    renderProcedureWorkspace();
+    refreshActiveSummary();
+    persistCatalogState();
+    setStatus('success', `Loaded parameters for ${fullName}.`);
+  }
+
+  async function refreshProcedureParameters() {
+    if (!state.activeProcedure) {
+      setStatus('error', 'Select a stored procedure first.');
+      return;
+    }
+    await selectProcedure(state.activeProcedure);
+  }
+
+  function currentProcedureValues() {
+    const values = {};
+    state.procedureParameters.forEach((parameter) => {
+      values[parameter.cleanName] = state.procedureValues[parameter.cleanName] || '';
+    });
+    return values;
+  }
+
+  function setResults(columns = [], rows = [], meta = {}) {
+    state.results = {
+      ...state.results,
+      columns,
+      rows,
+      output: meta.output || {},
+      returnValue: meta.returnValue ?? null,
+      rowsAffected: Number(meta.rowsAffected || 0),
+      totalRows: Number(meta.totalRows ?? rows.length),
+      truncated: Boolean(meta.truncated),
+      page: 1,
+      columnWidths: {},
+      expandedCells: {},
+      sortColumn: '',
+      sortDirection: 'asc',
+      localFilter: '',
+      visualKind: meta.visualKind || '',
+      visualObject: meta.visualObject || meta.object || ''
+    };
+    renderResults();
+  }
+
+  function sortedRows() {
+    let rows = [...state.results.rows];
+    
+    if (state.results.localFilter) {
+      const filterLower = state.results.localFilter.toLowerCase();
+      rows = rows.filter(row => 
+        Object.values(row).some(val => 
+          String(val ?? '').toLowerCase().includes(filterLower)
+        )
+      );
+    }
+
+    const column = state.results.sortColumn;
+    if (!column) return rows;
+    const normalize = (value) => {
+      if (value === null || value === undefined || value === '') return { type: 'empty', value: null };
+      if (typeof value === 'number') return { type: 'number', value };
+      if (value instanceof Date) return { type: 'date', value: value.getTime() };
+      const text = String(value).trim();
+      if (/^-?\d+(\.\d+)?$/.test(text)) return { type: 'number', value: Number(text) };
+      const parsedDate = Date.parse(text);
+      if (!Number.isNaN(parsedDate) && /[-/:T]/.test(text)) return { type: 'date', value: parsedDate };
+      return { type: 'string', value: text.toLowerCase() };
+    };
+    rows.sort((left, right) => {
+      const a = normalize(left?.[column]);
+      const b = normalize(right?.[column]);
+      if (a.type !== b.type) {
+        const order = ['empty', 'number', 'date', 'string'];
+        return (order.indexOf(a.type) - order.indexOf(b.type)) * (state.results.sortDirection === 'asc' ? 1 : -1);
+      }
+      if (a.value < b.value) return state.results.sortDirection === 'asc' ? -1 : 1;
+      if (a.value > b.value) return state.results.sortDirection === 'asc' ? 1 : -1;
+      return 0;
+    });
+    return rows;
+  }
+
+  function resultCellKey(rowIndex, column) {
+    return `${rowIndex}:${column}`;
+  }
+
+  function isExpandableResultValue(value) {
+    const text = String(value ?? '');
+    if (!text) {
+      return false;
+    }
+    return text.length > 160 || text.includes('\n') || text.includes('{') || text.includes('[');
+  }
+
+  function formatResultValue(value, rowIndex, column) {
+    if (value === null || value === undefined || value === '') return '<span class="result-null">NULL</span>';
+    const text = String(value);
+
+    let isJson = false;
+    let formattedJson = text;
+    if ((text.startsWith('{') && text.endsWith('}')) || (text.startsWith('[') && text.endsWith(']'))) {
+      try {
+        const parsed = JSON.parse(text);
+        isJson = true;
+        formattedJson = JSON.stringify(parsed, null, 2)
+          .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+          .replace(/("(\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d*)?(?:[eE][+\-]?\d+)?)/g, (match) => {
+            let cls = 'json-number';
+            if (/^"/.test(match)) {
+              if (/:$/.test(match)) cls = 'json-key';
+              else cls = 'json-string';
+            } else if (/true|false/.test(match)) {
+              cls = 'json-boolean';
+            } else if (/null/.test(match)) {
+              cls = 'json-null';
+            }
+            return `<span class="${cls}">${match}</span>`;
+          });
+      } catch (e) {}
+    }
+
+    if (!isExpandableResultValue(text)) {
+      return esc(text);
+    }
+
+    const cellKey = resultCellKey(rowIndex, column);
+    const expanded = Boolean(state.results.expandedCells[cellKey]);
+    const displayContent = isJson ? `<pre style="margin:0;font-family:inherit;">${formattedJson}</pre>` : esc(text);
+
+    return `<div class="result-cell-wrap${expanded ? ' expanded' : ''}"><div class="result-cell-content">${displayContent}</div><button class="result-cell-toggle" data-result-cell-toggle="${esc(cellKey)}" type="button">${expanded ? 'Show less' : 'Show more'}</button></div>`;
+  }
+
+  function numericValue(value) {
+    if (value === null || value === undefined || value === '') return null;
+    const number = Number(value);
+    return Number.isFinite(number) ? number : null;
+  }
+
+  function renderMeter(value, label = '') {
+    const percent = clamp(Number(value) || 0, 0, 100);
+    return `<div class="visual-meter" title="${esc(label || `${percent}%`)}"><span style="width:${percent}%"></span></div>`;
+  }
+
+  function inferColumnKind(columnName, rows) {
+    const values = rows.map((row) => row?.[columnName]).filter((value) => value !== null && value !== undefined && value !== '');
+    if (!values.length) return 'empty';
+    const numericCount = values.filter((value) => numericValue(value) !== null).length;
+    const dateCount = values.filter((value) => {
+      const text = String(value).trim();
+      return /[-/:T]/.test(text) && !Number.isNaN(Date.parse(text));
+    }).length;
+    if (numericCount / values.length >= 0.8) return 'number';
+    if (dateCount / values.length >= 0.8) return 'date';
+    return 'text';
+  }
+
+  function renderProfileVisuals() {
+    const rows = state.results.rows || [];
+    if (state.results.visualKind !== 'profile' || !rows.length) return [];
+    const avgCompleteness = rows.reduce((sum, row) => sum + (numericValue(row.completeness_pct) || 0), 0) / rows.length;
+    const nullableCount = rows.filter((row) => String(row.nullable || '').toUpperCase() === 'YES').length;
+    const nullHeavy = rows
+      .map((row) => ({
+        column: row.column_name,
+        pct: 100 - (numericValue(row.completeness_pct) || 0),
+        nullRows: numericValue(row.null_rows) || 0
+      }))
+      .filter((row) => row.pct > 0)
+      .sort((left, right) => right.pct - left.pct)
+      .slice(0, 5);
+    const completenessRows = rows
+      .slice()
+      .sort((left, right) => (numericValue(left.completeness_pct) || 0) - (numericValue(right.completeness_pct) || 0))
+      .slice(0, 6);
+
+    return [
+      `<div class="artifact-card visual-helper-card"><strong>Profile summary</strong><span>${rows.length} column${rows.length === 1 ? '' : 's'} profiled${state.results.visualObject ? ` for ${esc(state.results.visualObject)}` : ''}.</span>${renderMeter(avgCompleteness, 'Average completeness')}<code>${avgCompleteness.toFixed(1)}% average completeness</code><span>${nullableCount} nullable column${nullableCount === 1 ? '' : 's'}</span></div>`,
+      `<div class="artifact-card visual-helper-card visual-helper-wide"><strong>Completeness watch</strong><div class="visual-list">${completenessRows.map((row) => `<div class="visual-row"><span>${esc(row.column_name)}</span>${renderMeter(row.completeness_pct, `${row.completeness_pct}% complete`)}<code>${esc(row.completeness_pct)}%</code></div>`).join('')}</div></div>`,
+      `<div class="artifact-card visual-helper-card"><strong>Null concentration</strong>${nullHeavy.length ? `<div class="visual-list compact">${nullHeavy.map((row) => `<div class="visual-row"><span>${esc(row.column)}</span><code>${row.pct.toFixed(1)}%</code></div>`).join('')}</div>` : '<span>No sampled null or blank values found.</span>'}</div>`
+    ];
+  }
+
+  function renderDependencyVisuals() {
+    const rows = state.results.rows || [];
+    if (state.results.visualKind !== 'dependencies') return [];
+    const center = state.results.visualObject || state.activeObject || 'Selected object';
+    const dependsOn = rows.filter((row) => row.dependency_direction === 'depends_on');
+    const referencedBy = rows.filter((row) => row.dependency_direction === 'referenced_by');
+    const node = (row) => `<span class="dependency-node" title="${esc(row.related_type || '')}">${esc(row.related_object || row.primary_object || 'Unknown')}<small>${esc(row.related_type || 'object')}</small></span>`;
+    return [
+      `<div class="artifact-card visual-helper-card visual-helper-wide dependency-visual"><strong>Dependency map</strong><div class="dependency-lanes"><div>${dependsOn.length ? dependsOn.map(node).join('') : '<span class="empty-note">No upstream dependencies</span>'}</div><div class="dependency-center">${esc(center)}</div><div>${referencedBy.length ? referencedBy.map(node).join('') : '<span class="empty-note">No downstream references</span>'}</div></div><span>${dependsOn.length} upstream • ${referencedBy.length} downstream</span></div>`
+    ];
+  }
+
+  function renderQueryVisuals() {
+    const rows = state.results.rows || [];
+    if (state.results.visualKind !== 'query' || !state.results.columns.length) return [];
+    const sampleRows = rows.slice(0, 100);
+    const nullColumns = state.results.columns.map((column) => ({
+      column,
+      nulls: sampleRows.filter((row) => row?.[column] === null || row?.[column] === undefined || row?.[column] === '').length,
+      kind: inferColumnKind(column, sampleRows)
+    })).filter((item) => item.nulls > 0);
+    const typeCounts = state.results.columns.reduce((counts, column) => {
+      const kind = inferColumnKind(column, sampleRows);
+      counts[kind] = (counts[kind] || 0) + 1;
+      return counts;
+    }, {});
+    return [
+      `<div class="artifact-card visual-helper-card"><strong>Result shape</strong><code>${state.results.totalRows} row${state.results.totalRows === 1 ? '' : 's'} • ${state.results.columns.length} column${state.results.columns.length === 1 ? '' : 's'}</code><span>${state.results.truncated ? 'Server row cap applied.' : 'Returned within current row cap.'}</span></div>`,
+      `<div class="artifact-card visual-helper-card"><strong>Column types</strong><div class="visual-chip-row">${Object.entries(typeCounts).map(([kind, count]) => `<span class="visual-chip">${esc(kind)} ${count}</span>`).join('')}</div></div>`,
+      `<div class="artifact-card visual-helper-card"><strong>Null scan</strong>${nullColumns.length ? `<div class="visual-list compact">${nullColumns.slice(0, 5).map((item) => `<div class="visual-row"><span>${esc(item.column)}</span><code>${item.nulls}</code></div>`).join('')}</div>` : '<span>No null or blank values in the visible sample.</span>'}</div>`
+    ];
+  }
+
+  function renderAuditVisuals() {
+    const rows = state.results.rows || [];
+    if (state.results.visualKind !== 'audit' || !rows.length) return [];
+    const counts = rows.reduce((accumulator, row) => {
+      const outcome = row.outcome || 'unknown';
+      accumulator[outcome] = (accumulator[outcome] || 0) + 1;
+      return accumulator;
+    }, {});
+    return [
+      `<div class="artifact-card visual-helper-card visual-helper-wide"><strong>Audit timeline</strong><div class="audit-timeline">${rows.slice(0, 8).map((row) => `<div class="audit-dot ${esc(row.outcome || 'neutral')}"><span>${esc(row.event || 'event')}</span><small>${esc(row.action || '')}</small></div>`).join('')}</div><div class="visual-chip-row">${Object.entries(counts).map(([outcome, count]) => `<span class="visual-chip">${esc(outcome)} ${count}</span>`).join('')}</div></div>`
+    ];
+  }
+
+  function renderVisualArtifacts() {
+    return [
+      ...renderProfileVisuals(),
+      ...renderDependencyVisuals(),
+      ...renderQueryVisuals(),
+      ...renderAuditVisuals()
+    ];
+  }
+
+  function renderResultsArtifacts() {
+    const artifacts = [];
+    artifacts.push(...renderVisualArtifacts());
+    if (state.results.returnValue !== null && state.results.returnValue !== undefined) {
+      artifacts.push(`<div class="artifact-card"><strong>Return value</strong><code>${esc(state.results.returnValue)}</code></div>`);
+    }
+    Object.entries(state.results.output || {}).forEach(([key, value]) => {
+      artifacts.push(`<div class="artifact-card"><strong>${esc(key)}</strong><code>${esc(value)}</code></div>`);
+    });
+    $('resultsArtifacts').innerHTML = artifacts.join('');
+  }
+
+  function bindResultColumnResizers(panel) {
+    panel.querySelectorAll('[data-resize-column]').forEach((handle) => {
+      handle.onpointerdown = null;
+      handle.onpointermove = null;
+      handle.onpointerup = null;
+      handle.onpointercancel = null;
+      handle.ondblclick = null;
+
+      handle.onpointerdown = (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        const column = handle.dataset.resizeColumn;
+        const table = panel.querySelector('.results-table');
+        const col = Array.from(panel.querySelectorAll('col[data-column-width]')).find((candidate) => candidate.dataset.columnWidth === column);
+        if (!table || !col) {
+          return;
+        }
+
+        const startX = event.clientX;
+        const startWidth = Number(state.results.columnWidths[column]) || Math.round(col.getBoundingClientRect().width) || 180;
+        handle.classList.add('is-dragging');
+        handle.setPointerCapture?.(event.pointerId);
+        document.body.style.cursor = 'col-resize';
+        document.body.classList.add('panel-resize-dragging');
+
+        handle.onpointermove = (moveEvent) => {
+          const nextWidth = clamp(Math.round(startWidth + (moveEvent.clientX - startX)), 90, 1200);
+          state.results.columnWidths[column] = nextWidth;
+          col.style.width = `${nextWidth}px`;
+          col.style.minWidth = `${nextWidth}px`;
+        };
+
+        const finish = () => {
+          handle.classList.remove('is-dragging');
+          handle.onpointermove = null;
+          handle.onpointerup = null;
+          handle.onpointercancel = null;
+          document.body.style.cursor = '';
+          document.body.classList.remove('panel-resize-dragging');
+        };
+
+        handle.onpointerup = finish;
+        handle.onpointercancel = finish;
+      };
+
+      handle.ondblclick = (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        delete state.results.columnWidths[handle.dataset.resizeColumn];
+        renderResults();
+      };
+    });
+  }
+
+  function bindResultCellToggles(panel) {
+    panel.querySelectorAll('[data-result-cell-toggle]').forEach((button) => {
+      button.onclick = () => {
+        const key = button.dataset.resultCellToggle;
+        state.results.expandedCells[key] = !state.results.expandedCells[key];
+        if (!state.results.expandedCells[key]) {
+          delete state.results.expandedCells[key];
+        }
+        renderResults();
+      };
+    });
+  }
+
+  function resultScrollMetrics() {
+    const panel = $('resultsPanel');
+    if (!panel) {
+      return { panel: null, canScroll: false, atStart: true, atEnd: true };
+    }
+    const maxScrollLeft = Math.max(0, panel.scrollWidth - panel.clientWidth);
+    const left = Math.max(0, panel.scrollLeft || 0);
+    return {
+      panel,
+      canScroll: maxScrollLeft > 2,
+      atStart: left <= 2,
+      atEnd: left >= maxScrollLeft - 2,
+      maxScrollLeft
+    };
+  }
+
+  function updateResultScrollControls() {
+    const { panel, canScroll, atStart, atEnd } = resultScrollMetrics();
+    const leftButtons = [$('scrollResultsLeftBtn'), $('scrollResultsDockLeftBtn')].filter(Boolean);
+    const rightButtons = [$('scrollResultsRightBtn'), $('scrollResultsDockRightBtn')].filter(Boolean);
+    leftButtons.forEach((button) => { button.disabled = !canScroll || atStart; });
+    rightButtons.forEach((button) => { button.disabled = !canScroll || atEnd; });
+    const card = panel?.closest('.results-card');
+    const dock = $('resultsScrollDock');
+    if (card) {
+      const rect = panel.getBoundingClientRect();
+      const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 0;
+      const viewportWidth = window.innerWidth || document.documentElement.clientWidth || 0;
+      const visible = rect.bottom > 96 && rect.top < viewportHeight - 72;
+      card.classList.toggle('results-scrollable-x', canScroll);
+      card.classList.toggle('results-dock-visible', canScroll && visible);
+      card.classList.toggle('results-scroll-at-start', !canScroll || atStart);
+      card.classList.toggle('results-scroll-at-end', !canScroll || atEnd);
+
+      if (dock && canScroll && visible) {
+        const cardRect = card.getBoundingClientRect();
+        const dockWidth = dock.offsetWidth || 188;
+        const dockHeight = dock.offsetHeight || 52;
+        const visibleTop = clamp(Math.max(rect.top, 88), 88, Math.max(88, viewportHeight - dockHeight - 24));
+        const visibleBottom = clamp(Math.min(rect.bottom, viewportHeight - 24), visibleTop + dockHeight, viewportHeight - 24);
+        const top = clamp(visibleBottom - dockHeight - 14, visibleTop + 10, viewportHeight - dockHeight - 24);
+        const left = clamp(rect.right - dockWidth - 24, Math.max(16, rect.left + 16), viewportWidth - dockWidth - 16);
+        dock.style.setProperty('--results-dock-top', `${Math.round(top - cardRect.top)}px`);
+        dock.style.setProperty('--results-dock-left', `${Math.round(left - cardRect.left)}px`);
+      }
+    }
+  }
+
+  function scrollResultsHorizontal(direction) {
+    const { panel, canScroll } = resultScrollMetrics();
+    if (!panel || !canScroll) {
+      return;
+    }
+    const amount = Math.max(220, Math.floor(panel.clientWidth * 0.72));
+    panel.scrollBy({ left: direction * amount, behavior: 'smooth' });
+    window.setTimeout(updateResultScrollControls, 180);
+  }
+
+  function bindResultsPanelScrollAssist(panel) {
+    if (!panel) {
+      return;
+    }
+    panel.onscroll = updateResultScrollControls;
+    panel.onwheel = (event) => {
+      if (!event.shiftKey) {
+        return;
+      }
+      const { canScroll, atStart, atEnd } = resultScrollMetrics();
+      if (!canScroll) {
+        return;
+      }
+      const delta = event.deltaY || event.deltaX;
+      if ((delta < 0 && atStart) || (delta > 0 && atEnd)) {
+        return;
+      }
+      event.preventDefault();
+      panel.scrollBy({ left: delta, behavior: 'auto' });
+      updateResultScrollControls();
+    };
+    window.requestAnimationFrame?.(updateResultScrollControls);
+    window.setTimeout(updateResultScrollControls, 80);
+  }
+
+  function renderResults() {
+    const panel = $('resultsPanel');
+    const resultsCard = panel?.closest('.results-card');
+    const rows = sortedRows();
+    let resultsState = 'empty';
+    const pageSize = state.results.pageSize;
+    const totalPages = Math.max(1, Math.ceil((rows.length || 1) / pageSize));
+    state.results.page = Math.min(state.results.page, totalPages);
+    $('pageIndicator').textContent = `Page ${state.results.page}/${totalPages}`;
+    $('prevPageBtn').disabled = state.results.page <= 1;
+    $('nextPageBtn').disabled = state.results.page >= totalPages;
+    renderResultsArtifacts();
+
+    if (!state.results.columns.length && !state.results.rowsAffected && !Object.keys(state.results.output || {}).length && state.results.returnValue == null) {
+      panel.innerHTML = '<div class="empty-state">Run a query or procedure to see results.</div>';
+      $('resultsMeta').textContent = 'No results yet.';
+      if (resultsCard) {
+        resultsCard.dataset.resultsState = resultsState;
+      }
+      updateResultScrollControls();
+      applyPanelLayout();
+      return;
+    }
+
+    if (!rows.length) {
+      resultsState = 'summary';
+      panel.innerHTML = `<div class="empty-state">${state.results.rowsAffected ? `${state.results.rowsAffected} row${state.results.rowsAffected === 1 ? '' : 's'} affected.` : 'No rows returned.'}</div>`;
+      $('resultsMeta').textContent = state.results.rowsAffected ? `${state.results.rowsAffected} row${state.results.rowsAffected === 1 ? '' : 's'} affected.` : 'No rows returned.';
+      if (resultsCard) {
+        resultsCard.dataset.resultsState = resultsState;
+      }
+      updateResultScrollControls();
+      applyPanelLayout();
+      return;
+    }
+
+    resultsState = 'table';
+    if (resultsCard) {
+      resultsCard.dataset.resultsState = resultsState;
+    }
+    applyPanelLayout();
+
+    const start = (state.results.page - 1) * pageSize;
+    const visibleRows = rows.slice(start, start + pageSize);
+    $('resultsMeta').textContent = state.results.truncated ? `Showing ${rows.length} of ${state.results.totalRows} rows returned by the server cap.` : `Showing ${start + 1}-${Math.min(start + visibleRows.length, rows.length)} of ${rows.length} rows.`;
+
+    const getColIcon = (column) => {
+      for (const row of rows.slice(0, 50)) {
+        const val = row[column];
+        if (val == null || val === '') continue;
+        if (typeof val === 'number') return ' <span style="color:var(--muted);font-size:0.85em;font-weight:normal" title="Numeric">#</span>';
+        const str = String(val);
+        if (/^-?\d+(\.\d+)?$/.test(str)) return ' <span style="color:var(--muted);font-size:0.85em;font-weight:normal" title="Numeric">#</span>';
+        if ((str.startsWith('{') && str.endsWith('}')) || (str.startsWith('[') && str.endsWith(']'))) return ' <span style="color:var(--muted);font-size:0.85em;font-weight:normal" title="JSON">{}</span>';
+        if (!Number.isNaN(Date.parse(str)) && /[-/:T]/.test(str)) return ' <span style="color:var(--muted);font-size:0.85em;font-weight:normal" title="Date/Time">🗓</span>';
+        return ' <span style="color:var(--muted);font-size:0.85em;font-weight:normal" title="String">Aa</span>';
+      }
+      return '';
+    };
+
+    panel.innerHTML = `<table class="results-table"><colgroup><col class="row-index-col" />${state.results.columns.map((column) => {
+      const width = Number(state.results.columnWidths[column]);
+      return `<col data-column-width="${esc(column)}"${width ? ` style="width:${width}px;min-width:${width}px"` : ''} />`;
+    }).join('')}</colgroup><thead><tr><th class="row-index-head">#</th>${state.results.columns.map((column) => `<th><div class="results-header-cell"><button class="table-header-btn" data-sort="${esc(column)}" type="button">${esc(column)}${getColIcon(column)} ${state.results.sortColumn === column ? (state.results.sortDirection === 'asc' ? '↑' : '↓') : ''}</button><div class="column-resize-handle" data-resize-column="${esc(column)}" role="separator" aria-orientation="vertical" aria-label="Resize ${esc(column)} column"></div></div></th>`).join('')}</tr></thead><tbody>${visibleRows.map((row, index) => `<tr><td class="row-index">${start + index + 1}</td>${state.results.columns.map((column) => `<td title="${esc(row[column])}">${formatResultValue(row[column], start + index, column)}</td>`).join('')}</tr>`).join('')}</tbody></table>`;
+    panel.querySelectorAll('[data-sort]').forEach((button) => {
+      button.onclick = () => {
+        const column = button.dataset.sort;
+        if (state.results.sortColumn === column) state.results.sortDirection = state.results.sortDirection === 'asc' ? 'desc' : 'asc';
+        else {
+          state.results.sortColumn = column;
+          state.results.sortDirection = 'asc';
+        }
+        renderResults();
+      };
+    });
+    bindResultColumnResizers(panel);
+    bindResultCellToggles(panel);
+    bindResultsPanelScrollAssist(panel);
+
+    panel.querySelectorAll('tbody tr').forEach((tr, index) => {
+      tr.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
+        state.results.contextRow = visibleRows[index];
+        const menu = $('resultsContextMenu');
+        if (menu) {
+          menu.classList.remove('hidden');
+          const maxLeft = window.innerWidth - menu.offsetWidth - 10;
+          const maxTop = window.innerHeight - menu.offsetHeight - 10;
+          menu.style.left = `${Math.min(e.clientX, maxLeft)}px`;
+          menu.style.top = `${Math.min(e.clientY, maxTop)}px`;
+        }
+      });
+    });
+  }
+
+  function copyText(text, message) {
+    if (!text) {
+      setStatus('error', 'Nothing to copy.');
+      return;
+    }
+    if (navigator.clipboard?.writeText) {
+      navigator.clipboard.writeText(text).then(() => setStatus('success', message)).catch(() => fallbackCopy(text, message));
+      return;
+    }
+    fallbackCopy(text, message);
+  }
+
+  function fallbackCopy(text, message) {
+    const area = document.createElement('textarea');
+    area.value = text;
+    area.style.position = 'fixed';
+    area.style.left = '-9999px';
+    document.body.appendChild(area);
+    area.select();
+    try {
+      const ok = document.execCommand('copy');
+      setStatus(ok ? 'success' : 'error', ok ? message : 'Could not copy text.');
+    } catch {
+      setStatus('error', 'Could not copy text.');
+    }
+    area.remove();
+  }
+
+  function copyResults() {
+    if (!state.results.columns.length || !state.results.rows.length) {
+      setStatus('error', 'No result rows to copy.');
+      return;
+    }
+    const lines = [state.results.columns.join('\t'), ...sortedRows().map((row) => state.results.columns.map((column) => String(row[column] ?? '')).join('\t'))];
+    copyText(lines.join('\n'), 'Result rows copied.');
+  }
+
+  function exportCsv() {
+    if (!state.results.columns.length || !state.results.rows.length) {
+      setStatus('error', 'No result rows to export.');
+      return;
+    }
+    const csv = [state.results.columns.join(','), ...sortedRows().map((row) => state.results.columns.map((column) => {
+      const text = String(row[column] ?? '');
+      return /[",\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+    }).join(','))].join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `query-results-${new Date().toISOString().replace(/[:.]/g, '-')}.csv`;
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    setStatus('success', 'CSV exported from the currently loaded result set.');
+  }
+
+  function loadTemplateIntoEditor(query, message) {
+    setWorkspace('sql');
+    setQuery(query);
+    setStatus('success', message);
+  }
+
+  function createInsertSelectTemplate() {
+    loadTemplateIntoEditor(buildInsertSelectTemplate(), 'INSERT SELECT template generated.');
+  }
+
+  function createUpdateJoinTemplate() {
+    loadTemplateIntoEditor(buildUpdateJoinTemplate(), 'UPDATE JOIN template generated.');
+  }
+
+  function createMergePreviewTemplate() {
+    loadTemplateIntoEditor(buildMergePreviewTemplate(), 'MERGE preview template generated. Execution remains blocked in this app.');
+  }
+
+  async function loadObjectProfile() {
+    if (!ensureReadyConnection('profiling the object')) {
+      return;
+    }
+    if (!state.activeObject) {
+      setStatus('error', 'Select a table or view first.');
+      return;
+    }
+    const sampleRows = Math.max(10, Math.min(1000, Number($('profileSampleRowsInput').value || 200)));
+    setStatus('loading', `Profiling ${state.activeObject}...`);
+    const payload = await api('/api/object-insights', {
+      method: 'POST',
+      data: requestConnection({
+        action: 'profile',
+        object: state.activeObject,
+        selectedColumns: advancedTemplateColumns(),
+        sampleRows
+      })
+    });
+    setResults(payload.columns || [], payload.rows || [], {
+      totalRows: Number(payload.totalRows ?? (payload.rows || []).length),
+      output: payload.output || {},
+      visualKind: 'profile',
+      visualObject: payload.object || state.activeObject
+    });
+    setStatus('success', payload.message || `Profile loaded for ${state.activeObject}.`);
+  }
+
+  async function loadDependencyView() {
+    if (!ensureReadyConnection('loading object dependencies')) {
+      return;
+    }
+    if (!state.activeObject) {
+      setStatus('error', 'Select a table or view first.');
+      return;
+    }
+    setStatus('loading', `Loading dependencies for ${state.activeObject}...`);
+    const payload = await api('/api/object-insights', {
+      method: 'POST',
+      data: requestConnection({
+        action: 'dependencies',
+        object: state.activeObject
+      })
+    });
+    setResults(payload.columns || [], payload.rows || [], {
+      totalRows: Number(payload.totalRows ?? (payload.rows || []).length),
+      output: payload.output || {},
+      visualKind: 'dependencies',
+      visualObject: payload.object || state.activeObject
+    });
+    setStatus('success', payload.message || `Dependency view loaded for ${state.activeObject}.`);
+  }
+
+  async function testConnection() {
+    if (!ensureReadyConnection('testing the connection')) {
+      return;
+    }
+    state.connectionTest = {
+      state: 'loading',
+      message: 'Trying the current source with the entered credentials.'
+    };
+    renderConnectionTestResult();
+    $('testConnectionBtn').disabled = true;
+    setStatus('loading', 'Testing connection...');
+    try {
+      const payload = await api('/api/test-connection', { method: 'POST', data: requestConnection() });
+      persistActiveConnection();
+      const details = [
+        payload.data?.server_name || connection().server,
+        payload.data?.database_name || connection().database
+      ].filter(Boolean).join(' • ');
+      state.connectionTest = {
+        state: 'success',
+        message: details ? `${payload.message} ${details}` : payload.message,
+        data: payload.data || null
+      };
+      renderConnectionTestResult();
+      setStatus('success', payload.message);
+    } catch (error) {
+      state.connectionTest = {
+        state: 'error',
+        message: error.message
+      };
+      renderConnectionTestResult();
+      setStatus('error', error.message);
+      throw error;
+    } finally {
+      $('testConnectionBtn').disabled = false;
+    }
+  }
+
+  function openConfirm(config) {
+    state.pendingAction = config;
+    state.lastFocusedElement = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    $('modalTitle').textContent = config.title;
+    $('modalMessage').textContent = config.message;
+    $('modalMetrics').innerHTML = (config.metrics || []).map((metric) => `<div class="artifact-card"><strong>${esc(metric.label)}</strong><code>${esc(metric.value)}</code></div>`).join('');
+    $('confirmModalBtn').textContent = config.confirmLabel;
+    $('secondConfirmWrap').classList.add('hidden');
+    $('secondConfirmHint').textContent = '';
+    $('secondConfirmInput').value = '';
+    $('confirmModal').classList.remove('hidden');
+    $('confirmModal').setAttribute('aria-hidden', 'false');
+    $('confirmModalBtn').focus();
+
+    // TTL countdown — read from health endpoint, fall back to 5 minutes.
+    if (state.confirmCountdownTimer) {
+      clearInterval(state.confirmCountdownTimer);
+      state.confirmCountdownTimer = null;
+    }
+    const ttlMs = Number(state.health?.confirmationTtlMs || 5 * 60 * 1000);
+    const expiresAt = Date.now() + ttlMs;
+    const countdown = $('modalCountdown');
+    const tick = () => {
+      const remaining = Math.max(0, expiresAt - Date.now());
+      const minutes = Math.floor(remaining / 60000);
+      const seconds = Math.floor((remaining % 60000) / 1000);
+      if (countdown) {
+        countdown.textContent = remaining > 0
+          ? `Expires in ${minutes}:${String(seconds).padStart(2, '0')}`
+          : 'Confirmation expired.';
+      }
+      if (remaining <= 0) {
+        clearInterval(state.confirmCountdownTimer);
+        state.confirmCountdownTimer = null;
+        closeConfirm();
+        setStatus('error', 'Confirmation token expired. Resubmit the query to try again.');
+      }
+    };
+    tick();
+    state.confirmCountdownTimer = setInterval(tick, 1000);
+  }
+
+  function closeConfirm() {
+    state.pendingAction = null;
+    if (state.confirmCountdownTimer) {
+      clearInterval(state.confirmCountdownTimer);
+      state.confirmCountdownTimer = null;
+    }
+    const countdown = $('modalCountdown');
+    if (countdown) {
+      countdown.textContent = '';
+    }
+    $('confirmModal').classList.add('hidden');
+    $('confirmModal').setAttribute('aria-hidden', 'true');
+    $('secondConfirmInput').value = '';
+    if (state.lastFocusedElement?.focus) {
+      state.lastFocusedElement.focus();
+    }
+    state.lastFocusedElement = null;
+  }
+
+  async function runQuery() {
+    if (!ensureReadyConnection('running the query')) {
+      return;
+    }
+    const query = getQuery().trim();
+    if (!query) {
+      setStatus('error', 'Enter a query first.');
+      return;
+    }
+    setStatus('loading', 'Executing query...');
+    $('resultsPanel').innerHTML = '<div class="empty-state">Working...</div>';
+    const payload = await api('/api/query', { method: 'POST', data: requestConnection({ query }) });
+    if (payload.requiresConfirmation) {
+      setResults([], [], { rowsAffected: Number(payload.rowsAffected || 0) });
+      setStatus('success', payload.message);
+      openConfirm({
+        type: 'write',
+        title: `Confirm ${payload.action}`,
+        message: payload.message,
+        confirmLabel: payload.action === 'DELETE' ? 'Execute delete' : 'Execute write',
+                metrics: [{ label: 'Action', value: payload.action }, { label: 'Rows', value: payload.rowsAffected }],
+        request: { query, confirmToken: payload.confirmationToken }
+      });
+      return;
+    }
+    setResults(payload.columns || [], payload.rows || [], {
+      rowsAffected: Number(payload.rowsAffected || 0),
+      totalRows: Number(payload.totalRows ?? (payload.rows || []).length),
+      truncated: Boolean(payload.truncated),
+      visualKind: 'query'
+    });
+    addQueryHistory(query);
+    const rowCount = Array.isArray(payload.rows) ? payload.rows.length : 0;
+    const affected = Number(payload.rowsAffected || 0);
+    setStatus('success', rowCount ? `Returned ${rowCount} rows${payload.truncated ? ' (truncated in app)' : ''}.` : `Completed. ${affected ? `${affected} row${affected === 1 ? '' : 's'} affected.` : 'No rows returned.'}`);
+  }
+
+  async function runProcedure() {
+    if (!ensureReadyConnection('running the procedure')) {
+      return;
+    }
+    if (!state.activeProcedure) {
+      setStatus('error', 'Select a stored procedure first.');
+      return;
+    }
+    setStatus('loading', 'Preparing procedure execution...');
+    const payload = await api('/api/procedures', { method: 'POST', data: requestConnection({ procedure: state.activeProcedure, parameters: currentProcedureValues() }) });
+    if (payload.requiresConfirmation) {
+      setResults();
+      setStatus('success', payload.message);
+      openConfirm({
+        type: 'procedure',
+        title: 'Confirm procedure execution',
+        message: payload.message,
+        confirmLabel: 'Run procedure',
+                metrics: [{ label: 'Procedure', value: payload.procedure }, { label: 'Parameters', value: payload.parameterCount }],
+        request: { procedure: state.activeProcedure, parameters: currentProcedureValues(), confirmToken: payload.confirmationToken }
+      });
+      return;
+    }
+    setStatus('error', 'Unexpected response from server.');
+  }
+
+  async function confirmPendingAction() {
+    if (!state.pendingAction) return;
+    setStatus('loading', state.pendingAction.type === 'procedure' ? 'Executing stored procedure...' : 'Executing write...');
+    try {
+      if (state.pendingAction.type === 'procedure') {
+        const payload = await api('/api/procedures', { method: 'POST', data: requestConnection({ ...state.pendingAction.request }) });
+        closeConfirm();
+        setResults(payload.columns || [], payload.rows || [], {
+          rowsAffected: Number(payload.rowsAffected || 0),
+          totalRows: Number(payload.totalRows ?? (payload.rows || []).length),
+          truncated: Boolean(payload.truncated),
+          output: payload.output || {},
+          returnValue: payload.returnValue,
+          visualKind: 'procedure',
+          visualObject: payload.procedure || state.activeProcedure
+        });
+        setStatus('success', payload.message);
+        return;
+      }
+
+      const payload = await api('/api/query', { method: 'POST', data: requestConnection({ ...state.pendingAction.request }) });
+      const executedQuery = state.pendingAction.request.query;
+      closeConfirm();
+      setResults([], [], { rowsAffected: Number(payload.rowsAffected || 0) });
+      addQueryHistory(executedQuery);
+      setStatus('success', `${payload.message} ${payload.rowsAffected} row${payload.rowsAffected === 1 ? '' : 's'} affected.`);
+    } catch (error) {
+      setStatus('error', error.message);
+    }
+  }
+
+  async function loadAudit() {
+    setStatus('loading', 'Loading recent audit...');
+    const payload = await api('/api/audit?limit=25');
+    const rows = (payload.entries || []).map((entry) => ({
+      timestamp: formatTimestamp(entry.timestamp || ''),
+      sourceType: entry.sourceType || '',
+      event: entry.event || '',
+      outcome: entry.outcome || '',
+      action: entry.action || '',
+      database: entry.database || '',
+      detail: entry.detail || ''
+    }));
+    setResults(['timestamp', 'sourceType', 'event', 'outcome', 'action', 'database', 'detail'], rows, { totalRows: rows.length, visualKind: 'audit' });
+    setStatus('success', `Loaded ${rows.length} audit entries.`);
+  }
+
+  async function loadHealth() {
+    try { state.health = await api('/api/health'); } catch { state.health = null; }
+    renderConnectionSelectors();
+    renderPolicy();
+  }
+
+  function bind() {
+    const handleConnectionFieldChange = () => {
+      persistActiveConnection();
+      renderConnectionSummary();
+      clearConnectionTestResult();
+    };
+
+    $('sourceTypeSelect').onchange = () => {
+      renderAuthOptions();
+      renderExplorerSummary();
+      persistActiveConnection();
+      clearConnectionTestResult();
+    };
+    $('authModeSelect').onchange = () => {
+      syncAuthFields();
+      persistActiveConnection();
+      clearConnectionTestResult();
+    };
+    ['serverInput', 'portInput', 'databaseInput', 'usernameInput', 'passwordInput'].forEach((id) => { $(id).oninput = handleConnectionFieldChange; });
+    $('trustServerCertificateInput').onchange = handleConnectionFieldChange;
+    $('saveConnectionBtn').onclick = saveCurrentConnection;
+    if ($('toggleControlRailBtn')) {
+      $('toggleControlRailBtn').onclick = () => toggleSidePanel('controlRail');
+    }
+    if ($('toggleActivityPanelBtn')) {
+      $('toggleActivityPanelBtn').onclick = () => toggleSidePanel('activity');
+    }
+    $('testConnectionBtn').onclick = () => testConnection().catch((error) => setStatus('error', error.message));
+    $('loadTablesBtn').onclick = () => loadCatalog().catch((error) => setStatus('error', error.message));
+    $('clearHistoryBtn').onclick = clearQueryHistory;
+    if ($('loadAuditBtn')) {
+      $('loadAuditBtn').onclick = () => loadAudit().catch((error) => setStatus('error', error.message));
+    }
+    $('runQueryBtn').onclick = () => runQuery().catch((error) => setStatus('error', error.message));
+    $('decreaseEditorTextBtn').onclick = () => changeEditorTextSize(-0.05);
+    $('increaseEditorTextBtn').onclick = () => changeEditorTextSize(0.05);
+    $('formatQueryBtn').onclick = formatSql;
+    $('copyQueryBtn').onclick = () => copyText(getQuery(), 'SQL copied to clipboard.');
+    $('clearQueryBtn').onclick = () => setQuery('');
+    $('generateQueryBtn').onclick = generateQuery;
+    if ($('insertSqlHelperBtn')) {
+      $('insertSqlHelperBtn').onclick = () => insertSqlHelper();
+    }
+    if ($('wrapSqlHelperBtn')) {
+      $('wrapSqlHelperBtn').onclick = () => insertSqlHelper({ wrapSelection: true });
+    }
+        $('toggleAdvancedOperationsBtn').onclick = () => {
+      state.advancedOperationsVisible = !state.advancedOperationsVisible;
+      saveAdvancedOperationsVisibility();
+      renderAdvancedOperationsVisibility();
+    };
+    $('insertSelectTemplateBtn').onclick = createInsertSelectTemplate;
+    $('updateJoinTemplateBtn').onclick = createUpdateJoinTemplate;
+    $('mergePreviewBtn').onclick = createMergePreviewTemplate;
+    $('profileObjectBtn').onclick = () => loadObjectProfile().catch((error) => setStatus('error', error.message));
+    $('dependencyViewBtn').onclick = () => loadDependencyView().catch((error) => setStatus('error', error.message));
+    $('previewRowsBtn').onclick = () => {
+      setMode('select');
+      $('topRowsInput').value = 100;
+      generateQuery();
+    };
+    $('countRowsBtn').onclick = () => state.activeObject ? (setQuery(buildCount()), setStatus('success', 'COUNT query generated.')) : setStatus('error', 'Select a table or view first.');
+    $('resetBuilderBtn').onclick = () => {
+      state.selectedColumns.clear();
+      $('filtersList').innerHTML = '<div class="empty-note">No filters yet. Add one when you want a WHERE clause.</div>';
+      $('sortColumnSelect').value = '';
+      $('sortDirectionSelect').value = 'ASC';
+      $('topRowsInput').value = 100;
+      $('distinctSelect').value = 'false';
+      renderColumns();
+      if (state.activeObject) generateQuery();
+    };
+    $('addFilterBtn').onclick = () => {
+      const row = addFilter();
+      if (row) setStatus('success', 'Filter added. Pick a column and value to build the WHERE clause.');
+    };
+    $('selectAllColumnsBtn').onclick = () => {
+      state.activeColumns.forEach((column) => state.selectedColumns.add(column.name));
+      renderColumns();
+      if (state.activeObject) generateQuery();
+    };
+    $('clearColumnsBtn').onclick = () => {
+      state.selectedColumns.clear();
+      renderColumns();
+      if (state.activeObject) generateQuery();
+    };
+    $('insertWhereBtn').onclick = () => {
+      const filters = getFilters();
+      if (!filters.length) {
+        addFilter();
+        if (state.activeObject && ['select', 'update', 'delete'].includes(state.queryMode)) {
+          generateQuery();
+        }
+        setStatus('success', 'Filter row added. Pick a column and value, then generate SQL.');
+        return;
+      }
+      const clause = whereClause(filters);
+      if (!clause) {
+        setStatus('neutral', 'Finish the filter value before inserting a WHERE clause.');
+        return;
+      }
+      if (state.activeObject && ['select', 'update', 'delete'].includes(state.queryMode)) {
+        generateQuery();
+        setStatus('success', `${state.queryMode.toUpperCase()} query rebuilt with the current WHERE clause.`);
+        return;
+      }
+      insertAtCursor(clause);
+      setStatus('success', 'WHERE clause inserted into SQL.');
+    };
+    $('insertOrderByBtn').onclick = () => insertAtCursor($('sortColumnSelect').value ? `\nORDER BY ${bid($('sortColumnSelect').value)} ${$('sortDirectionSelect').value || 'DESC'}` : '\nORDER BY ');
+    $('insertJoinCommentBtn').onclick = () => insertAtCursor(`\n-- JOIN note: connect ${state.activeObject || 'dbo.YourTable'} to another object here\n-- Example: INNER JOIN dbo.OtherTable o ON o.Key = t.Key\n`);
+    $('loadProcedureParamsBtn').onclick = () => refreshProcedureParameters().catch((error) => setStatus('error', error.message));
+    $('runProcedureBtn').onclick = () => runProcedure().catch((error) => setStatus('error', error.message));
+    $('copyResultsBtn').onclick = copyResults;
+    $('decreaseResultsTextBtn').onclick = () => changeResultsTextSize(-0.04);
+    $('increaseResultsTextBtn').onclick = () => changeResultsTextSize(0.04);
+    $('exportCsvBtn').onclick = exportCsv;
+    if ($('scrollResultsLeftBtn')) {
+      $('scrollResultsLeftBtn').onclick = () => scrollResultsHorizontal(-1);
+    }
+    if ($('scrollResultsRightBtn')) {
+      $('scrollResultsRightBtn').onclick = () => scrollResultsHorizontal(1);
+    }
+    if ($('scrollResultsDockLeftBtn')) {
+      $('scrollResultsDockLeftBtn').onclick = () => scrollResultsHorizontal(-1);
+    }
+    if ($('scrollResultsDockRightBtn')) {
+      $('scrollResultsDockRightBtn').onclick = () => scrollResultsHorizontal(1);
+    }
+    $('prevPageBtn').onclick = () => {
+      state.results.page = Math.max(1, state.results.page - 1);
+      renderResults();
+    };
+    $('nextPageBtn').onclick = () => {
+      state.results.page += 1;
+      renderResults();
+    };
+    $('closeModalBtn').onclick = closeConfirm;
+    $('cancelModalBtn').onclick = closeConfirm;
+    $('confirmModalBtn').onclick = () => confirmPendingAction().catch((error) => setStatus('error', error.message));
+    $('confirmModal').onclick = (event) => {
+      if (event.target.id === 'confirmModal') closeConfirm();
+    };
+    document.querySelectorAll('[data-snippet]').forEach((button) => {
+      button.onclick = () => {
+        setWorkspace('sql');
+        setQuery(SNIPPETS[button.dataset.snippet] || DEFAULT_QUERY);
+        setStatus('success', 'Snippet loaded.');
+      };
+    });
+    document.querySelectorAll('#queryModeSegment .segment-btn').forEach((button) => {
+      button.onclick = () => setMode(button.dataset.mode);
+    });
+    document.querySelectorAll('.workspace-segment').forEach((button) => {
+      button.onclick = () => setWorkspace(button.dataset.workspace);
+    });
+    document.querySelectorAll('.explorer-segment').forEach((button) => {
+      button.onclick = () => setExplorer(button.dataset.explorer);
+    });
+    ['sortColumnSelect', 'sortDirectionSelect', 'topRowsInput', 'distinctSelect'].forEach((id) => {
+      $(id).onchange = () => {
+        if (state.queryMode === 'select' && state.activeObject) generateQuery();
+      };
+    });
+    $('advancedSourceObjectSelect').onchange = updateAdvancedOperationsSummary;
+    $('targetJoinColumnSelect').onchange = () => {
+      if (!$('sourceJoinColumnInput').value.trim()) {
+        $('sourceJoinColumnInput').value = $('targetJoinColumnSelect').value;
+      }
+      updateAdvancedOperationsSummary();
+    };
+    $('sourceJoinColumnInput').oninput = updateAdvancedOperationsSummary;
+    $('profileSampleRowsInput').oninput = updateAdvancedOperationsSummary;
+    $('tableSearchInput').oninput = debounce(filterObjects, 120);
+    $('procedureSearchInput').oninput = debounce(filterProcedures, 120);
+    if ($('queryHistorySearch')) {
+      $('queryHistorySearch').oninput = debounce(() => {
+        state.historyFilter = ($('queryHistorySearch').value || '').trim().toLowerCase();
+        renderQueryHistory();
+      }, 150);
+    }
+    if ($('localResultsFilter')) {
+      $('localResultsFilter').oninput = debounce(() => {
+        state.results.localFilter = ($('localResultsFilter').value || '').trim();
+        state.results.page = 1;
+        renderResults();
+      }, 150);
+    }
+    if (window.__dataWorkbenchResultsDockHandler) {
+      window.removeEventListener('scroll', window.__dataWorkbenchResultsDockHandler, true);
+      window.removeEventListener('resize', window.__dataWorkbenchResultsDockHandler);
+    }
+    window.__dataWorkbenchResultsDockHandler = debounce(updateResultScrollControls, 60);
+    window.addEventListener('scroll', window.__dataWorkbenchResultsDockHandler, true);
+    window.addEventListener('resize', window.__dataWorkbenchResultsDockHandler);
+
+    const editor = $('queryEditor');
+    if (editor) {
+      editor.oninput = () => {
+        updateEditorStats();
+        syncEditorBackdrop();
+      };
+      editor.onscroll = () => {
+        const backdrop = $('queryEditorBackdrop');
+        if (backdrop) {
+          backdrop.scrollTop = editor.scrollTop;
+          backdrop.scrollLeft = editor.scrollLeft;
+        }
+      };
+    }
+
+    document.addEventListener('click', (e) => {
+      const menu = $('resultsContextMenu');
+      if (menu && !menu.classList.contains('hidden') && !menu.contains(e.target)) {
+        menu.classList.add('hidden');
+      }
+    });
+
+    if ($('contextCopyJsonBtn')) {
+      $('contextCopyJsonBtn').onclick = () => {
+        if (state.results.contextRow) {
+          copyText(JSON.stringify(state.results.contextRow, null, 2), 'Row copied as JSON.');
+          $('resultsContextMenu')?.classList.add('hidden');
+        }
+      };
+    }
+    if ($('contextCopyCsvBtn')) {
+      $('contextCopyCsvBtn').onclick = () => {
+        if (state.results.contextRow) {
+          const csv = state.results.columns.map(c => `"${String(state.results.contextRow[c] ?? '').replace(/"/g, '""')}"`).join(',');
+          copyText(csv, 'Row copied as CSV.');
+          $('resultsContextMenu')?.classList.add('hidden');
+        }
+      };
+    }
+    if (window.__dataWorkbenchKeydownHandler) {
+      document.removeEventListener('keydown', window.__dataWorkbenchKeydownHandler);
+    }
+    window.__dataWorkbenchKeydownHandler = (event) => {
+      if (event.key === 'Escape' && !$('confirmModal').classList.contains('hidden')) {
+        closeConfirm();
+        return;
+      }
+      if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
+        event.preventDefault();
+        if (state.workspace === 'procedure') runProcedure().catch((error) => setStatus('error', error.message));
+        else runQuery().catch((error) => setStatus('error', error.message));
+        return;
+      }
+      if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key.toLowerCase() === 'f') {
+        event.preventDefault();
+        formatSql();
+      }
+    };
+    document.addEventListener('keydown', window.__dataWorkbenchKeydownHandler);
+  }
+
+  async function init() {
+    loadAdvancedOperationsVisibility();
+    loadTextPreferences();
+    loadSidePanelVisibility();
+    loadPanelLayout();
+    await loadHealth();
+    restoreActiveConnection();
+    const pageMode = currentPageMode();
+    state.workspace = pageMode === 'procedures' ? 'procedure' : 'sql';
+    state.explorer = pageMode === 'procedures' ? 'procedures' : 'objects';
+    bind();
+    setupResizablePanels();
+    applyTextPreferences();
+    loadTheme();
+    await loadConnectionHistory();
+    loadQueryHistory();
+    setWorkspace(state.workspace);
+    setExplorer(state.explorer);
+    const catalogRestored = restoreCatalogState();
+    renderExplorerSummary();
+    renderProcedureWorkspace();
+    renderFilters();
+    renderAdvancedOperationsVisibility();
+    populateAdvancedObjectOptions();
+    populateJoinColumnOptions();
+    updateAdvancedOperationsSummary();
+    renderResults();
+    renderSaveConnectionResult();
+    renderConnectionTestResult();
+    modeWarning();
+    if (!catalogRestored || !state.activeObject) {
+      setQuery(DEFAULT_QUERY);
+    } else {
+      generateQuery();
+    }
+    updateEditorStats();
+    if (!catalogRestored && pageMode === 'procedures' && hasReadyConnection()) {
+      await loadCatalog().catch((error) => setStatus('error', `Could not restore the procedure catalog: ${error.message}`));
+    }
+  }
+
+  return { init };
+};

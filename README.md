@@ -1,0 +1,747 @@
+# Data Workbench Console
+
+Production-safe multi-source SQL workbench and stored procedure runner for Microsoft Fabric SQL endpoints, Fabric Lakehouse SQL endpoints, and SQL Server.
+
+The app is built with Next.js and is designed for internal operational use where safety, auditability, and controlled execution matter more than unrestricted SQL access.
+
+> **Internal tool warning**
+>
+> This app can connect to real databases and execute writes/procedures when the connected source allows it. Do not publish it with real `.env` secrets, audit logs, saved connections, or production credentials. Put authentication/SSO or a private network boundary in front of any hosted deployment.
+
+## Quick Start
+
+Prerequisites:
+
+- Node.js `>=20`
+- npm
+- Network access to the SQL endpoints you want to use, usually outbound TCP `1433`
+- For Microsoft Fabric sources, an Azure/Fabric service principal with access to the target workspace and SQL endpoint
+
+Install dependencies:
+
+```bash
+npm ci
+```
+
+Create a local environment file:
+
+```bash
+cp .env.example .env
+```
+
+On Windows PowerShell, use:
+
+```powershell
+Copy-Item .env.example .env
+```
+
+Then edit `.env` and set the Fabric service-principal values if you want to connect to Fabric:
+
+```env
+AZURE_CLIENT_ID=your-client-id
+AZURE_CLIENT_SECRET=your-client-secret
+AZURE_TENANT_ID=your-tenant-id
+```
+
+Run the development server:
+
+```bash
+npm run dev
+```
+
+Open:
+
+```text
+http://localhost:3000
+```
+
+Build and run production locally:
+
+```bash
+npm run build
+npm run start
+```
+
+Run the full local verification suite:
+
+```bash
+npm run verify
+```
+
+## Local Usage Flow
+
+1. Open `http://localhost:3000`.
+2. Choose the source type:
+   - `Fabric SQL endpoint`
+   - `Fabric Lakehouse SQL endpoint`
+   - `SQL Server`
+3. Choose authentication.
+4. Enter server, port, and database.
+5. Click `Test connection`.
+6. Click `Load catalog`.
+7. Use `SQL Studio` for object browsing, query generation, read queries, write preview, and results.
+8. Use `Procedure Runner` for stored procedure discovery and execution where supported.
+
+## Documentation Pages
+
+The app includes user-facing documentation pages:
+
+- `/docs/sql-studio`
+  SQL Studio documentation
+
+- `/docs/procedure-runner`
+  Procedure Runner documentation
+
+The main UI contains a `Documentation` button that opens the relevant documentation page in a new browser tab.
+
+## Publish To GitHub
+
+Before creating a GitHub repository, check that sensitive files are ignored:
+
+```bash
+git status --short
+```
+
+Files that must not be committed:
+
+- `.env`
+- `.data/`
+- `audit-log.ndjson`
+- `audit-log.ndjson.tmp`
+- `data/saved-connections.json`
+- `node_modules/`
+- `.next/`
+
+Initialize the repository:
+
+```bash
+git init
+git add .
+git status --short
+git commit -m "Initial commit"
+```
+
+Create an empty repository on GitHub, then connect and push:
+
+```bash
+git branch -M main
+git remote add origin https://github.com/<your-org-or-user>/<repo-name>.git
+git push -u origin main
+```
+
+If you use the GitHub CLI:
+
+```bash
+gh repo create <repo-name> --private --source=. --remote=origin --push
+```
+
+Use a private repository unless the code and documentation have been reviewed for public release.
+
+## Important Environment Variables
+
+Common local values are documented in `.env.example`.
+
+Fabric authentication:
+
+- `AZURE_CLIENT_ID`
+- `AZURE_CLIENT_SECRET`
+- `AZURE_TENANT_ID`
+
+Runtime and limits:
+
+- `PORT`
+- `DB_PORT`
+- `DB_CONNECTION_TIMEOUT_MS`
+- `DB_REQUEST_TIMEOUT_MS`
+- `RESPONSE_ROW_LIMIT`
+- `MAX_QUERY_LENGTH`
+- `WRITE_PREVIEW_LIMIT`
+- `CONFIRMATION_TTL_MS`
+
+Audit and local persistence:
+
+- `AUDIT_LOG_FILE`
+- `AUDIT_LOG_LIMIT`
+- `AUDIT_LOG_MAX_BYTES`
+- `APP_DATA_DIR`
+- `SAVED_CONNECTIONS_FILE`
+- `CONFIRMATION_STORE_FILE`
+
+Hosted/internal security:
+
+- `ALLOW_LOCAL_MISSING_ORIGIN=false`
+- `AUDIT_LOCAL_ONLY=false` only if remote audit viewing should be allowed
+- `AUDIT_ACCESS_MODE=same-origin` for same-origin hosted audit access
+
+## Purpose
+
+This app provides a browser-based operator console for:
+
+- connecting to supported SQL-capable sources
+- loading object and procedure catalogs from the active source
+- generating SQL from live metadata
+- running read queries directly
+- previewing and confirming write queries before execution
+- running stored procedures from a dedicated workflow with explicit confirmation
+- reviewing a persistent audit trail of actions performed through the app
+
+It is intentionally stricter than a generic SQL editor.
+
+## Supported Sources And Authentication
+
+Source types:
+
+- `fabric-sql`
+  Fabric SQL endpoint
+  Supports objects and stored procedures
+  Authentication: `servicePrincipal`
+
+- `fabric-lakehouse`
+  Fabric Lakehouse SQL endpoint
+  Supports objects
+  Does not support stored procedures in this app
+  Authentication: `servicePrincipal`
+
+- `sql-server`
+  SQL Server
+  Supports objects and stored procedures
+  Authentication: `sqlLogin` and `servicePrincipal`
+
+Authentication modes:
+
+- `servicePrincipal`
+  Azure AD service principal using:
+  `AZURE_CLIENT_ID`
+  `AZURE_CLIENT_SECRET`
+  `AZURE_TENANT_ID`
+
+- `sqlLogin`
+  SQL username and password
+
+Connection normalization behavior:
+
+- default source type is `fabric-sql`
+- source aliases such as `fabric`, `warehouse`, `lakehouse`, `mssql`, and `sqlserver` are normalized internally
+- server and port are normalized from either split inputs or `server:port`
+- SQL Server can use `trustServerCertificate`
+- SQL login requires username and password
+
+## Main Pages
+
+The app has two primary workspaces:
+
+- `SQL Studio`
+  Query builder, SQL editor, object explorer, advanced object operations, results grid, audit access
+
+- `Procedure Runner`
+  Procedure explorer, parameter discovery, typed confirmation, procedure execution results and output values
+
+## Main UI Features
+
+### Connection Rail
+
+The left panel contains:
+
+- source selector
+- auth selector
+- server input
+- port input
+- database input
+- conditional credential inputs
+- SQL Server certificate trust toggle
+- `Test` action
+- `Load catalog` action
+- `Save` action
+- saved connection list
+- safety policy summary
+
+Connection behavior:
+
+- current active connection is persisted across page switches in session storage
+- saved connection profiles can be loaded back into the form
+- passwords and secrets are not persisted in saved profiles
+- connection tests show success or failure summaries in the UI
+
+Saved connection behavior:
+
+- saved connections are persisted server-side to a JSON file
+- the client also maintains a local fallback copy for resilience
+- saved connections can be deleted
+- loading a saved connection restores source, auth mode, server, port, database, username, and trust setting
+- loading a saved connection does not automatically execute SQL or load the catalog
+
+### Object Explorer
+
+The SQL page object explorer supports:
+
+- loaded tables and views
+- search filtering
+- active object highlighting
+- object type display
+
+The procedure page explorer supports:
+
+- loaded stored procedures
+- search filtering
+- active procedure highlighting
+
+Catalog behavior:
+
+- object and procedure catalogs are loaded together when possible
+- catalog state is restored across page switches for the current connection
+- selected object, loaded columns, selected procedure, procedure parameters, and typed procedure input values are restored during the same browser session
+
+### Query Builder
+
+The SQL builder supports:
+
+- operation modes:
+  `SELECT`
+  `INSERT`
+  `UPDATE`
+  `DELETE`
+
+- column selection
+  all columns
+  clear columns
+  per-column toggle selection
+
+- filters
+  dynamic filter rows
+  operators including null-style conditions
+  live regeneration of SQL for supported modes
+
+- sort and limit controls
+  sort column
+  sort direction
+  top rows
+  distinct
+
+- quick actions
+  `Preview rows`
+  `Count rows`
+  `Reset`
+  `Generate SQL`
+  `Insert WHERE`
+  `Insert ORDER BY`
+  `Join note`
+
+Generated SQL remains editable in the SQL editor after generation.
+
+### Advanced Operations
+
+The SQL page includes expandable advanced operations for the currently loaded object:
+
+- source object selection from the loaded catalog
+- profile sample row count
+- target key selection
+- source key input
+
+Template generation:
+
+- `INSERT SELECT`
+- `UPDATE JOIN`
+- `MERGE preview`
+
+Important behavior:
+
+- `MERGE` is blocked from execution in the app
+- the app only generates a review template for `MERGE`
+
+Read-only object analysis actions:
+
+- sample profile
+- dependency view
+
+These actions load results into the results grid without changing saved SQL history.
+
+### SQL Editor
+
+The editor supports:
+
+- manual SQL editing
+- generated SQL editing
+- format SQL
+- copy SQL
+- clear SQL
+- execute query
+- live line and character counts
+
+Keyboard shortcuts:
+
+- `Ctrl+Enter` or `Cmd+Enter`
+  Run query or procedure depending on active workspace
+
+- `Ctrl+Shift+F` or `Cmd+Shift+F`
+  Format SQL
+
+### Procedure Runner
+
+Stored procedure execution includes:
+
+- procedure catalog loading
+- parameter discovery from metadata
+- parameter input rendering
+- output parameter awareness
+- typed confirmation before execution
+- result set rendering
+- output value rendering
+- return value rendering
+
+Procedure-specific behavior:
+
+- procedures are not run through free-form `EXEC` in the SQL editor
+- they are executed only from the procedure runner workflow
+
+### Results Grid
+
+The results area supports:
+
+- row pagination
+- sortable columns
+- column resizing by dragging header handles
+- double-click reset for resized result columns
+- horizontal scrolling for wide result sets
+- row index column
+- result metadata summary
+- output artifact cards
+- audit log loading into the results grid
+- `Copy rows`
+- `Export CSV`
+
+Long-value handling:
+
+- long JSON/text values are collapsed by default
+- `Show more` / `Show less` expands or collapses them visually
+- the underlying value is unchanged
+- full values are still used for:
+  sorting
+  copy rows
+  CSV export
+  cell title hover content
+
+Null handling:
+
+- null and empty-like values are rendered with a structured `NULL` pill
+
+### Themes
+
+Built-in themes:
+
+- `midnight`
+- `harbor`
+- `forge`
+- `field`
+- `ink`
+- `paper`
+
+Theme behavior:
+
+- theme selection is saved locally in browser storage
+- dark themes and the light paper theme have separate visual tuning
+- results cell contrast is elevated for dark themes
+
+### Recent SQL History
+
+The app stores recent SQL locally with:
+
+- deduplication
+- retention trimming
+- timestamp display
+- one-click reload into the editor
+- clear history action
+
+### Panel Controls And Layout
+
+The UI supports:
+
+- resizable left connection rail
+- resizable object/procedure explorer
+- resizable right activity panel
+- resizable results panel height
+- hide/show left panel
+- hide/show right panel
+
+Layout behavior:
+
+- side panel hide/show state is persisted locally
+- panel widths and results height are persisted locally
+- panel size reset is supported by double-clicking resize handles
+- resize handles automatically disable on narrower layouts
+
+## Backend Execution And Safety Model
+
+### Read Queries
+
+Supported direct read behavior:
+
+- `SELECT` only
+- server-side row cap applied by wrapping the query
+- result mapping into UI-friendly row/column payloads
+
+### Write Queries
+
+Supported write behavior:
+
+- `INSERT`
+- `UPDATE` with `WHERE`
+- `DELETE` with `WHERE`
+
+Write flow:
+
+1. classify query
+2. block unsafe patterns early
+3. run preview in a rollback transaction
+4. return rows affected and confirmation requirements
+5. require explicit confirmation token
+6. for larger writes, require typed second confirmation
+7. execute in a transaction only after confirmation
+
+### Blocked SQL
+
+The backend blocks:
+
+- `TRUNCATE`
+- `DROP`
+- `ALTER`
+- `CREATE`
+- `MERGE`
+- `GRANT`
+- `REVOKE`
+- `EXEC` and `EXECUTE` from the SQL editor
+- `UPDATE` without `WHERE`
+- `DELETE` without `WHERE`
+- multiple SQL statements in one request
+
+### Stored Procedure Safety
+
+Stored procedures:
+
+- are prepared first
+- get a confirmation token
+- always require typed confirmation
+- are executed only from the procedure runner
+
+### Default Safety Limits
+
+Defaults:
+
+- write preview hard limit: `10`
+- typed confirmation threshold: `3`
+- API response row cap: `250`
+- confirmation TTL: `300000` ms
+
+These can be changed through environment variables.
+
+## Audit And Observability
+
+The backend writes audit entries for:
+
+- connection tests
+- object loads
+- procedure loads
+- column loads
+- object profiling
+- dependency inspection
+- query reads
+- write previews
+- write execution
+- procedure prepare
+- procedure execution
+- blocked operations
+- errors
+- saved connection profile changes
+
+Audit characteristics:
+
+- append-oriented NDJSON persistence
+- bounded in-memory cache
+- startup reload from disk
+- trimming when size or count limits are exceeded
+- audit endpoint supports recent-entry retrieval
+
+Audit access:
+
+- by default audit is local-only / loopback-oriented
+- access mode is configurable
+
+## Persistence And Local State
+
+Server-side persisted files:
+
+- audit log NDJSON file
+- pending confirmation JSON file
+- saved connections JSON file
+
+Client-side persisted state:
+
+- active connection snapshot
+- loaded catalog snapshot for the current connection
+- query history
+- theme
+- panel layout
+- advanced operations visibility
+- side panel visibility
+
+## Request Handling And Operational Controls
+
+The backend includes:
+
+- same-origin / referer validation for non-GET requests
+- optional local missing-origin allowance
+- session cookie issuance
+- per-route POST rate limiting
+- loopback-aware audit endpoint checks
+
+## Environment Variables
+
+Current important environment variables used by the app:
+
+Connection and pool:
+
+- `PORT`
+- `DB_PORT`
+- `DB_CONNECTION_TIMEOUT_MS`
+- `DB_REQUEST_TIMEOUT_MS`
+- `DB_POOL_IDLE_TIMEOUT_MS`
+- `DB_POOL_CACHE_TTL_MS`
+
+Azure service principal:
+
+- `AZURE_CLIENT_ID`
+- `AZURE_CLIENT_SECRET`
+- `AZURE_TENANT_ID`
+
+Safety and execution:
+
+- `WRITE_PREVIEW_LIMIT`
+- `HEIGHTENED_CONFIRM_LIMIT`
+- `CONFIRMATION_TTL_MS`
+- `RESPONSE_ROW_LIMIT`
+- `MAX_QUERY_LENGTH`
+- `MAX_PROCEDURE_PARAM_LENGTH`
+
+Audit:
+
+- `AUDIT_LOG_LIMIT`
+- `AUDIT_LOG_MAX_BYTES`
+- `AUDIT_LOG_FILE`
+- `AUDIT_LOCAL_ONLY`
+- `AUDIT_ACCESS_MODE`
+
+Session and request validation:
+
+- `SESSION_COOKIE_NAME`
+- `SESSION_COOKIE_TTL_SECONDS`
+- `ALLOW_LOCAL_MISSING_ORIGIN`
+- `POST_RATE_LIMIT_MAX`
+- `POST_RATE_LIMIT_WINDOW_MS`
+
+Saved connections and runtime files:
+
+- `APP_DATA_DIR`
+- `SAVED_CONNECTIONS_LIMIT`
+- `SAVED_CONNECTIONS_FILE`
+- `CONFIRMATION_STORE_FILE`
+
+## Project Structure
+
+Main app code:
+
+- `app/`
+  App Router pages, layout, CSS, components, API route entry points
+
+- `app/api/`
+  Next route handlers for:
+  `health`
+  `audit`
+  `tables`
+  `columns`
+  `object-insights`
+  `query`
+  `procedures`
+  `procedure-parameters`
+  `test-connection`
+  `saved-connections`
+
+- `lib/server/`
+  server-side connection handling, metadata access, audit store, confirmation store, saved connection store, request handling
+
+- `public/console-core.js`
+  main client-side application controller and UI behavior
+
+- `public/console-app.js`
+  bootstraps the client app
+
+- `app/theme.css`
+  theme tokens and shared presentation primitives
+
+- `app/workbench.css`
+  layout and workbench-specific styling
+
+## Setup
+
+1. Create `.env`
+2. Populate the required settings
+3. Install dependencies
+4. Start the app
+
+Development:
+
+```bash
+npm install
+npm run dev
+```
+
+Open:
+
+```text
+http://localhost:3000
+```
+
+Production:
+
+```bash
+npm run build
+npm start
+```
+
+## Verification
+
+Available scripts:
+
+- `npm run dev`
+  start development server
+
+- `npm run build`
+  build production assets
+
+- `npm run start`
+  run the production build
+
+- `npm run clean`
+  remove `.next`
+
+- `npm run verify`
+  run:
+  clean
+  build
+  server smoke test
+  UI smoke test
+
+Verification helpers:
+
+- `scripts/smoke-test.mjs`
+  validates production-start behavior, health endpoint, blocked query behavior, and audit availability
+
+- `scripts/ui-smoke.mjs`
+  validates client UI wiring and behavior against the built app using JSDOM mocks
+
+## Important Notes
+
+- SQL login passwords are never saved in connection profiles
+- service principal secrets are never persisted in saved profiles
+- saved connections restore connection details, not an already-open live connection
+- procedures must be executed from the dedicated procedure workflow
+- `MERGE` generation is supported only as a review template, not as an executable statement
+- this app is intentionally production-safe, so convenience features are secondary to execution control
