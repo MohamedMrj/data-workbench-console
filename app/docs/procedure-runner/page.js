@@ -7,6 +7,7 @@ export const metadata = {
 
 const sections = [
   { id: 'workflow', label: 'Arbetsflöde' },
+  { id: 'switching', label: 'Växla läge' },
   { id: 'support', label: 'Stöd' },
   { id: 'explorer', label: 'Explorer' },
   { id: 'parameters', label: 'Parametrar' },
@@ -43,6 +44,18 @@ export default function ProcedureRunnerDocsPage() {
         </DocsMiniSection>
       </DocsSection>
 
+      <DocsSection id="switching" title="Växla mellan lägen">
+        <DocsMiniSection title="Toppswitchen">
+          <p>SQL Studio och Procedure Runner växlas från toppytan, inte från vänsterpanelen. Det gör att du kan byta läge även när connection-panelen är dold.</p>
+        </DocsMiniSection>
+        <DocsMiniSection title="Vad återställs?">
+          <p>När du kommer tillbaka till Procedure Runner återställs vald procedur, parameterfält, procedure-resultat, resultatsida, lokalt resultatfilter och procedure history för samma browserflik.</p>
+        </DocsMiniSection>
+        <DocsMiniSection title="Separat historik">
+          <p>Procedure Runner visar bara procedure history. SQL Studio visar bara SQL history. Historikerna blandas inte.</p>
+        </DocsMiniSection>
+      </DocsSection>
+
       <DocsSection id="support" title="Stöd per källa">
         <div className="docs-card-row">
           <div className="docs-card"><strong>Fabric SQL endpoint</strong><span>Procedurkatalog, parametrar och körning stöds.</span></div>
@@ -70,6 +83,7 @@ export default function ProcedureRunnerDocsPage() {
           <div><strong>NULL</strong><span>Skriv <code>NULL</code> för att skicka ett riktigt null-värde.</span></div>
           <div><strong>Output</strong><span>Output-parametrar fylls inte i före körning. De visas efteråt.</span></div>
           <div><strong>Validering</strong><span>Nummer, datum, boolean och GUID kontrolleras när datatypen är känd.</span></div>
+          <div><strong>History restore</strong><span>Klicka på en tidigare procedure run för att välja proceduren igen och fylla tillbaka samma parametervärden.</span></div>
         </div>
       </DocsSection>
 
@@ -91,6 +105,7 @@ export default function ProcedureRunnerDocsPage() {
           <li>Rows affected visar databasens rapporterade påverkan.</li>
           <li>Output-parametrar visas efter körning.</li>
           <li>Audit sparar prepare och execute med källa, databas, utfall och detalj.</li>
+          <li>Procedure history sparar procedurnamn och parametervärden efter bekräftad körning.</li>
           <li>Export och copy fungerar på synliga rader i resultatpanelen.</li>
         </ul>
       </DocsSection>

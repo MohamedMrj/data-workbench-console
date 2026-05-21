@@ -32,6 +32,9 @@ the copyright owner.
 | --- | --- |
 | SQL Studio | Browse tables/views, generate SQL, run SELECT queries, preview writes, inspect results, export CSV. |
 | Procedure Runner | Browse stored procedures, inspect parameters, prepare execution, confirm, view output/return values. |
+| Mode switching | Switch between SQL Studio and Procedure Runner from the top workspace header, even when the connection panel is hidden. |
+| Workspace restore | Return to each mode with the editor, filters, selected procedure, parameter values, results, pagination, and local result filters restored for the current browser tab. |
+| Mode-specific history | SQL Studio shows SQL history. Procedure Runner shows procedure run history and can restore saved parameter values. |
 | Connection profiles | Save reusable connection details without storing passwords or client secrets. |
 | Audit | Track connection tests, catalog loads, query execution, write previews, procedure execution, and saved profile changes. |
 | Documentation | Built-in user docs at `/docs/sql-studio` and `/docs/procedure-runner`. |
@@ -62,6 +65,14 @@ the copyright owner.
 5. Click `Load catalog`.
 6. Use `SQL Studio` for tables, views, SQL generation, query execution, and results.
 7. Use `Procedure Runner` for stored procedures where the selected source supports them.
+8. Switch modes from the top of the workspace. The app keeps each mode where you left it during the same browser tab session.
+
+History behavior:
+
+- In `SQL Studio`, the history panel shows recent SQL only.
+- In `Procedure Runner`, the history panel shows procedure runs only.
+- Clicking a procedure history item restores the selected procedure and the parameter values used for that run.
+- If the active connection differs from the connection used by the history item, check the connection before running again.
 
 Useful pages:
 
@@ -453,6 +464,20 @@ The app stores recent SQL locally with:
 - timestamp display
 - one-click reload into the editor
 - clear history action
+
+SQL history is shown only in `SQL Studio`.
+
+### Procedure Run History
+
+The app stores procedure runs locally after confirmed execution with:
+
+- procedure name
+- parameter values used for the run
+- connection context
+- timestamp display
+- one-click restore into Procedure Runner
+
+Procedure history is shown only in `Procedure Runner`. When a history item is clicked, the app selects the stored procedure again and restores the parameter values from that run. If the current connection differs from the saved connection context, the app warns the user to check the connection before running again.
 
 ### Panel Controls And Layout
 

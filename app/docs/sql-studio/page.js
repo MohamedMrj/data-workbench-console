@@ -7,6 +7,7 @@ export const metadata = {
 
 const sections = [
   { id: 'workflow', label: 'Arbetsflöde' },
+  { id: 'switching', label: 'Växla läge' },
   { id: 'connection', label: 'Anslutning' },
   { id: 'explorer', label: 'Objekt' },
   { id: 'builder', label: 'Bygg SQL' },
@@ -40,6 +41,18 @@ export default function SqlStudioDocsPage() {
         </DocsMiniSection>
         <DocsMiniSection title="Inte för stored procedures">
           <p>Stored procedures körs från <strong>Procedure Runner</strong>. Kör inte fri <code>EXEC</code> i SQL-editorn.</p>
+        </DocsMiniSection>
+      </DocsSection>
+
+      <DocsSection id="switching" title="Växla mellan lägen">
+        <DocsMiniSection title="Var finns switchen?">
+          <p>Du växlar mellan <strong>SQL Studio</strong> och <strong>Procedure Runner</strong> i toppytan. Den ligger inte i connection-panelen, så den finns kvar även när connection-panelen är dold.</p>
+        </DocsMiniSection>
+        <DocsMiniSection title="Vad sparas när du växlar?">
+          <p>När du lämnar SQL Studio sparas editor-text, cursorposition, query mode, filter, sortering, TOP, Distinct, advanced-fält, resultat, resultatsida och lokalt resultatfilter i aktuell browserflik.</p>
+        </DocsMiniSection>
+        <DocsMiniSection title="När du kommer tillbaka">
+          <p>SQL Studio försöker återställa samma arbetsläge för samma connection. Om connection byts laddas inte gammalt workspace-state automatiskt.</p>
         </DocsMiniSection>
       </DocsSection>
 
@@ -92,7 +105,8 @@ export default function SqlStudioDocsPage() {
           <li><strong>Filter results</strong> filtrerar bara det som redan visas i webbläsaren.</li>
           <li><strong>Export CSV</strong> och <strong>Copy rows</strong> använder synliga resultat.</li>
           <li><strong>Audit log</strong> visar senaste auditposter om servern tillåter åtkomst.</li>
-          <li><strong>Recent SQL</strong> sparas lokalt i webbläsaren och kan rensas.</li>
+          <li><strong>Recent SQL</strong> visas bara i SQL Studio, sparas lokalt i webbläsaren och kan rensas.</li>
+          <li>Procedure Runner har separat procedure history, så SQL-frågor och procedurkörningar blandas inte.</li>
           <li><strong>Themes</strong> sparas lokalt och följer även dokumentationssidorna.</li>
         </ul>
       </DocsSection>

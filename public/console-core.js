@@ -996,8 +996,13 @@ window.createConsoleApp = function createConsoleApp() {
   }
 
   function currentBuilderSnapshot() {
+    const editor = $('queryEditor');
     return {
       query: getQuery(),
+      selectionStart: Number(editor?.selectionStart || 0),
+      selectionEnd: Number(editor?.selectionEnd || 0),
+      editorScrollTop: Number(editor?.scrollTop || 0),
+      editorScrollLeft: Number(editor?.scrollLeft || 0),
       queryMode: state.queryMode,
       filters: getFilters(),
       sortColumn: $('sortColumnSelect')?.value || '',
@@ -1025,6 +1030,9 @@ window.createConsoleApp = function createConsoleApp() {
       procedureParameters: Array.isArray(state.procedureParameters) ? state.procedureParameters : [],
       historyFilter: state.historyFilter || '',
       results: normalizeResultsSnapshot(state.results),
+      scrollY: Number(window.scrollY || 0),
+      resultsScrollLeft: Number($('resultsPanel')?.scrollLeft || 0),
+      resultsScrollTop: Number($('resultsPanel')?.scrollTop || 0),
       savedAt: new Date().toISOString()
     };
     if (key === 'sql') {
@@ -1067,6 +1075,15 @@ window.createConsoleApp = function createConsoleApp() {
       if ($('profileSampleRowsInput')) $('profileSampleRowsInput').value = builder.profileSampleRows || '200';
       restoreFilterRows(Array.isArray(builder.filters) ? builder.filters : []);
       setQuery(typeof builder.query === 'string' ? builder.query : getQuery());
+      const editor = $('queryEditor');
+      if (editor) {
+        const start = Math.max(0, Math.min(Number(builder.selectionStart || 0), editor.value.length));
+        const end = Math.max(start, Math.min(Number(builder.selectionEnd || start), editor.value.length));
+        editor.setSelectionRange?.(start, end);
+        editor.scrollTop = Number(builder.editorScrollTop || 0);
+        editor.scrollLeft = Number(builder.editorScrollLeft || 0);
+        syncEditorBackdrop();
+      }
       updateAdvancedOperationsSummary();
     } else {
       if (snapshot.activeProcedure && snapshot.activeProcedure === state.activeProcedure) {
@@ -1086,6 +1103,21 @@ window.createConsoleApp = function createConsoleApp() {
     }
     renderHistoryPanel();
     renderResults();
+    window.setTimeout(() => {
+      try {
+        if (!/jsdom/i.test(String(window.navigator?.userAgent || ''))) {
+          window.scrollTo?.({ top: Number(snapshot.scrollY || 0), left: 0, behavior: 'auto' });
+        }
+      } catch {
+        // jsdom does not implement scrollTo; browsers do.
+      }
+      const panel = $('resultsPanel');
+      if (panel) {
+        panel.scrollLeft = Number(snapshot.resultsScrollLeft || 0);
+        panel.scrollTop = Number(snapshot.resultsScrollTop || 0);
+        updateResultScrollControls();
+      }
+    }, 0);
     return true;
   }
 
@@ -1674,6 +1706,8 @@ window.createConsoleApp = function createConsoleApp() {
       sync();
       if (state.activeObject && (state.queryMode === 'select' || state.queryMode === 'update' || state.queryMode === 'delete')) {
         generateQuery();
+      } else {
+        persistWorkspaceState('sql');
       }
     };
 
@@ -1931,7 +1965,11 @@ window.createConsoleApp = function createConsoleApp() {
   }
 
   function setWorkspace(workspace) {
-    state.workspace = workspace === 'procedure' ? 'procedure' : 'sql';
+    const nextWorkspace = workspace === 'procedure' ? 'procedure' : 'sql';
+    if (state.workspace && state.workspace !== nextWorkspace) {
+      persistWorkspaceState(state.workspace);
+    }
+    state.workspace = nextWorkspace;
     $('sqlWorkspace')?.classList.toggle('hidden', state.workspace !== 'sql');
     $('procedureWorkspace')?.classList.toggle('hidden', state.workspace !== 'procedure');
     document.querySelectorAll('.workspace-segment').forEach((button) => {
@@ -2040,6 +2078,7 @@ window.createConsoleApp = function createConsoleApp() {
       syncEditorBackdrop();
     }
     updateEditorStats();
+    persistWorkspaceState('sql');
   }
 
   function hasReadyConnection() {
@@ -2136,6 +2175,7 @@ window.createConsoleApp = function createConsoleApp() {
     $('queryModeHint').textContent = `Mode: ${mode[0].toUpperCase() + mode.slice(1)}`;
     modeWarning();
     if (state.activeObject) generateQuery();
+    else persistWorkspaceState('sql');
   }
 
   function generateQuery() {
@@ -2527,6 +2567,7 @@ window.createConsoleApp = function createConsoleApp() {
       input.oninput = () => {
         state.procedureValues[input.dataset.procedureParam] = input.value;
         persistCatalogState();
+        persistWorkspaceState('procedure');
       };
     });
   }
@@ -2609,6 +2650,7 @@ window.createConsoleApp = function createConsoleApp() {
       visualObject: meta.visualObject || meta.object || ''
     };
     renderResults();
+    persistWorkspaceState(state.workspace);
   }
 
   function sortedRows() {
@@ -2945,7 +2987,10 @@ window.createConsoleApp = function createConsoleApp() {
     if (!panel) {
       return;
     }
-    panel.onscroll = updateResultScrollControls;
+    panel.onscroll = () => {
+      updateResultScrollControls();
+      persistWorkspaceState(state.workspace);
+    };
     panel.onwheel = (event) => {
       if (!event.shiftKey) {
         return;
@@ -3039,6 +3084,7 @@ window.createConsoleApp = function createConsoleApp() {
           state.results.sortDirection = 'asc';
         }
         renderResults();
+        persistWorkspaceState(state.workspace);
       };
     });
     bindResultColumnResizers(panel);
@@ -3480,6 +3526,7 @@ window.createConsoleApp = function createConsoleApp() {
     $('addFilterBtn').onclick = () => {
       const row = addFilter();
       if (row) setStatus('success', 'Filter added. Pick a column and value to build the WHERE clause.');
+      persistWorkspaceState('sql');
     };
     $('selectAllColumnsBtn').onclick = () => {
       state.activeColumns.forEach((column) => state.selectedColumns.add(column.name));
@@ -3537,10 +3584,12 @@ window.createConsoleApp = function createConsoleApp() {
     $('prevPageBtn').onclick = () => {
       state.results.page = Math.max(1, state.results.page - 1);
       renderResults();
+      persistWorkspaceState(state.workspace);
     };
     $('nextPageBtn').onclick = () => {
       state.results.page += 1;
       renderResults();
+      persistWorkspaceState(state.workspace);
     };
     $('closeModalBtn').onclick = closeConfirm;
     $('cancelModalBtn').onclick = closeConfirm;
@@ -3567,17 +3616,28 @@ window.createConsoleApp = function createConsoleApp() {
     ['sortColumnSelect', 'sortDirectionSelect', 'topRowsInput', 'distinctSelect'].forEach((id) => {
       $(id).onchange = () => {
         if (state.queryMode === 'select' && state.activeObject) generateQuery();
+        else persistWorkspaceState('sql');
       };
     });
-    $('advancedSourceObjectSelect').onchange = updateAdvancedOperationsSummary;
+    $('advancedSourceObjectSelect').onchange = () => {
+      updateAdvancedOperationsSummary();
+      persistWorkspaceState('sql');
+    };
     $('targetJoinColumnSelect').onchange = () => {
       if (!$('sourceJoinColumnInput').value.trim()) {
         $('sourceJoinColumnInput').value = $('targetJoinColumnSelect').value;
       }
       updateAdvancedOperationsSummary();
+      persistWorkspaceState('sql');
     };
-    $('sourceJoinColumnInput').oninput = updateAdvancedOperationsSummary;
-    $('profileSampleRowsInput').oninput = updateAdvancedOperationsSummary;
+    $('sourceJoinColumnInput').oninput = () => {
+      updateAdvancedOperationsSummary();
+      persistWorkspaceState('sql');
+    };
+    $('profileSampleRowsInput').oninput = () => {
+      updateAdvancedOperationsSummary();
+      persistWorkspaceState('sql');
+    };
     $('tableSearchInput').oninput = debounce(filterObjects, 120);
     $('procedureSearchInput').oninput = debounce(filterProcedures, 120);
     if ($('queryHistorySearch')) {
@@ -3591,6 +3651,7 @@ window.createConsoleApp = function createConsoleApp() {
         state.results.localFilter = ($('localResultsFilter').value || '').trim();
         state.results.page = 1;
         renderResults();
+        persistWorkspaceState(state.workspace);
       }, 150);
     }
     if (window.__dataWorkbenchResultsDockHandler) {
@@ -3606,6 +3667,7 @@ window.createConsoleApp = function createConsoleApp() {
       editor.oninput = () => {
         updateEditorStats();
         syncEditorBackdrop();
+        persistWorkspaceState('sql');
       };
       editor.onscroll = () => {
         const backdrop = $('queryEditorBackdrop');
@@ -3660,6 +3722,24 @@ window.createConsoleApp = function createConsoleApp() {
       }
     };
     document.addEventListener('keydown', window.__dataWorkbenchKeydownHandler);
+
+    document.querySelectorAll('.workspace-mode-link').forEach((link) => {
+      link.addEventListener('click', () => {
+        persistWorkspaceState(state.workspace);
+        persistCatalogState();
+      });
+    });
+
+    if (window.__dataWorkbenchPagehideHandler) {
+      window.removeEventListener('pagehide', window.__dataWorkbenchPagehideHandler);
+      window.removeEventListener('beforeunload', window.__dataWorkbenchPagehideHandler);
+    }
+    window.__dataWorkbenchPagehideHandler = () => {
+      persistWorkspaceState(state.workspace);
+      persistCatalogState();
+    };
+    window.addEventListener('pagehide', window.__dataWorkbenchPagehideHandler);
+    window.addEventListener('beforeunload', window.__dataWorkbenchPagehideHandler);
   }
 
   async function init() {
@@ -3693,14 +3773,17 @@ window.createConsoleApp = function createConsoleApp() {
     renderSaveConnectionResult();
     renderConnectionTestResult();
     modeWarning();
-    if (!catalogRestored || !state.activeObject) {
+    const workspaceRestored = restoreWorkspaceState(state.workspace);
+    if (!workspaceRestored && (!catalogRestored || !state.activeObject)) {
       setQuery(DEFAULT_QUERY);
-    } else {
+    } else if (!workspaceRestored && state.workspace === 'sql') {
       generateQuery();
     }
     updateEditorStats();
     if (!catalogRestored && pageMode === 'procedures' && hasReadyConnection()) {
-      await loadCatalog().catch((error) => setStatus('error', `Could not restore the procedure catalog: ${error.message}`));
+      await loadCatalog()
+        .then(() => restoreWorkspaceState('procedure'))
+        .catch((error) => setStatus('error', `Could not restore the procedure catalog: ${error.message}`));
     }
   }
 
