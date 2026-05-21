@@ -1,173 +1,81 @@
-import { DocsCardGrid, DocsSection, DocsShell } from '../doc-shell';
+import { DocsMiniSection, DocsSection, DocsShell } from '../doc-shell';
 
 export const metadata = {
-  title: 'Procedure Runner Documentation - Data Workbench Console',
-  description: 'Användardokumentation för Procedure Runner i Data Workbench Console.'
+  title: 'Procedure Runner - Guide',
+  description: 'Kort guide for Procedure Runner i Data Workbench Console.'
 };
 
 const sections = [
-  { id: 'overview', label: 'Översikt' },
-  { id: 'source-support', label: 'Stöd per källa' },
-  { id: 'connection', label: 'Anslutning' },
-  { id: 'catalog', label: 'Procedurkatalog' },
+  { id: 'start', label: 'Kom igang' },
+  { id: 'support', label: 'Stod' },
   { id: 'parameters', label: 'Parametrar' },
-  { id: 'execution', label: 'Körning' },
-  { id: 'results', label: 'Resultat' },
-  { id: 'audit', label: 'Audit' },
-  { id: 'safety', label: 'Säkerhet' },
-  { id: 'errors', label: 'Vanliga fel' }
+  { id: 'run', label: 'Kora' },
+  { id: 'troubleshooting', label: 'Felsokning' }
 ];
 
 export default function ProcedureRunnerDocsPage() {
   return (
     <DocsShell
-      eyebrow="Användardokumentation"
+      eyebrow="Guide"
       title="Procedure Runner"
-      description="Procedure Runner är den dedikerade arbetsytan för att hitta, granska och köra stored procedures med parameterinspektion, tidsbegränsad bekräftelse och tydlig audit."
+      description="For dig som ska hitta, granska och kora stored procedures med tydlig parameterkontroll och bekraftelse."
       sections={sections}
+      steps={[
+        'Anslut och ladda katalogen.',
+        'Valj procedur i Procedure Explorer.',
+        'Granska parametrarna.',
+        'Fyll i varden.',
+        'Klicka Run procedure och bekrafta.'
+      ]}
     >
-      <DocsSection id="overview" title="Översikt">
-        <p>
-          Procedure Runner används när arbetet ska ske genom färdiga stored procedures i stället för fri SQL i editorn. Flödet är avsiktligt separat från SQL Studio för att göra exekvering, parametrar och audit tydligare.
-        </p>
-        <DocsCardGrid
-          items={[
-            { title: 'För nya användare', text: 'Anslut, ladda katalogen, välj en procedur, fyll i parametrar och kör först när du har granskat sammanfattningen.' },
-            { title: 'För operatörer', text: 'Kontrollera alltid vald procedur, databas, parameterlista och eventuell output innan bekräftelse.' },
-            { title: 'För utvecklare', text: 'Procedurmetadata läses från INFORMATION_SCHEMA eller sys-kataloger där källan stödjer det.' },
-            { title: 'För administratörer', text: 'Säkerställ att endast rätt källor och roller får köra procedurer i hostad miljö.' }
-          ]}
-        />
+      <DocsSection id="start" title="Kom igang">
+        <DocsMiniSection title="1. Anslut">
+          <p>Anvand samma connection-panel som SQL Studio. Testa anslutningen innan du laddar katalogen.</p>
+        </DocsMiniSection>
+        <DocsMiniSection title="2. Valj procedur">
+          <p><strong>Procedure Explorer</strong> visar procedurer for aktiv databas. Sok i listan och klicka pa proceduren du vill granska.</p>
+        </DocsMiniSection>
+        <DocsMiniSection title="3. Ladda om vid behov">
+          <p><strong>Refresh params</strong> hamtar parameterlistan igen om proceduren har andrats.</p>
+        </DocsMiniSection>
       </DocsSection>
 
-      <DocsSection id="source-support" title="Stöd per källa">
-        <p>
-          Alla anslutningstyper kan ladda objekt, men alla stödjer inte stored procedures i appen.
-        </p>
-        <ul>
-          <li><strong>Fabric SQL endpoint:</strong> stödjer procedurkatalog, parameterläsning och procedurkörning.</li>
-          <li><strong>Fabric Lakehouse SQL endpoint:</strong> procedurer är inte tillgängliga i den här appen. Lakehouse används via SQL endpoint för objekt/frågor i SQL Studio.</li>
-          <li><strong>SQL Server:</strong> stödjer procedurkatalog, parameterläsning och procedurkörning när användaren har behörighet.</li>
-        </ul>
-        <div className="docs-callout">
-          Om du väljer en källa som inte stödjer procedurer visas ett meddelande i Procedure Explorer i stället för en procedurlista.
+      <DocsSection id="support" title="Stod per kalla">
+        <div className="docs-card-row">
+          <div className="docs-card"><strong>Fabric SQL endpoint</strong><span>Stodjer procedurkatalog, parametrar och korning.</span></div>
+          <div className="docs-card"><strong>SQL Server</strong><span>Stodjer procedurer nar inloggningen har ratt behorighet.</span></div>
+          <div className="docs-card"><strong>Fabric Lakehouse</strong><span>Procedurer ar inte tillgangliga i appen for Lakehouse SQL endpoint.</span></div>
         </div>
-      </DocsSection>
-
-      <DocsSection id="connection" title="Anslutning">
-        <p>
-          Procedure Runner använder samma anslutningspanel som SQL Studio. Välj rätt källtyp, autentisering, server, port och databas.
-        </p>
-        <ul>
-          <li>Kör <strong>Test connection</strong> för att verifiera autentisering och nätverk.</li>
-          <li>Kör <strong>Load catalog</strong> för att hämta både objekt- och procedurkatalog där det är möjligt.</li>
-          <li>Sparade profiler kan användas för att fylla i återkommande anslutningar.</li>
-          <li>Lösenord och secrets sparas inte i sparade profiler.</li>
-        </ul>
-        <h3>Service principal</h3>
-        <p>
-          Fabric-källor använder service principal från serverns miljövariabler: <code>AZURE_CLIENT_ID</code>, <code>AZURE_CLIENT_SECRET</code> och <code>AZURE_TENANT_ID</code>. Service principal måste ha åtkomst till aktuell Fabric workspace och SQL endpoint.
-        </p>
-      </DocsSection>
-
-      <DocsSection id="catalog" title="Procedurkatalog">
-        <p>
-          Procedure Explorer visar procedurer som exponeras av den aktiva anslutningen. Listan laddas via <strong>Load catalog</strong>.
-        </p>
-        <ul>
-          <li>Sökfältet filtrerar procedurlistan lokalt.</li>
-          <li>När du väljer en procedur laddar appen parameterdefinitionerna.</li>
-          <li>Vald procedur visas i toppytan och i procedure summary.</li>
-          <li><strong>Refresh params</strong> laddar om parametrarna för vald procedur.</li>
-        </ul>
       </DocsSection>
 
       <DocsSection id="parameters" title="Parametrar">
-        <p>
-          När en procedur väljs visas procedurens parametrar, datatyper och parameterläge.
-        </p>
-        <ul>
-          <li><strong>IN-parametrar:</strong> fylls i av användaren innan körning.</li>
-          <li><strong>OUT/INOUT-parametrar:</strong> registreras som output och visas efter körning om källan returnerar dem.</li>
-          <li>Lämna ett fält tomt för att utelämna parametern.</li>
-          <li>Skriv <code>NULL</code> för att skicka ett null-värde.</li>
-          <li>Datum, nummer, boolean och GUID valideras mot datatyp där appen kan avgöra typen.</li>
+        <ul className="docs-check-list">
+          <li>Tomt falt betyder att parametern utelamnas.</li>
+          <li>Skriv <code>NULL</code> for att skicka null.</li>
+          <li>Output-parametrar fylls inte i, de visas efter korning.</li>
+          <li>Datum, nummer, boolean och GUID valideras nar typen ar kand.</li>
         </ul>
-        <div className="docs-callout">
-          Om en procedur har defaultvärden i databasen kan tomma fält låta databasen använda dessa defaultvärden. Kontrollera procedurens implementation om beteendet är viktigt.
+      </DocsSection>
+
+      <DocsSection id="run" title="Kora procedur">
+        <DocsMiniSection title="Forbered">
+          <p>Forsta klicket pa <strong>Run procedure</strong> skapar en tidsbegransad bekraftelse kopplad till anslutning, procedur och parametrar.</p>
+        </DocsMiniSection>
+        <DocsMiniSection title="Bekrafta">
+          <p>Granska dialogen. Om nagot ar fel, avbryt. Om parametrar andras efter forberedelse maste du starta om korningen.</p>
+        </DocsMiniSection>
+        <DocsMiniSection title="Resultat">
+          <p>Resultatpanelen visar recordset, rows affected, output-parametrar och return value nar databasen returnerar det.</p>
+        </DocsMiniSection>
+      </DocsSection>
+
+      <DocsSection id="troubleshooting" title="Felsokning">
+        <div className="docs-table">
+          <div><strong>Procedures unavailable</strong><span>Kallan stodjer inte procedurer i appen, vanligt for Lakehouse.</span></div>
+          <div><strong>No procedures loaded</strong><span>Databasen saknar procedurer eller anvandaren saknar metadata-rattighet.</span></div>
+          <div><strong>Parameter expects...</strong><span>Vardet matchar inte datatypen. Kontrollera datum, nummer eller GUID.</span></div>
+          <div><strong>Confirmation expired</strong><span>Klicka Run procedure igen och bekrafta inom tidsgransen.</span></div>
         </div>
-      </DocsSection>
-
-      <DocsSection id="execution" title="Körning">
-        <p>
-          Körning sker i två steg. Första klicket på <strong>Run procedure</strong> förbereder exekveringen och skapar en tidsbegränsad bekräftelse. Bekräftelsen är kopplad till sessionen, anslutningen, procedurnamnet och parametrarna.
-        </p>
-        <ol>
-          <li>Välj procedur i Procedure Explorer.</li>
-          <li>Granska procedurens namn och parametrar.</li>
-          <li>Fyll i parameterfält.</li>
-          <li>Klicka på <strong>Run procedure</strong>.</li>
-          <li>Granska dialogen och bekräfta när allt stämmer.</li>
-          <li>Resultat, rows affected, output values och return value visas i Results.</li>
-        </ol>
-        <p>
-          Om parametrarna ändras efter förberedelsen måste du förbereda körningen igen. Det skyddar mot att en gammal bekräftelse används för nya indata.
-        </p>
-      </DocsSection>
-
-      <DocsSection id="results" title="Resultat">
-        <p>
-          Resultatpanelen visar det första recordset som proceduren returnerar, kompletterat med metadata där det finns.
-        </p>
-        <ul>
-          <li><strong>Rows:</strong> tabellresultat från proceduren.</li>
-          <li><strong>Rows affected:</strong> antal rader som databasen rapporterar som påverkade.</li>
-          <li><strong>Output:</strong> output-parametrar som returneras av proceduren.</li>
-          <li><strong>Return value:</strong> procedurens return value om drivern returnerar den.</li>
-          <li><strong>Export CSV / Copy rows:</strong> används på synliga resultat.</li>
-          <li><strong>Filter results:</strong> filtrerar resultat lokalt i webbläsaren.</li>
-        </ul>
-        <div className="docs-callout">
-          Resultat är begränsade av serverns radgräns. Om proceduren returnerar mycket data bör proceduren själv stödja parametrar för scope, datumintervall eller batchstorlek.
-        </div>
-      </DocsSection>
-
-      <DocsSection id="audit" title="Audit">
-        <p>
-          Procedure Runner skriver auditposter för procedurkatalog, parameterladdning, förberedelse och exekvering.
-        </p>
-        <ul>
-          <li><strong>procedure_prepare:</strong> skapas när en procedurkörning förbereds.</li>
-          <li><strong>procedure_execute:</strong> skapas när en procedur faktiskt körs eller misslyckas.</li>
-          <li>Auditposten innehåller källa, server, databas, händelse, utfall och en kompakt detaljtext.</li>
-          <li>Audit kan laddas via <strong>Audit log</strong> om serverkonfigurationen tillåter det.</li>
-        </ul>
-      </DocsSection>
-
-      <DocsSection id="safety" title="Säkerhet och ansvar">
-        <p>
-          Procedure Runner gör körningen tydlig, men procedurens innehåll styrs av databasen. En procedur kan läsa, skriva, radera eller starta andra processer beroende på hur den är byggd.
-        </p>
-        <ul>
-          <li>Kör bara procedurer du känner igen och har mandat att använda.</li>
-          <li>Kontrollera alltid att du är ansluten till rätt server och databas.</li>
-          <li>Granska parametervärden, särskilt datumintervall, batch-id, kund-id, organisation eller miljö.</li>
-          <li>Använd minsta möjliga behörighet för service principal eller SQL login.</li>
-          <li>För produktionshosting bör procedurkörning kunna rollstyras separat från läsrättigheter.</li>
-        </ul>
-      </DocsSection>
-
-      <DocsSection id="errors" title="Vanliga fel">
-        <ul>
-          <li><strong>Procedures unavailable for this source:</strong> källtypen stödjer inte procedurer i appen, vanligt för Fabric Lakehouse SQL endpoint.</li>
-          <li><strong>No procedures loaded:</strong> databasen saknar procedurer, användaren saknar rättighet eller metadata exponeras inte av källan.</li>
-          <li><strong>Procedure name is required:</strong> ingen procedur är vald.</li>
-          <li><strong>Unknown procedure parameter:</strong> parameterlistan har ändrats eller klienten skickar ett namn som inte finns i metadata.</li>
-          <li><strong>Parameter expects a numeric/date/boolean/GUID value:</strong> korrigera värdet enligt datatypen.</li>
-          <li><strong>Procedure confirmation expired or not found:</strong> bekräftelsen tog för lång tid eller sessionen ändrades. Klicka <strong>Run procedure</strong> igen.</li>
-          <li><strong>The procedure inputs changed or expired:</strong> parametrar eller anslutning ändrades efter förberedelsen. Förbered körningen igen.</li>
-          <li><strong>Login failed:</strong> kontrollera server, databas, behörighet och service principal.</li>
-        </ul>
       </DocsSection>
     </DocsShell>
   );

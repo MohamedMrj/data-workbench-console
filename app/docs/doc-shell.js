@@ -1,8 +1,10 @@
 import Link from 'next/link';
+import DocsThemeBoot from './docs-theme-boot';
 
-export function DocsShell({ title, eyebrow, description, sections, children }) {
+export function DocsShell({ title, eyebrow, description, sections, children, steps = [] }) {
   return (
     <main className="docs-shell">
+      <DocsThemeBoot />
       <div className="docs-topbar">
         <Link href="/" className="page-link">SQL Studio</Link>
         <nav className="docs-nav" aria-label="Documentation pages">
@@ -15,6 +17,11 @@ export function DocsShell({ title, eyebrow, description, sections, children }) {
         <div className="eyebrow">{eyebrow}</div>
         <h1>{title}</h1>
         <p>{description}</p>
+        {steps.length ? (
+          <ol className="docs-quick-steps" aria-label="Quick steps">
+            {steps.map((step) => <li key={step}>{step}</li>)}
+          </ol>
+        ) : null}
       </section>
 
       <div className="docs-layout">
@@ -29,6 +36,15 @@ export function DocsShell({ title, eyebrow, description, sections, children }) {
         </div>
       </div>
     </main>
+  );
+}
+
+export function DocsMiniSection({ title, children }) {
+  return (
+    <div className="docs-mini-section">
+      <h3>{title}</h3>
+      {children}
+    </div>
   );
 }
 
