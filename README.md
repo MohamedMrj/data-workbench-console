@@ -4,6 +4,14 @@ Production-safe multi-source SQL workbench and stored procedure runner for Micro
 
 The app is built with Next.js and is designed for internal operational use where safety, auditability, and controlled execution matter more than unrestricted SQL access.
 
+## License / Ownership
+
+Copyright (c) 2026 Mohamed Almefrej. All rights reserved.
+
+This project is proprietary. You may not copy, modify, distribute, publish,
+host, sell, transfer, or use this code without explicit written permission from
+the copyright owner.
+
 > **Internal tool warning**
 >
 > This app can connect to real databases and execute writes/procedures when the connected source allows it. Do not publish it with real `.env` secrets, audit logs, saved connections, or production credentials. Put authentication/SSO or a private network boundary in front of any hosted deployment.
