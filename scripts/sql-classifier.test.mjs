@@ -8,7 +8,7 @@
  */
 
 import assert from 'node:assert/strict';
-import { classifyQuery, stripCommentsAndTrim, tokenizeSql, splitStatements } from '../lib/server/sql-classifier.js';
+import { buildLimitedReadQuery, classifyQuery, stripCommentsAndTrim, tokenizeSql, splitStatements } from '../lib/server/sql-classifier.js';
 
 let passed = 0;
 let failed = 0;
@@ -282,6 +282,38 @@ test('leading whitespace and newlines do not affect classification', () => {
 test('trailing semicolon on SELECT does not cause multi-statement block', () => {
   const result = classifyQuery('SELECT * FROM dbo.T;');
   assert.equal(result.kind, 'read');
+});
+
+console.log('\nbuildLimitedReadQuery');
+
+test('plain SELECT is wrapped with server row cap', () => {
+  const limited = buildLimitedReadQuery('SELECT * FROM dbo.T', 25);
+  assert.equal(limited, 'SELECT TOP (25) * FROM (\nSELECT * FROM dbo.T\n) AS __rowlimit_wrapper;');
+});
+
+test('top-level ORDER BY uses OFFSET FETCH instead of invalid derived table wrapper', () => {
+  const limited = buildLimitedReadQuery(`SELECT *
+FROM dbo.TaskItems_TransformAndPersist
+WHERE TargetItemID LIKE '%monthly%'
+ORDER BY TaskID, TaskItemOrderInGroup, TargetItemID;`, 250);
+  assert.ok(limited.includes('ORDER BY TaskID, TaskItemOrderInGroup, TargetItemID'));
+  assert.ok(limited.endsWith('OFFSET 0 ROWS FETCH NEXT 250 ROWS ONLY;'));
+  assert.ok(!limited.includes('__rowlimit_wrapper'));
+});
+
+test('top-level ORDER BY with OFFSET but no FETCH gets a FETCH cap', () => {
+  const limited = buildLimitedReadQuery('SELECT * FROM dbo.T ORDER BY Id OFFSET 10 ROWS', 25);
+  assert.equal(limited, 'SELECT * FROM dbo.T ORDER BY Id OFFSET 10 ROWS\nFETCH NEXT 25 ROWS ONLY;');
+});
+
+test('ORDER BY inside OVER does not trigger top-level ORDER BY handling', () => {
+  const limited = buildLimitedReadQuery('SELECT ROW_NUMBER() OVER (ORDER BY Id) AS rn FROM dbo.T', 25);
+  assert.ok(limited.startsWith('SELECT TOP (25) * FROM ('));
+});
+
+test('ORDER BY inside a string does not trigger top-level ORDER BY handling', () => {
+  const limited = buildLimitedReadQuery("SELECT 'ORDER BY Id' AS label FROM dbo.T", 25);
+  assert.ok(limited.startsWith('SELECT TOP (25) * FROM ('));
 });
 
 // ─── summary ─────────────────────────────────────────────────────────────────
