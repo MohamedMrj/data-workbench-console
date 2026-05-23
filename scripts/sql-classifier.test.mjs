@@ -301,6 +301,22 @@ ORDER BY TaskID, TaskItemOrderInGroup, TargetItemID;`, 250);
   assert.ok(!limited.includes('__rowlimit_wrapper'));
 });
 
+test('top-level TOP with ORDER BY is left unchanged to avoid TOP plus OFFSET conflict', () => {
+  const limited = buildLimitedReadQuery(`SELECT TOP 20
+    TaskGroupID,
+    Status,
+    StartTimestampUTC,
+    EndTimestampUTC,
+    DATEDIFF(MINUTE, StartTimestampUTC, EndTimestampUTC) AS duration_minutes
+FROM dbo.TaskGroupInstances
+WHERE TaskGroupID = 'istadministration_mlv'
+ORDER BY StartTimestampUTC DESC;`, 250);
+  assert.ok(limited.includes('SELECT TOP 20'));
+  assert.ok(limited.includes('ORDER BY StartTimestampUTC DESC'));
+  assert.ok(!limited.includes('OFFSET'));
+  assert.ok(!limited.includes('__rowlimit_wrapper'));
+});
+
 test('top-level ORDER BY with OFFSET but no FETCH gets a FETCH cap', () => {
   const limited = buildLimitedReadQuery('SELECT * FROM dbo.T ORDER BY Id OFFSET 10 ROWS', 25);
   assert.equal(limited, 'SELECT * FROM dbo.T ORDER BY Id OFFSET 10 ROWS\nFETCH NEXT 25 ROWS ONLY;');
