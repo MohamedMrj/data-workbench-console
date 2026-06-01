@@ -115,8 +115,28 @@
 
 .app-shell[data-layout-mode="stacked"] .control-rail {
   position: static;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr));
+  align-items: start;
   max-height: none;
   overflow: visible;
+}
+
+.app-shell[data-layout-mode="stacked"] .control-rail > .panel-section + .panel-section {
+  padding-top: 0;
+  border-top: 0;
+}
+
+.app-shell[data-layout-mode="stacked"] .workspace-shell {
+  order: 1;
+}
+
+.app-shell[data-layout-mode="stacked"] .control-rail {
+  order: 2;
+}
+
+.app-shell[data-layout-mode="stacked"] > [data-resize-handle="controlRail"] {
+  order: 3;
 }
 
 .panel-section {
@@ -2220,6 +2240,23 @@
   }
 }
 
+@media (min-width: 901px) and (max-width: 1280px) {
+  .app-shell {
+    grid-template-columns: minmax(280px, min(var(--control-rail-width), 34%)) var(--panel-handle-size) minmax(0, 1fr);
+  }
+
+  .app-shell > [data-resize-handle="controlRail"] {
+    display: block;
+  }
+
+  .control-rail {
+    position: sticky;
+    top: 14px;
+    max-height: calc(100dvh - 28px);
+    overflow: auto;
+  }
+}
+
 @media (max-width: 900px) {
   .hero-panel,
   .section-title-row,
@@ -2349,6 +2386,15 @@
 .app-shell[data-layout-mode="stacked"] .modal-actions,
 .app-shell[data-layout-mode="stacked"] .builder-actions {
   width: 100%;
+}
+
+.app-shell[data-layout-mode="stacked"] .section-title-row > .button-row.wrap,
+.app-shell[data-layout-mode="stacked"] .hero-actions,
+.app-shell[data-layout-mode="stacked"] .modal-actions,
+.app-shell[data-layout-mode="stacked"] .builder-actions,
+.app-shell[data-workspace-mode="stacked"] .section-title-row > .button-row.wrap,
+.app-shell[data-studio-mode="stacked"] .section-title-row > .button-row.wrap {
+  flex: 0 0 auto;
 }
 
 .app-shell[data-layout-mode="stacked"] .button-row.wrap,
@@ -2486,6 +2532,21 @@
     grid-template-columns: 1fr;
   }
 
+  .filter-value,
+  .filter-row > button {
+    grid-column: 1;
+    grid-row: auto;
+  }
+
+  .filter-row > button,
+  .sql-helper-bar > * {
+    width: 100%;
+  }
+
+  .sql-helper-bar {
+    grid-template-columns: 1fr;
+  }
+
   .section-title-row > :last-child,
   .hero-actions,
   .modal-actions,
@@ -2565,6 +2626,17 @@
   .active-target {
     font-size: clamp(1.2rem, 5.5vw, 1.6rem);
     line-height: 1.2;
+  }
+
+  .workspace-mode-nav {
+    width: 100%;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .workspace-mode-link {
+    padding-inline: 8px;
+    font-size: 0.82rem;
+    white-space: normal;
   }
 
   .modal-backdrop {

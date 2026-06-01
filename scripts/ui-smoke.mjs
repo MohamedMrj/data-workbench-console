@@ -744,22 +744,31 @@ const zoomWindow = await createWindow(
     }));
   }
 );
-if (zoomWindow.document.querySelector('.app-shell')?.dataset.layoutMode !== 'stacked') {
-  throw new Error('Zoom-like reduced visual viewport width should force the stacked shell layout.');
+if (zoomWindow.document.querySelector('.app-shell')?.dataset.layoutMode !== 'split') {
+  throw new Error('Zoom-like reduced visual viewport width should keep the split shell while it still has enough usable width.');
 }
-if (zoomWindow.document.querySelector('.app-shell')?.style.getPropertyValue('--control-rail-width') !== '340px') {
-  throw new Error('Stacked zoom layout should reset stale persisted control rail widths.');
+if (zoomWindow.document.querySelector('.app-shell')?.dataset.workspaceMode !== 'stacked') {
+  throw new Error('Zoom-like reduced visual viewport width should stack the inner workspace before controls can overlap.');
 }
-if (zoomWindow.document.querySelector('.app-shell')?.style.getPropertyValue('--results-height') !== '300px') {
-  throw new Error('Stacked zoom layout should reset stale persisted results height.');
+if (zoomWindow.document.querySelector('.app-shell')?.style.getPropertyValue('--control-rail-width') !== '367px') {
+  throw new Error('Zoom-like reduced visual viewport width should clamp stale persisted control rail widths to the available shell.');
+}
+if (zoomWindow.document.querySelector('.app-shell')?.style.getPropertyValue('--results-height') !== '200px') {
+  throw new Error('Zoom-like reduced visual viewport width should compact empty results height.');
 }
 if (zoomWindow.document.querySelector('[data-resize-handle="controlRail"]')?.getAttribute('aria-hidden') !== 'true') {
-  throw new Error('Stacked zoom layout should hide the control rail resize handle.');
+  throw new Error('Zoom-like reduced visual viewport width should hide the control rail resize handle when resizing is disabled.');
 }
 
 const narrowWindow = await createWindow('http://127.0.0.1:3100/', [], { width: 1000, height: 980 });
+if (narrowWindow.document.querySelector('.app-shell')?.dataset.layoutMode !== 'split') {
+  throw new Error('Split-screen tablet width should keep the connection rail beside the workspace.');
+}
+if (narrowWindow.document.querySelector('.app-shell')?.dataset.workspaceMode !== 'stacked') {
+  throw new Error('Split-screen tablet width should stack the inner workspace panels.');
+}
 if (!narrowWindow.document.querySelector('.app-shell')?.classList.contains('panel-resize-disabled')) {
-  throw new Error('Resize handles should be disabled on stacked/mobile layouts.');
+  throw new Error('Resize handles should be disabled on narrow split layouts.');
 }
 ['controlRail', 'explorer', 'results'].forEach((name) => {
   const handle = narrowWindow.document.querySelector(`[data-resize-handle="${name}"]`);

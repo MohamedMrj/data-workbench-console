@@ -301,7 +301,7 @@ window.createConsoleApp = function createConsoleApp() {
     const explorerDelta = Math.max(0, widths.explorer - DEFAULT_PANEL_LAYOUT.explorer);
     const activityDelta = state.sidePanels.activityPanelCollapsed ? 0 : Math.max(0, widths.activity - DEFAULT_PANEL_LAYOUT.activity);
     const builderDelta = Math.max(0, widths.builder - DEFAULT_PANEL_LAYOUT.builder);
-    const shellStackThreshold = Math.max(1280, 1180 + controlRailDelta);
+    const shellStackThreshold = Math.max(900, 820 + controlRailDelta);
     const workspaceStackThreshold = 1180 + explorerDelta;
     const workspaceWideThreshold = 1500 + explorerDelta + activityDelta;
     const studioWideThreshold = 1360 + builderDelta;
@@ -309,7 +309,7 @@ window.createConsoleApp = function createConsoleApp() {
     return {
       viewportWidth: viewport.width,
       viewportScale: viewport.scale,
-      shellMode: shellWidth <= shellStackThreshold || viewport.width <= 1280 ? 'stacked' : 'split',
+      shellMode: shellWidth <= shellStackThreshold || viewport.width <= 900 ? 'stacked' : 'split',
       workspaceMode: workspaceWidth <= workspaceStackThreshold ? 'stacked' : workspaceWidth <= workspaceWideThreshold ? 'compressed' : 'wide',
       studioMode: studioWidth <= studioWideThreshold || workspaceWidth <= workspaceWideThreshold ? 'stacked' : 'wide'
     };

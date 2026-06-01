@@ -156,6 +156,7 @@ npm run verify
 | `npm run build` | Create a production build. |
 | `npm run start` | Run the production build locally. |
 | `npm run clean` | Remove `.next`. Useful if Next dev cache gets corrupted. |
+| `npm run responsive:audit` | Run the Playwright responsive layout audit across populated SQL and procedure states. |
 | `npm run verify` | Clean, build, run backend smoke test, and run UI smoke test. |
 
 ## Environment Setup
@@ -756,6 +757,9 @@ Available scripts:
   build
   server smoke test
   UI smoke test
+
+- `npm run responsive:audit`
+  validates populated SQL Studio and Procedure Runner layouts from `320px` through `1920px` and writes screenshots/report output to `responsive-audit/`
 
 Verification helpers:
 
