@@ -2372,6 +2372,26 @@
   min-height: 280px;
 }
 
+.app-shell[data-layout-mode="stacked"] .workspace-grid,
+.app-shell[data-workspace-mode="stacked"] .workspace-grid {
+  grid-template-columns: 1fr !important;
+  grid-template-areas:
+    'explorer'
+    'studio'
+    'activity' !important;
+}
+
+.app-shell[data-layout-mode="stacked"] .workspace-grid > [data-resize-handle],
+.app-shell[data-workspace-mode="stacked"] .workspace-grid > [data-resize-handle] {
+  display: none !important;
+}
+
+.app-shell[data-layout-mode="stacked"] .activity-panel,
+.app-shell[data-workspace-mode="stacked"] .activity-panel {
+  display: flex;
+  flex-direction: column;
+}
+
 @media (max-width: 540px) {
   .app-shell[data-layout-mode="stacked"] .button-row.wrap > *,
   .app-shell[data-layout-mode="stacked"] .hero-actions > *,
