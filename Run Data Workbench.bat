@@ -1,4 +1,5 @@
 @echo off
+setlocal
 echo Starting Data Workbench Console...
 
 :: Check if Node is installed
@@ -10,9 +11,12 @@ if %errorlevel% neq 0 (
 )
 
 :: Navigate to the app directory
-cd /d "%~dp0data-workbench-console-source-patched-responsive-v2\data-workbench-console"
-if %errorlevel% neq 0 (
-    echo Error: Could not find the app folder. Make sure the 'data-workbench-console-source-patched-responsive-v2' folder is exactly on your Desktop next to this bat file.
+if exist "%~dp0package.json" (
+    cd /d "%~dp0"
+) else if exist "%~dp0data-workbench-console\package.json" (
+    cd /d "%~dp0data-workbench-console"
+) else (
+    echo Error: Could not find the app folder. Make sure this file is either inside the app folder or on your Desktop next to the 'data-workbench-console' folder.
     pause
     exit /b
 )
@@ -21,9 +25,22 @@ if %errorlevel% neq 0 (
 if not exist "node_modules\" (
     echo Installing dependencies for the first time... This may take a minute.
     call npm install
+    if %errorlevel% neq 0 (
+        echo Error: npm install failed.
+        pause
+        exit /b
+    )
 )
 
-start cmd /k "npm run dev"
+echo Building production version...
+call npm run build
+if %errorlevel% neq 0 (
+    echo Error: Production build failed.
+    pause
+    exit /b
+)
+
+start "Data Workbench Console" cmd /k "npm run start"
 echo Waiting for server to start...
 timeout /t 8 /nobreak > nul
 start http://localhost:3000
