@@ -21,6 +21,13 @@ if exist "%~dp0package.json" (
     exit /b
 )
 
+:: If the app is already running, just open it
+powershell -NoProfile -ExecutionPolicy Bypass -Command "try { Invoke-WebRequest -UseBasicParsing -Uri 'http://localhost:3000/api/health' -TimeoutSec 2 | Out-Null; exit 0 } catch { exit 1 }"
+if %errorlevel% equ 0 (
+    start http://localhost:3000
+    exit
+)
+
 :: Install dependencies if node_modules is missing
 if not exist "node_modules\" (
     echo Installing dependencies for the first time... This may take a minute.
@@ -40,7 +47,14 @@ if %errorlevel% neq 0 (
     exit /b
 )
 
-start "Data Workbench Console" cmd /k "npm run start"
+echo Starting production server in the background...
+powershell -NoProfile -ExecutionPolicy Bypass -Command "Start-Process -WindowStyle Hidden -WorkingDirectory '%CD%' -FilePath 'cmd.exe' -ArgumentList '/c npm run start > data-workbench-server.log 2>&1'"
+if %errorlevel% neq 0 (
+    echo Error: Could not start the production server.
+    pause
+    exit /b
+)
+
 echo Waiting for server to start...
 timeout /t 8 /nobreak > nul
 start http://localhost:3000
