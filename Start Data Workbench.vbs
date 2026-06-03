@@ -12,7 +12,5 @@ Else
     WScript.Quit 1
 End If
 
-shell.Popup "Starting Data Workbench Console...", 2, "Data Workbench Console", 64
-
 command = "powershell.exe -NoProfile -ExecutionPolicy Bypass -File " & Chr(34) & scriptPath & Chr(34)
 shell.Run command, 0, False

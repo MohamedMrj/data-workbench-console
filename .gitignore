@@ -18,6 +18,8 @@ audit-log*.ndjson.tmp
 
 # Archives and logs
 operator.zip
+data-workbench-launcher.log
+data-workbench-server.log
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*

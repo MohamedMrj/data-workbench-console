@@ -78,6 +78,18 @@ Useful pages:
 
 - `/` - SQL Studio
 - `/procedures` - Procedure Runner
+
+## Windows Launcher
+
+For a clean Desktop shortcut on Windows, run:
+
+```bat
+Create Desktop Shortcut.bat
+```
+
+This creates a `Data Workbench Console` shortcut on the current user's Desktop. The shortcut uses the hidden launcher, shows a startup progress window, and opens the app in the browser when the local production server is ready.
+
+Startup details are written under `.data/logs/` so runtime logs do not clutter the project root.
 - `/docs/sql-studio` - SQL Studio guide
 - `/docs/procedure-runner` - Procedure Runner guide
 
