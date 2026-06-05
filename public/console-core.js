@@ -1252,22 +1252,92 @@ window.createConsoleApp = function createConsoleApp() {
     const now = Date.now();
     return (Array.isArray(raw) ? raw : [])
       .filter((item) => item && typeof item === 'object' && typeof item.query === 'string')
-      .map((item) => ({
-        id: String(item.id || `${Date.now()}-${Math.random().toString(16).slice(2, 7)}`),
-        query: String(item.query || '').slice(0, 20000),
-        activeObject: String(item.activeObject || '').slice(0, 512),
-        activeObjectType: String(item.activeObjectType || '').slice(0, 64),
-        connectionSignature: String(item.connectionSignature || ''),
-        database: String(item.database || ''),
-        server: String(item.server || ''),
-        timestamp: String(item.timestamp || new Date().toISOString())
-      }))
+      .map((item) => {
+        const query = String(item.query || '').slice(0, 20000);
+        const queryMode = normalizeQueryMode(item.queryMode || inferQueryMode(query));
+        return {
+          id: String(item.id || `${Date.now()}-${Math.random().toString(16).slice(2, 7)}`),
+          query,
+          queryMode,
+          activeObject: String(item.activeObject || '').slice(0, 512),
+          activeObjectType: String(item.activeObjectType || '').slice(0, 64),
+          connectionSignature: String(item.connectionSignature || ''),
+          database: String(item.database || ''),
+          server: String(item.server || ''),
+          timestamp: String(item.timestamp || new Date().toISOString())
+        };
+      })
       .filter((item) => item.query.trim())
       .filter((item) => {
         const time = new Date(item.timestamp).getTime();
         return Number.isFinite(time) && (now - time) <= QUERY_HISTORY_RETENTION_MS;
       })
       .slice(0, QUERY_HISTORY_MAX);
+  }
+
+  function stripSqlComments(query) {
+    const sql = String(query || '');
+    let output = '';
+
+    for (let index = 0; index < sql.length; index += 1) {
+      const char = sql[index];
+      const next = sql[index + 1];
+
+      if (char === "'") {
+        output += char;
+        index += 1;
+        while (index < sql.length) {
+          output += sql[index];
+          if (sql[index] === "'" && sql[index + 1] === "'") {
+            output += sql[index + 1];
+            index += 2;
+            continue;
+          }
+          if (sql[index] === "'") {
+            break;
+          }
+          index += 1;
+        }
+        continue;
+      }
+
+      if (char === '-' && next === '-') {
+        index += 2;
+        while (index < sql.length && sql[index] !== '\n') {
+          index += 1;
+        }
+        output += ' ';
+        continue;
+      }
+
+      if (char === '/' && next === '*') {
+        index += 2;
+        while (index < sql.length) {
+          if (sql[index] === '*' && sql[index + 1] === '/') {
+            index += 1;
+            break;
+          }
+          index += 1;
+        }
+        output += ' ';
+        continue;
+      }
+
+      output += char;
+    }
+
+    return output.trim();
+  }
+
+  function normalizeQueryMode(mode) {
+    const clean = String(mode || '').trim().toLowerCase();
+    return ['select', 'insert', 'update', 'delete'].includes(clean) ? clean : 'select';
+  }
+
+  function inferQueryMode(query) {
+    const clean = stripSqlComments(query).replace(/^\uFEFF/, '').trim();
+    const match = clean.match(/^([a-z]+)/i);
+    return normalizeQueryMode(match?.[1]);
   }
 
   function sanitizeSqlForObjectLookup(sql) {
@@ -1683,6 +1753,7 @@ window.createConsoleApp = function createConsoleApp() {
     state.queryHistory = [{
       id: `${Date.now()}-${Math.random().toString(16).slice(2, 7)}`,
       query: clean.slice(0, 20000),
+      queryMode: inferQueryMode(clean),
       activeObject: state.activeObject || '',
       activeObjectType: state.activeObjectType || '',
       connectionSignature: connectionSignature(currentConnection),
@@ -1732,6 +1803,7 @@ window.createConsoleApp = function createConsoleApp() {
 
     setWorkspace('sql');
     setExplorer('objects');
+    const restoredMode = normalizeQueryMode(item.queryMode || inferQueryMode(item.query));
 
     const savedObject = item.activeObject
       ? findCatalogObjectByKeys([item.activeObject, item.activeObject.split('.').pop()])
@@ -1745,6 +1817,7 @@ window.createConsoleApp = function createConsoleApp() {
         try {
           await selectObject(targetObject.fullName, targetObject.objectType);
         } catch (error) {
+          setMode(restoredMode, { regenerate: false });
           setQuery(item.query);
           setStatus('error', `Loaded SQL, but could not restore ${targetObject.fullName}: ${error.message}`);
           return;
@@ -1754,6 +1827,7 @@ window.createConsoleApp = function createConsoleApp() {
         refreshActiveSummary();
       }
 
+      setMode(restoredMode, { regenerate: false });
       setQuery(item.query);
       renderObjects();
       refreshActiveSummary();
@@ -1767,6 +1841,7 @@ window.createConsoleApp = function createConsoleApp() {
       return;
     }
 
+    setMode(restoredMode, { regenerate: false });
     setQuery(item.query);
     refreshActiveSummary();
     setStatus(
@@ -2440,14 +2515,15 @@ window.createConsoleApp = function createConsoleApp() {
     warning.textContent = messages[state.queryMode];
   }
 
-  function setMode(mode) {
-    state.queryMode = mode;
+  function setMode(mode, options = {}) {
+    const nextMode = normalizeQueryMode(mode);
+    state.queryMode = nextMode;
     document.querySelectorAll('#queryModeSegment .segment-btn').forEach((button) => {
-      button.classList.toggle('active', button.dataset.mode === mode);
+      button.classList.toggle('active', button.dataset.mode === nextMode);
     });
-    $('queryModeHint').textContent = `Mode: ${mode[0].toUpperCase() + mode.slice(1)}`;
+    $('queryModeHint').textContent = `Mode: ${nextMode[0].toUpperCase() + nextMode.slice(1)}`;
     modeWarning();
-    if (state.activeObject) generateQuery();
+    if (options.regenerate !== false && state.activeObject) generateQuery();
     else persistWorkspaceState('sql');
   }
 

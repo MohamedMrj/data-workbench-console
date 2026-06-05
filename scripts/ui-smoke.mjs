@@ -575,6 +575,10 @@ await flush();
 if (!sqlWindow.document.getElementById('activeTarget').textContent.includes('dbo.AlertView')) {
   throw new Error('Selecting a second object did not update the active target before history restore.');
 }
+sqlWindow.document.querySelector('[data-mode="select"]').click();
+if (!sqlWindow.document.querySelector('[data-mode="select"]')?.classList.contains('active')) {
+  throw new Error('Selecting a different mode before history restore did not update the query mode segment.');
+}
 sqlWindow.document.querySelector('[data-history-id]').click();
 await flush();
 await flush();
@@ -586,6 +590,12 @@ if (!sqlWindow.document.querySelector('[data-object="dbo.Alerts"]')?.classList.c
 }
 if (!sqlWindow.document.getElementById('queryEditor').value.includes('UPDATE [dbo].[Alerts]')) {
   throw new Error('Loading SQL history did not preserve the saved SQL text after restoring the active object.');
+}
+if (!sqlWindow.document.querySelector('[data-mode="update"]')?.classList.contains('active')) {
+  throw new Error('Loading SQL history did not restore the query operation mode used by the saved SQL.');
+}
+if (!sqlWindow.document.getElementById('queryModeHint').textContent.includes('Update')) {
+  throw new Error('Loading SQL history did not update the visible query mode hint.');
 }
 
 const proceduresHtml = await readBuiltHtml(['procedures']);
