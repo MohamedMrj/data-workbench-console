@@ -1255,6 +1255,11 @@ window.createConsoleApp = function createConsoleApp() {
       .map((item) => ({
         id: String(item.id || `${Date.now()}-${Math.random().toString(16).slice(2, 7)}`),
         query: String(item.query || '').slice(0, 20000),
+        activeObject: String(item.activeObject || '').slice(0, 512),
+        activeObjectType: String(item.activeObjectType || '').slice(0, 64),
+        connectionSignature: String(item.connectionSignature || ''),
+        database: String(item.database || ''),
+        server: String(item.server || ''),
         timestamp: String(item.timestamp || new Date().toISOString())
       }))
       .filter((item) => item.query.trim())
@@ -1263,6 +1268,213 @@ window.createConsoleApp = function createConsoleApp() {
         return Number.isFinite(time) && (now - time) <= QUERY_HISTORY_RETENTION_MS;
       })
       .slice(0, QUERY_HISTORY_MAX);
+  }
+
+  function sanitizeSqlForObjectLookup(sql) {
+    const text = String(sql || '');
+    let output = '';
+    for (let index = 0; index < text.length; index += 1) {
+      const char = text[index];
+      const next = text[index + 1];
+
+      if (char === '-' && next === '-') {
+        output += '  ';
+        index += 2;
+        while (index < text.length && text[index] !== '\n') {
+          output += ' ';
+          index += 1;
+        }
+        if (index < text.length) {
+          output += text[index];
+        }
+        continue;
+      }
+
+      if (char === '/' && next === '*') {
+        output += '  ';
+        index += 2;
+        while (index < text.length && !(text[index] === '*' && text[index + 1] === '/')) {
+          output += text[index] === '\n' ? '\n' : ' ';
+          index += 1;
+        }
+        if (index < text.length) {
+          output += '  ';
+          index += 1;
+        }
+        continue;
+      }
+
+      if (char === "'") {
+        output += ' ';
+        index += 1;
+        while (index < text.length) {
+          output += text[index] === '\n' ? '\n' : ' ';
+          if (text[index] === "'" && text[index + 1] === "'") {
+            output += ' ';
+            index += 2;
+            continue;
+          }
+          if (text[index] === "'") {
+            break;
+          }
+          index += 1;
+        }
+        continue;
+      }
+
+      output += char;
+    }
+    return output;
+  }
+
+  function readSqlIdentifierPart(sql, startIndex) {
+    let index = startIndex;
+    while (index < sql.length && /\s/.test(sql[index])) {
+      index += 1;
+    }
+
+    if (sql[index] === '[') {
+      let value = '';
+      index += 1;
+      while (index < sql.length) {
+        if (sql[index] === ']' && sql[index + 1] === ']') {
+          value += ']';
+          index += 2;
+          continue;
+        }
+        if (sql[index] === ']') {
+          index += 1;
+          break;
+        }
+        value += sql[index];
+        index += 1;
+      }
+      return { value: value.trim(), endIndex: index };
+    }
+
+    if (sql[index] === '"') {
+      let value = '';
+      index += 1;
+      while (index < sql.length) {
+        if (sql[index] === '"' && sql[index + 1] === '"') {
+          value += '"';
+          index += 2;
+          continue;
+        }
+        if (sql[index] === '"') {
+          index += 1;
+          break;
+        }
+        value += sql[index];
+        index += 1;
+      }
+      return { value: value.trim(), endIndex: index };
+    }
+
+    let value = '';
+    while (index < sql.length && /[A-Za-z0-9_@$#]/.test(sql[index])) {
+      value += sql[index];
+      index += 1;
+    }
+    return { value: value.trim(), endIndex: index };
+  }
+
+  function readSqlObjectName(sql, startIndex) {
+    const parts = [];
+    let index = startIndex;
+
+    while (parts.length < 4) {
+      const part = readSqlIdentifierPart(sql, index);
+      if (!part.value) {
+        break;
+      }
+      parts.push(part.value);
+      index = part.endIndex;
+      while (index < sql.length && /\s/.test(sql[index])) {
+        index += 1;
+      }
+      if (sql[index] !== '.') {
+        break;
+      }
+      index += 1;
+    }
+
+    return parts;
+  }
+
+  function objectLookupKeysFromParts(parts = []) {
+    const cleanParts = parts.map((part) => String(part || '').trim()).filter(Boolean);
+    if (!cleanParts.length) {
+      return [];
+    }
+    const keys = [];
+    if (cleanParts.length >= 2) {
+      keys.push(cleanParts.slice(-2).join('.').toLowerCase());
+    }
+    keys.push(cleanParts[cleanParts.length - 1].toLowerCase());
+    return [...new Set(keys)];
+  }
+
+  function catalogObjectKeys(item) {
+    const fullName = String(item?.fullName || '').trim();
+    const schema = String(item?.schema || '').trim();
+    const name = String(item?.name || item?.table || '').trim();
+    return [
+      fullName,
+      schema && name ? `${schema}.${name}` : '',
+      name,
+      fullName.split('.').pop() || ''
+    ].map((value) => value.toLowerCase()).filter(Boolean);
+  }
+
+  function findCatalogObjectByKeys(keys = []) {
+    const normalizedKeys = keys.map((key) => String(key || '').toLowerCase()).filter(Boolean);
+    if (!normalizedKeys.length) {
+      return null;
+    }
+    for (const key of normalizedKeys) {
+      const found = state.objects.find((item) => catalogObjectKeys(item).includes(key));
+      if (found) {
+        return found;
+      }
+    }
+    return null;
+  }
+
+  function inferQueryHistoryObject(query) {
+    const rawSql = String(query || '');
+    const cleanSql = sanitizeSqlForObjectLookup(rawSql);
+    const patterns = [
+      /\bFROM\b/gi,
+      /\bUPDATE\b/gi,
+      /\bINSERT\s+INTO\b/gi,
+      /\bDELETE\s+FROM\b/gi,
+      /\bJOIN\b/gi
+    ];
+
+    for (const pattern of patterns) {
+      pattern.lastIndex = 0;
+      const match = pattern.exec(cleanSql);
+      if (!match) {
+        continue;
+      }
+      const parts = readSqlObjectName(rawSql, match.index + match[0].length);
+      const found = findCatalogObjectByKeys(objectLookupKeysFromParts(parts));
+      if (found) {
+        return found;
+      }
+    }
+
+    return null;
+  }
+
+  function queryHistorySearchText(item) {
+    return [
+      item.query,
+      item.activeObject,
+      item.database,
+      item.server
+    ].join(' ').toLowerCase();
   }
 
   function normalizeProcedureHistory(raw) {
@@ -1467,7 +1679,17 @@ window.createConsoleApp = function createConsoleApp() {
   function addQueryHistory(query) {
     const clean = String(query || '').trim();
     if (!clean) return;
-    state.queryHistory = [{ id: `${Date.now()}-${Math.random().toString(16).slice(2, 7)}`, query: clean.slice(0, 20000), timestamp: new Date().toISOString() }, ...state.queryHistory.filter((item) => item.query !== clean)].slice(0, QUERY_HISTORY_MAX);
+    const currentConnection = storageConnection();
+    state.queryHistory = [{
+      id: `${Date.now()}-${Math.random().toString(16).slice(2, 7)}`,
+      query: clean.slice(0, 20000),
+      activeObject: state.activeObject || '',
+      activeObjectType: state.activeObjectType || '',
+      connectionSignature: connectionSignature(currentConnection),
+      database: currentConnection.database || '',
+      server: currentConnection.server || '',
+      timestamp: new Date().toISOString()
+    }, ...state.queryHistory.filter((item) => item.query !== clean)].slice(0, QUERY_HISTORY_MAX);
     saveQueryHistory();
     renderHistoryPanel();
   }
@@ -1502,10 +1724,63 @@ window.createConsoleApp = function createConsoleApp() {
     ].join(' ').toLowerCase();
   }
 
+  async function restoreQueryHistoryItem(item) {
+    if (!item?.query) {
+      setStatus('error', 'SQL history item is invalid.');
+      return;
+    }
+
+    setWorkspace('sql');
+    setExplorer('objects');
+
+    const savedObject = item.activeObject
+      ? findCatalogObjectByKeys([item.activeObject, item.activeObject.split('.').pop()])
+      : null;
+    const targetObject = savedObject || inferQueryHistoryObject(item.query);
+    const currentSignature = connectionSignature();
+    const sameConnection = !item.connectionSignature || item.connectionSignature === currentSignature;
+
+    if (targetObject && hasReadyConnection()) {
+      if (state.activeObject !== targetObject.fullName) {
+        try {
+          await selectObject(targetObject.fullName, targetObject.objectType);
+        } catch (error) {
+          setQuery(item.query);
+          setStatus('error', `Loaded SQL, but could not restore ${targetObject.fullName}: ${error.message}`);
+          return;
+        }
+      } else {
+        renderObjects();
+        refreshActiveSummary();
+      }
+
+      setQuery(item.query);
+      renderObjects();
+      refreshActiveSummary();
+      persistCatalogState();
+      setStatus(
+        sameConnection ? 'success' : 'neutral',
+        sameConnection
+          ? `Loaded SQL from history and restored ${targetObject.fullName}.`
+          : `Loaded SQL and restored ${targetObject.fullName}. Check the active connection before running.`
+      );
+      return;
+    }
+
+    setQuery(item.query);
+    refreshActiveSummary();
+    setStatus(
+      'neutral',
+      item.activeObject
+        ? `Loaded SQL from history, but ${item.activeObject} was not found in the current catalog.`
+        : 'Loaded SQL from history. No matching catalog object was found in the query.'
+    );
+  }
+
   function renderQueryHistory() {
     const container = $('queryHistory');
     const filtered = state.historyFilter
-      ? state.queryHistory.filter((item) => item.query.toLowerCase().includes(state.historyFilter))
+      ? state.queryHistory.filter((item) => queryHistorySearchText(item).includes(state.historyFilter))
       : state.queryHistory;
     if (!filtered.length) {
       container.innerHTML = state.historyFilter
@@ -1518,9 +1793,7 @@ window.createConsoleApp = function createConsoleApp() {
       button.onclick = () => {
         const item = state.queryHistory.find((candidate) => candidate.id === button.dataset.historyId);
         if (item) {
-          setWorkspace('sql');
-          setQuery(item.query);
-          setStatus('success', 'Loaded SQL from recent history.');
+          restoreQueryHistoryItem(item).catch((error) => setStatus('error', error.message));
         }
       };
     });

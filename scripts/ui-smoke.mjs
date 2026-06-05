@@ -141,7 +141,10 @@ function attachMocks(window) {
       return new Response(JSON.stringify({
         success: true,
         supported: true,
-        procedures: [{ schema: 'dbo', name: 'usp_ProcessAlert', fullName: 'dbo.usp_ProcessAlert' }]
+        procedures: [
+          { schema: 'dbo', name: 'usp_ProcessAlert', fullName: 'dbo.usp_ProcessAlert' },
+          { schema: 'ops', name: 'usp_OtherProcedure', fullName: 'ops.usp_OtherProcedure' }
+        ]
       }), {
         status: 200,
         headers: { 'Content-Type': 'application/json' }
@@ -567,6 +570,24 @@ if (!sqlWindow.document.querySelector('.page-link.active')?.textContent.includes
   throw new Error('SQL page navigation did not highlight the active page.');
 }
 
+sqlWindow.document.querySelector('[data-object="dbo.AlertView"]').click();
+await flush();
+if (!sqlWindow.document.getElementById('activeTarget').textContent.includes('dbo.AlertView')) {
+  throw new Error('Selecting a second object did not update the active target before history restore.');
+}
+sqlWindow.document.querySelector('[data-history-id]').click();
+await flush();
+await flush();
+if (!sqlWindow.document.getElementById('activeTarget').textContent.includes('dbo.Alerts')) {
+  throw new Error('Loading SQL history did not restore the active object used by the query.');
+}
+if (!sqlWindow.document.querySelector('[data-object="dbo.Alerts"]')?.classList.contains('active')) {
+  throw new Error('Loading SQL history did not mark the restored object active in the explorer.');
+}
+if (!sqlWindow.document.getElementById('queryEditor').value.includes('UPDATE [dbo].[Alerts]')) {
+  throw new Error('Loading SQL history did not preserve the saved SQL text after restoring the active object.');
+}
+
 const proceduresHtml = await readBuiltHtml(['procedures']);
 sqlWindow.document.body.innerHTML = extractBody(proceduresHtml);
 await sqlWindow.initConsoleApp('/procedures');
@@ -684,6 +705,21 @@ if (!procedureWindow.document.querySelector('.artifact-card')) {
 }
 if (!procedureWindow.document.getElementById('statusText').textContent.includes('executed successfully')) {
   throw new Error('Procedure execution did not update the status text.');
+}
+
+procedureWindow.document.querySelector('[data-procedure="ops.usp_OtherProcedure"]').click();
+await flush();
+if (!procedureWindow.document.getElementById('activeTarget').textContent.includes('ops.usp_OtherProcedure')) {
+  throw new Error('Selecting a second procedure did not update the active target before history restore.');
+}
+procedureWindow.document.querySelector('[data-procedure-history-id]').click();
+await flush();
+await flush();
+if (!procedureWindow.document.getElementById('activeTarget').textContent.includes('dbo.usp_ProcessAlert')) {
+  throw new Error('Loading procedure history did not restore the active procedure used by the run.');
+}
+if (!procedureWindow.document.querySelector('[data-procedure="dbo.usp_ProcessAlert"]')?.classList.contains('active')) {
+  throw new Error('Loading procedure history did not mark the restored procedure active in the explorer.');
 }
 
 const mediumWindow = await createWindow('http://127.0.0.1:3100/', [], { width: 1300, height: 980 });
