@@ -209,6 +209,28 @@
   margin-top: 10px;
 }
 
+.app-version-status {
+  margin-top: 10px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  align-items: center;
+  color: color-mix(in srgb, var(--muted) 72%, transparent);
+  font-size: 0.68rem;
+  line-height: 1.35;
+  opacity: 0.68;
+}
+
+.app-version-status:hover,
+.app-version-status:focus-within {
+  opacity: 1;
+}
+
+.app-update-text {
+  color: var(--warning);
+  font-weight: 700;
+}
+
 .docs-link-button {
   text-decoration: none;
 }

@@ -622,6 +622,48 @@ window.createConsoleApp = function createConsoleApp() {
     $('statusText').textContent = message;
   }
 
+  function renderVersionInfo(info = {}) {
+    const versionText = $('appVersionText');
+    const updateText = $('appUpdateText');
+    if (!versionText || !updateText) {
+      return;
+    }
+
+    const version = info.version || 'unknown';
+    const commit = info.localCommitShort ? ` · ${info.localCommitShort}` : '';
+    versionText.textContent = `v${version}${commit}`;
+
+    if (info.updateAvailable) {
+      updateText.textContent = info.latestCommitShort
+        ? `Update available: ${info.latestCommitShort}`
+        : 'Update available';
+      updateText.classList.remove('hidden');
+      return;
+    }
+
+    if (info.updateCheckAvailable === false) {
+      updateText.textContent = 'Update check unavailable';
+      updateText.classList.remove('hidden');
+      return;
+    }
+
+    updateText.textContent = '';
+    updateText.classList.add('hidden');
+  }
+
+  async function loadVersionInfo() {
+    try {
+      const info = await api('/api/version');
+      renderVersionInfo(info);
+      if (info.updateAvailable) {
+        setStatus('neutral', `A newer Data Workbench version is available on GitHub. Current: ${info.localCommitShort || 'unknown'}, latest: ${info.latestCommitShort || 'unknown'}.`);
+      }
+    } catch (error) {
+      renderVersionInfo({ version: state.health?.version || 'unknown', updateCheckAvailable: false });
+      console.warn('Could not check Data Workbench version.', error);
+    }
+  }
+
   function renderSaveConnectionResult(info = null) {
     const panel = $('saveConnectionResult');
     if (!panel) {
@@ -4097,6 +4139,7 @@ window.createConsoleApp = function createConsoleApp() {
     loadSidePanelVisibility();
     loadPanelLayout();
     await loadHealth();
+    loadVersionInfo();
     restoreActiveConnection();
     const pageMode = currentPageMode();
     state.workspace = pageMode === 'procedures' ? 'procedure' : 'sql';

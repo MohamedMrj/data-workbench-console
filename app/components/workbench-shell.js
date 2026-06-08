@@ -327,6 +327,10 @@ export default function WorkbenchShell({ pageMode = 'sql' }) {
                 <span>No active connection yet.</span>
               </div>
             </div>
+            <div id="appVersionStatus" className="app-version-status" aria-live="polite">
+              <span id="appVersionText">Version checking...</span>
+              <span id="appUpdateText" className="app-update-text hidden" />
+            </div>
           </section>
 
           <section className="panel-section connection-section">
