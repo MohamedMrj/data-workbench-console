@@ -235,6 +235,16 @@
   text-decoration: none;
 }
 
+.exit-workbench-btn {
+  border-color: color-mix(in srgb, var(--danger) 45%, var(--line));
+  color: color-mix(in srgb, var(--danger) 82%, var(--text));
+}
+
+.exit-workbench-btn:hover {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
 .brand-panel > .docs-link-button {
   margin-top: 8px;
 }

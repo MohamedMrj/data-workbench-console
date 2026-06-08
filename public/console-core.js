@@ -12,6 +12,8 @@ window.createConsoleApp = function createConsoleApp() {
   const PANEL_LAYOUT_KEY = 'dataWorkbenchPanelLayoutV1';
   const SIDE_PANEL_VISIBILITY_KEY = 'dataWorkbenchSidePanelVisibilityV1';
   const ADVANCED_OPERATIONS_VISIBILITY_KEY = 'dataWorkbenchAdvancedOperationsVisibleV1';
+  const LIFECYCLE_SESSION_KEY = 'dataWorkbenchLifecycleSessionV1';
+  const LIFECYCLE_HEARTBEAT_MS = 10_000;
   const THEMES = ['midnight', 'harbor', 'forge', 'field', 'ink', 'paper'];
   const CONNECTION_HISTORY_MAX = 12;
   const QUERY_HISTORY_MAX = 20;
@@ -98,6 +100,11 @@ window.createConsoleApp = function createConsoleApp() {
       visualObject: ''
     },
     confirmCountdownTimer: null,
+    lifecycle: {
+      sessionId: '',
+      heartbeatTimer: null,
+      exitRequested: false
+    },
     historyFilter: ''
   };
 
@@ -661,6 +668,113 @@ window.createConsoleApp = function createConsoleApp() {
     } catch (error) {
       renderVersionInfo({ version: state.health?.version || 'unknown', updateCheckAvailable: false });
       console.warn('Could not check Data Workbench version.', error);
+    }
+  }
+
+  function createLifecycleSessionId() {
+    if (window.crypto?.randomUUID) {
+      return window.crypto.randomUUID().replace(/-/g, '');
+    }
+
+    return `dwb_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 14)}`;
+  }
+
+  function lifecycleSessionId() {
+    if (state.lifecycle.sessionId) {
+      return state.lifecycle.sessionId;
+    }
+
+    let sessionId = '';
+    try {
+      sessionId = sessionStorage.getItem(LIFECYCLE_SESSION_KEY) || '';
+      if (!sessionId) {
+        sessionId = createLifecycleSessionId();
+        sessionStorage.setItem(LIFECYCLE_SESSION_KEY, sessionId);
+      }
+    } catch {
+      sessionId = createLifecycleSessionId();
+    }
+
+    state.lifecycle.sessionId = sessionId;
+    return sessionId;
+  }
+
+  function lifecyclePayload(event = 'active') {
+    return {
+      sessionId: lifecycleSessionId(),
+      event,
+      path: window.location.pathname
+    };
+  }
+
+  async function sendLifecycleHeartbeat(event = 'active') {
+    if (state.lifecycle.exitRequested) {
+      return;
+    }
+
+    try {
+      await api('/api/lifecycle/heartbeat', {
+        method: 'POST',
+        data: lifecyclePayload(event)
+      });
+    } catch (error) {
+      console.warn('Could not send lifecycle heartbeat.', error);
+    }
+  }
+
+  function sendLifecycleCloseBeacon() {
+    if (state.lifecycle.exitRequested || !navigator.sendBeacon) {
+      return;
+    }
+
+    try {
+      const payload = JSON.stringify(lifecyclePayload('close'));
+      const body = new Blob([payload], { type: 'application/json' });
+      navigator.sendBeacon('/api/lifecycle/heartbeat', body);
+    } catch (error) {
+      console.warn('Could not send lifecycle close beacon.', error);
+    }
+  }
+
+  function startLifecycleHeartbeat() {
+    lifecycleSessionId();
+    if (state.lifecycle.heartbeatTimer) {
+      window.clearInterval(state.lifecycle.heartbeatTimer);
+      state.lifecycle.heartbeatTimer = null;
+    }
+
+    sendLifecycleHeartbeat('active');
+    state.lifecycle.heartbeatTimer = window.setInterval(() => {
+      if (document.visibilityState !== 'hidden') {
+        sendLifecycleHeartbeat('active');
+      }
+    }, LIFECYCLE_HEARTBEAT_MS);
+  }
+
+  async function exitWorkbench() {
+    if (state.lifecycle.exitRequested) {
+      return;
+    }
+
+    const confirmed = window.confirm('Exit Data Workbench and stop the local server?');
+    if (!confirmed) {
+      return;
+    }
+
+    state.lifecycle.exitRequested = true;
+    if (state.lifecycle.heartbeatTimer) {
+      window.clearInterval(state.lifecycle.heartbeatTimer);
+      state.lifecycle.heartbeatTimer = null;
+    }
+
+    setStatus('loading', 'Stopping Data Workbench server...');
+    try {
+      await api('/api/lifecycle/exit', { method: 'POST', data: { sessionId: lifecycleSessionId() } });
+      setStatus('success', 'Data Workbench server is stopping. You can close this browser tab.');
+      document.body.classList.add('server-exit-requested');
+    } catch (error) {
+      state.lifecycle.exitRequested = false;
+      setStatus('error', `Could not stop the local server: ${error.message}`);
     }
   }
 
@@ -3869,6 +3983,9 @@ window.createConsoleApp = function createConsoleApp() {
     if ($('toggleActivityPanelBtn')) {
       $('toggleActivityPanelBtn').onclick = () => toggleSidePanel('activity');
     }
+    if ($('exitWorkbenchBtn')) {
+      $('exitWorkbenchBtn').onclick = () => exitWorkbench();
+    }
     $('testConnectionBtn').onclick = () => testConnection().catch((error) => setStatus('error', error.message));
     $('loadTablesBtn').onclick = () => loadCatalog().catch((error) => setStatus('error', error.message));
     $('clearHistoryBtn').onclick = clearCurrentHistory;
@@ -4128,6 +4245,7 @@ window.createConsoleApp = function createConsoleApp() {
     window.__dataWorkbenchPagehideHandler = () => {
       persistWorkspaceState(state.workspace);
       persistCatalogState();
+      sendLifecycleCloseBeacon();
     };
     window.addEventListener('pagehide', window.__dataWorkbenchPagehideHandler);
     window.addEventListener('beforeunload', window.__dataWorkbenchPagehideHandler);
@@ -4139,6 +4257,7 @@ window.createConsoleApp = function createConsoleApp() {
     loadSidePanelVisibility();
     loadPanelLayout();
     await loadHealth();
+    startLifecycleHeartbeat();
     loadVersionInfo();
     restoreActiveConnection();
     const pageMode = currentPageMode();

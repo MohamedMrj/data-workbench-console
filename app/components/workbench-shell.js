@@ -467,6 +467,9 @@ export default function WorkbenchShell({ pageMode = 'sql' }) {
                 <button id="toggleActivityPanelBtn" className="ghost-btn small" type="button" aria-pressed="false">
                   Hide themes & history
                 </button>
+                <button id="exitWorkbenchBtn" className="ghost-btn small exit-workbench-btn" type="button">
+                  Exit Data Workbench
+                </button>
               </div>
           </header>
 
