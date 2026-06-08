@@ -1,7 +1,7 @@
 .docs-shell {
   position: relative;
   z-index: 1;
-  width: min(1180px, calc(100% - 28px));
+  width: min(1500px, calc(100% - 28px));
   margin: 0 auto;
   padding: 16px 0 32px;
 }
@@ -134,8 +134,7 @@
 
 .docs-layout {
   display: grid;
-  grid-template-columns: minmax(160px, 190px) minmax(0, 820px);
-  justify-content: center;
+  grid-template-columns: minmax(160px, 190px) minmax(0, 1fr);
   gap: 14px;
   align-items: start;
 }
@@ -168,16 +167,18 @@
 }
 
 .docs-content {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: 10px;
-  align-items: start;
+  column-width: 390px;
+  column-gap: 12px;
 }
 
 .docs-section {
   min-width: 0;
+  display: inline-block;
+  width: 100%;
+  margin: 0 0 12px;
   padding: clamp(14px, 1.5vw, 18px);
   border-radius: var(--radius-md);
+  break-inside: avoid;
 }
 
 .docs-section h2 {
@@ -442,10 +443,6 @@
 }
 
 @media (max-width: 1120px) {
-  .docs-layout {
-    grid-template-columns: minmax(150px, 180px) minmax(0, 1fr);
-  }
-
   .docs-grid,
   .docs-card-row {
     grid-template-columns: 1fr;
@@ -465,6 +462,11 @@
   .docs-table > div,
   .docs-flow > div {
     grid-template-columns: 1fr;
+  }
+
+  .docs-content {
+    column-width: auto;
+    column-count: 1;
   }
 
   .docs-toc {
