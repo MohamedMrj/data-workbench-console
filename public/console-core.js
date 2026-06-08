@@ -3316,24 +3316,39 @@ window.createConsoleApp = function createConsoleApp() {
     if (state.results.visualKind !== 'profile' || !rows.length) return [];
     const avgCompleteness = rows.reduce((sum, row) => sum + (numericValue(row.completeness_pct) || 0), 0) / rows.length;
     const nullableCount = rows.filter((row) => String(row.nullable || '').toUpperCase() === 'YES').length;
+    const sampledRows = Math.max(...rows.map((row) => numericValue(row.sample_rows ?? row.sampled_rows) || 0));
     const nullHeavy = rows
       .map((row) => ({
-        column: row.column_name,
+        column: row.column_name || 'Unknown column',
         pct: 100 - (numericValue(row.completeness_pct) || 0),
         nullRows: numericValue(row.null_rows) || 0
       }))
       .filter((row) => row.pct > 0)
       .sort((left, right) => right.pct - left.pct)
       .slice(0, 5);
-    const completenessRows = rows
+    const incompleteRows = rows
       .slice()
+      .filter((row) => (numericValue(row.completeness_pct) || 0) < 100)
       .sort((left, right) => (numericValue(left.completeness_pct) || 0) - (numericValue(right.completeness_pct) || 0))
-      .slice(0, 6);
+      .slice(0, 5);
+    const objectName = state.results.visualObject || state.activeObject || 'Profiled object';
+    const chips = [
+      ['Object', objectName],
+      ['Profiled columns', rows.length],
+      ['Sampled rows', sampledRows || 'n/a'],
+      ['Average completeness', `${avgCompleteness.toFixed(1)}%`],
+      ['Nullable columns', nullableCount],
+      ['Null-heavy columns', nullHeavy.length]
+    ];
+    const completenessDetails = incompleteRows.length
+      ? `<div class="profile-detail-list" aria-label="Incomplete columns">${incompleteRows.map((row) => `<div class="profile-detail-row"><span title="${esc(row.column_name || '')}">${esc(row.column_name || 'Unknown column')}</span>${renderMeter(row.completeness_pct, `${row.completeness_pct}% complete`)}<code>${esc(row.completeness_pct)}%</code></div>`).join('')}</div>`
+      : '<span class="profile-good-chip">All profiled columns complete</span>';
+    const nullDetails = nullHeavy.length
+      ? `<div class="profile-detail-list compact" aria-label="Null-heavy columns">${nullHeavy.map((row) => `<div class="profile-detail-row compact"><span title="${esc(row.column)}">${esc(row.column)}</span><code>${row.pct.toFixed(1)}% missing${row.nullRows ? ` - ${row.nullRows} rows` : ''}</code></div>`).join('')}</div>`
+      : '<span class="profile-good-chip">No sampled null or blank values</span>';
 
     return [
-      `<div class="artifact-card visual-helper-card"><strong>Profile summary</strong><span>${rows.length} column${rows.length === 1 ? '' : 's'} profiled${state.results.visualObject ? ` for ${esc(state.results.visualObject)}` : ''}.</span>${renderMeter(avgCompleteness, 'Average completeness')}<code>${avgCompleteness.toFixed(1)}% average completeness</code><span>${nullableCount} nullable column${nullableCount === 1 ? '' : 's'}</span></div>`,
-      `<div class="artifact-card visual-helper-card visual-helper-wide"><strong>Completeness watch</strong><div class="visual-list">${completenessRows.map((row) => `<div class="visual-row"><span>${esc(row.column_name)}</span>${renderMeter(row.completeness_pct, `${row.completeness_pct}% complete`)}<code>${esc(row.completeness_pct)}%</code></div>`).join('')}</div></div>`,
-      `<div class="artifact-card visual-helper-card"><strong>Null concentration</strong>${nullHeavy.length ? `<div class="visual-list compact">${nullHeavy.map((row) => `<div class="visual-row"><span>${esc(row.column)}</span><code>${row.pct.toFixed(1)}%</code></div>`).join('')}</div>` : '<span>No sampled null or blank values found.</span>'}</div>`
+      `<div class="artifact-card visual-helper-card profile-insights-card"><div class="profile-insights-head"><strong>Profile insights</strong><span>${esc(objectName)}</span></div><div class="profile-insight-row">${chips.map(([label, value]) => `<span class="profile-insight-chip"><small>${esc(label)}</small>${esc(value)}</span>`).join('')}</div><div class="profile-status-row">${completenessDetails}${nullDetails}</div></div>`
     ];
   }
 
