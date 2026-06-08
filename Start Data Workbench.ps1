@@ -15,6 +15,71 @@ function Test-AppHealth {
     }
 }
 
+function Test-BuildCurrent {
+    $buildIdPath = Join-Path $projectDir '.next\BUILD_ID'
+    if (-not (Test-Path -LiteralPath $buildIdPath)) {
+        return $false
+    }
+
+    $buildTime = (Get-Item -LiteralPath $buildIdPath).LastWriteTimeUtc
+    $sourceRoots = @(
+        (Join-Path $projectDir 'app'),
+        (Join-Path $projectDir 'lib'),
+        (Join-Path $projectDir 'public'),
+        (Join-Path $projectDir 'scripts')
+    )
+    $sourceFiles = @(
+        (Join-Path $projectDir 'package.json'),
+        (Join-Path $projectDir 'package-lock.json'),
+        (Join-Path $projectDir 'next.config.mjs')
+    )
+
+    foreach ($sourceFile in $sourceFiles) {
+        if ((Test-Path -LiteralPath $sourceFile) -and ((Get-Item -LiteralPath $sourceFile).LastWriteTimeUtc -gt $buildTime)) {
+            return $false
+        }
+    }
+
+    foreach ($sourceRoot in $sourceRoots) {
+        if (-not (Test-Path -LiteralPath $sourceRoot)) {
+            continue
+        }
+
+        $newerFile = Get-ChildItem -LiteralPath $sourceRoot -Recurse -File -ErrorAction SilentlyContinue |
+            Where-Object { $_.LastWriteTimeUtc -gt $buildTime } |
+            Select-Object -First 1
+
+        if ($newerFile) {
+            return $false
+        }
+    }
+
+    return $true
+}
+
+function Stop-ProjectServer {
+    $connections = Get-NetTCPConnection -LocalPort 3000 -State Listen -ErrorAction SilentlyContinue
+    foreach ($connection in $connections) {
+        $process = Get-CimInstance Win32_Process -Filter "ProcessId = $($connection.OwningProcess)" -ErrorAction SilentlyContinue
+        if (-not $process) {
+            continue
+        }
+
+        $commandLine = [string]$process.CommandLine
+        if ($commandLine -like "*$projectDir*" -and $commandLine -like '*next*' -and $commandLine -like '*start*') {
+            Add-Content -LiteralPath $launchLog -Value "Stopping stale server process $($connection.OwningProcess)."
+            Stop-Process -Id $connection.OwningProcess -Force
+        }
+    }
+
+    for ($i = 0; $i -lt 20; $i++) {
+        Start-Sleep -Milliseconds 250
+        if (-not (Get-NetTCPConnection -LocalPort 3000 -State Listen -ErrorAction SilentlyContinue)) {
+            return
+        }
+    }
+}
+
 function Resolve-ProjectDirectory {
     if (Test-Path -LiteralPath (Join-Path $baseDir 'package.json')) {
         return $baseDir
@@ -205,12 +270,19 @@ try {
 
     Set-Content -LiteralPath $launchLog -Value "Starting Data Workbench Console at $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
 
+    $buildCurrent = Test-BuildCurrent
     Update-Progress -Status 'Checking existing server' -Value 5 -Detail 'Looking for an already running app.'
-    if (Test-AppHealth) {
+    if ((Test-AppHealth) -and $buildCurrent) {
         Update-Progress -Status 'App is already running' -Value 100 -Detail 'Opening browser.'
         Start-Process 'http://localhost:3000'
         Start-Sleep -Milliseconds 500
         exit 0
+    }
+
+    if (-not $buildCurrent) {
+        Add-Content -LiteralPath $launchLog -Value 'Production build is missing or older than source files.'
+        Update-Progress -Status 'Refreshing local build' -Value 8 -Detail 'Stopping stale server if needed.'
+        Stop-ProjectServer
     }
 
     $npm = Get-NpmCommand
@@ -230,8 +302,8 @@ try {
     $serverCommand = "`"`"$npm`" run start > `"$serverLog`" 2>&1`""
     Start-Process -WindowStyle Hidden -WorkingDirectory $projectDir -FilePath 'cmd.exe' -ArgumentList "/d /s /c $serverCommand"
 
-    for ($i = 0; $i -lt 30; $i++) {
-        $percent = 83 + [Math]::Min(16, [Math]::Floor($i / 2))
+    for ($i = 0; $i -lt 60; $i++) {
+        $percent = 83 + [Math]::Min(16, [Math]::Floor($i / 4))
         Update-Progress -Status 'Waiting for server' -Value $percent -Detail 'Checking http://localhost:3000'
         Start-Sleep -Seconds 1
         if (Test-AppHealth) {
@@ -242,7 +314,7 @@ try {
         }
     }
 
-    Fail-Launch -Message 'The server was started, but it did not respond on http://localhost:3000 within 30 seconds.' -LogPath $serverLog
+    Fail-Launch -Message 'The server was started, but it did not respond on http://localhost:3000 within 60 seconds.' -LogPath $serverLog
 } catch {
     Fail-Launch -Message $_.Exception.Message -LogPath $launchLog
 } finally {
