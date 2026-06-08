@@ -255,6 +255,17 @@ test('DROP after SELECT in same batch is blocked', () => {
   assert.equal(result.kind, 'blocked');
 });
 
+test('T-SQL IF block with internal semicolons is blocked with batch guidance', () => {
+  const result = classifyQuery(`
+IF NOT EXISTS (SELECT 1 FROM dbo.Tasks WHERE TaskID = 'x')
+BEGIN
+  INSERT INTO dbo.Tasks (TaskID) VALUES ('x');
+END;
+`);
+  assert.equal(result.kind, 'blocked');
+  assert.ok(result.reason.includes('IF/BEGIN/END'));
+});
+
 // ─── classifyQuery — edge cases ──────────────────────────────────────────────
 
 console.log('\nclassifyQuery — edge cases');

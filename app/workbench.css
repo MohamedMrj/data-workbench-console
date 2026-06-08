@@ -1811,6 +1811,43 @@
   scrollbar-gutter: stable both-edges;
 }
 
+.result-error-card {
+  display: grid;
+  gap: 8px;
+  max-width: min(780px, 100%);
+  margin: 18px;
+  padding: 14px 16px;
+  border: 1px solid color-mix(in srgb, var(--danger) 42%, var(--line));
+  border-left: 4px solid var(--danger);
+  border-radius: var(--radius-lg);
+  background: color-mix(in srgb, var(--danger) 7%, var(--surface-soft));
+  color: var(--text);
+}
+
+.result-error-card strong {
+  color: var(--danger);
+}
+
+.result-error-card p {
+  margin: 0;
+  line-height: 1.45;
+}
+
+.result-error-card span {
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.result-error-card code {
+  justify-self: start;
+  padding: 4px 7px;
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--surface-strong) 86%, transparent);
+  color: var(--danger);
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.82rem;
+}
+
 .result-scroll-btn {
   min-width: 112px;
   padding-inline: 14px;

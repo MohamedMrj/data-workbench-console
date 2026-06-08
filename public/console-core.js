@@ -3199,6 +3199,91 @@ window.createConsoleApp = function createConsoleApp() {
     persistWorkspaceState(state.workspace);
   }
 
+  function resetResultsForRun(message = 'Working...') {
+    const pageSize = state.results.pageSize;
+    state.results = {
+      ...defaultResultsState(),
+      pageSize
+    };
+    if ($('resultsArtifacts')) {
+      $('resultsArtifacts').innerHTML = '';
+    }
+    if ($('resultsMeta')) {
+      $('resultsMeta').textContent = message;
+    }
+    if ($('pageIndicator')) {
+      $('pageIndicator').textContent = 'Page 1/1';
+    }
+    if ($('prevPageBtn')) {
+      $('prevPageBtn').disabled = true;
+    }
+    if ($('nextPageBtn')) {
+      $('nextPageBtn').disabled = true;
+    }
+    const panel = $('resultsPanel');
+    const resultsCard = panel?.closest('.results-card');
+    if (panel) {
+      panel.innerHTML = `<div class="empty-state">${esc(message)}</div>`;
+    }
+    if (resultsCard) {
+      resultsCard.dataset.resultsState = 'loading';
+    }
+    updateResultScrollControls();
+  }
+
+  function queryErrorHint(error, query) {
+    const message = String(error?.message || '');
+    const sql = String(query || '').trim();
+    const ifBatchHint = 'This looks like a T-SQL IF/BEGIN/END batch. SQL Studio currently blocks multi-statement batches, so no database changes were made. Put this logic in a stored procedure, or run a single reviewed INSERT/UPDATE/DELETE statement.';
+    if (/IF\/BEGIN\/END/i.test(message) || /^IF\b/i.test(sql)) {
+      return ifBatchHint;
+    }
+    if (/Only one SQL statement/i.test(message)) {
+      return 'SQL Studio currently accepts one executable statement per run. Remove extra statements or run them one at a time.';
+    }
+    if (/fetch|network/i.test(message)) {
+      return 'The app could not reach the local server or database endpoint. Check that the Data Workbench server is still running and that the connection profile is valid.';
+    }
+    return 'No result rows were returned because the query failed before completion.';
+  }
+
+  function renderQueryError(error, query) {
+    const message = error?.message || 'Query failed.';
+    const code = error?.code ? String(error.code) : '';
+    const hint = queryErrorHint(error, query);
+    const pageSize = state.results.pageSize;
+    state.results = {
+      ...defaultResultsState(),
+      pageSize
+    };
+    if ($('resultsArtifacts')) {
+      $('resultsArtifacts').innerHTML = '';
+    }
+    if ($('resultsMeta')) {
+      $('resultsMeta').textContent = 'Query failed. No new result set was loaded.';
+    }
+    if ($('pageIndicator')) {
+      $('pageIndicator').textContent = 'Page 1/1';
+    }
+    if ($('prevPageBtn')) {
+      $('prevPageBtn').disabled = true;
+    }
+    if ($('nextPageBtn')) {
+      $('nextPageBtn').disabled = true;
+    }
+    const panel = $('resultsPanel');
+    const resultsCard = panel?.closest('.results-card');
+    if (panel) {
+      panel.innerHTML = `<div class="result-error-card"><strong>Query failed</strong><p>${esc(message)}</p>${code ? `<code>${esc(code)}</code>` : ''}<span>${esc(hint)}</span></div>`;
+    }
+    if (resultsCard) {
+      resultsCard.dataset.resultsState = 'error';
+    }
+    updateResultScrollControls();
+    applyPanelLayout();
+    setStatus('error', message);
+  }
+
   function sortedRows() {
     let rows = [...state.results.rows];
     
@@ -3904,31 +3989,35 @@ window.createConsoleApp = function createConsoleApp() {
       return;
     }
     setStatus('loading', 'Executing query...');
-    $('resultsPanel').innerHTML = '<div class="empty-state">Working...</div>';
-    const payload = await api('/api/query', { method: 'POST', data: requestConnection({ query }) });
-    if (payload.requiresConfirmation) {
-      setResults([], [], { rowsAffected: Number(payload.rowsAffected || 0) });
-      setStatus('success', payload.message);
-      openConfirm({
-        type: 'write',
-        title: `Confirm ${payload.action}`,
-        message: payload.message,
-        confirmLabel: payload.action === 'DELETE' ? 'Execute delete' : 'Execute write',
-                metrics: [{ label: 'Action', value: payload.action }, { label: 'Rows', value: payload.rowsAffected }],
-        request: { query, confirmToken: payload.confirmationToken }
+    resetResultsForRun('Executing query...');
+    try {
+      const payload = await api('/api/query', { method: 'POST', data: requestConnection({ query }) });
+      if (payload.requiresConfirmation) {
+        setResults([], [], { rowsAffected: Number(payload.rowsAffected || 0) });
+        setStatus('success', payload.message);
+        openConfirm({
+          type: 'write',
+          title: `Confirm ${payload.action}`,
+          message: payload.message,
+          confirmLabel: payload.action === 'DELETE' ? 'Execute delete' : 'Execute write',
+          metrics: [{ label: 'Action', value: payload.action }, { label: 'Rows', value: payload.rowsAffected }],
+          request: { query, confirmToken: payload.confirmationToken }
+        });
+        return;
+      }
+      setResults(payload.columns || [], payload.rows || [], {
+        rowsAffected: Number(payload.rowsAffected || 0),
+        totalRows: Number(payload.totalRows ?? (payload.rows || []).length),
+        truncated: Boolean(payload.truncated),
+        visualKind: 'query'
       });
-      return;
+      addQueryHistory(query);
+      const rowCount = Array.isArray(payload.rows) ? payload.rows.length : 0;
+      const affected = Number(payload.rowsAffected || 0);
+      setStatus('success', rowCount ? `Returned ${rowCount} rows${payload.truncated ? ' (truncated in app)' : ''}.` : `Completed. ${affected ? `${affected} row${affected === 1 ? '' : 's'} affected.` : 'No rows returned.'}`);
+    } catch (error) {
+      renderQueryError(error, query);
     }
-    setResults(payload.columns || [], payload.rows || [], {
-      rowsAffected: Number(payload.rowsAffected || 0),
-      totalRows: Number(payload.totalRows ?? (payload.rows || []).length),
-      truncated: Boolean(payload.truncated),
-      visualKind: 'query'
-    });
-    addQueryHistory(query);
-    const rowCount = Array.isArray(payload.rows) ? payload.rows.length : 0;
-    const affected = Number(payload.rowsAffected || 0);
-    setStatus('success', rowCount ? `Returned ${rowCount} rows${payload.truncated ? ' (truncated in app)' : ''}.` : `Completed. ${affected ? `${affected} row${affected === 1 ? '' : 's'} affected.` : 'No rows returned.'}`);
   }
 
   async function runProcedure() {
