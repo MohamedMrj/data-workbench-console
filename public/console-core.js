@@ -769,6 +769,12 @@ window.createConsoleApp = function createConsoleApp() {
     });
   }
 
+  function showShutdownAccepted() {
+    showShutdownOverlay('Data Workbench is stopping', 'The local server is shutting down. You can close this browser tab.');
+    setStatus('success', 'Data Workbench server is stopping. You can close this browser tab.');
+    document.body.classList.add('server-exit-requested');
+  }
+
   async function exitWorkbench() {
     if (state.lifecycle.exitRequested) {
       return;
@@ -794,9 +800,13 @@ window.createConsoleApp = function createConsoleApp() {
     setStatus('loading', 'Stopping Data Workbench server...');
     try {
       await api('/api/lifecycle/exit', { method: 'POST', data: { sessionId: lifecycleSessionId() } });
-      setStatus('success', 'Data Workbench server is stopping. You can close this browser tab.');
-      document.body.classList.add('server-exit-requested');
+      showShutdownAccepted();
     } catch (error) {
+      if (error instanceof TypeError || /failed to fetch|network/i.test(String(error.message || ''))) {
+        showShutdownAccepted();
+        return;
+      }
+
       state.lifecycle.exitRequested = false;
       if (exitButton) {
         exitButton.textContent = 'Exit Data Workbench';
