@@ -3231,9 +3231,10 @@ window.createConsoleApp = function createConsoleApp() {
     updateResultScrollControls();
   }
 
-  function queryErrorHint(error, query) {
+  function resultErrorHint(error, context = {}) {
     const message = String(error?.message || '');
-    const sql = String(query || '').trim();
+    const sql = String(context.query || '').trim();
+    const operation = String(context.operation || 'operation').toLowerCase();
     const ifBatchHint = 'This looks like a T-SQL IF/BEGIN/END batch. SQL Studio currently blocks multi-statement batches, so no database changes were made. Put this logic in a stored procedure, or run a single reviewed INSERT/UPDATE/DELETE statement.';
     if (/IF\/BEGIN\/END/i.test(message) || /^IF\b/i.test(sql)) {
       return ifBatchHint;
@@ -3241,16 +3242,50 @@ window.createConsoleApp = function createConsoleApp() {
     if (/Only one SQL statement/i.test(message)) {
       return 'SQL Studio currently accepts one executable statement per run. Remove extra statements or run them one at a time.';
     }
+    if (/confirmation|token|expired/i.test(message)) {
+      return 'The review window expired or no longer matches the request. Start the action again so the app can create a fresh confirmation.';
+    }
+    if (/login|authentication|credential|password|principal|access denied/i.test(message)) {
+      return 'The database rejected the connection or permissions. Check the saved connection, credentials, and whether the account has access to this database/object.';
+    }
+    if (/timeout|timed out|deadlock|busy/i.test(message)) {
+      return 'The database did not complete the request in time. Try again, narrow the query, or check whether the source is under load.';
+    }
+    if (/invalid object|does not exist|not found|could not find|unknown object/i.test(message)) {
+      return 'The selected object may have been renamed, removed, or is not visible to this connection. Reload the catalog and select it again.';
+    }
+    if (/permission|not authorized|unauthorized|forbidden|denied/i.test(message)) {
+      return 'The current account does not have enough permission for this action. Use a permitted account or ask the database owner to grant access.';
+    }
+    if (/syntax|parse|near/i.test(message)) {
+      return 'SQL Server rejected the statement syntax. Review the highlighted SQL text and run a smaller statement if needed.';
+    }
     if (/fetch|network/i.test(message)) {
       return 'The app could not reach the local server or database endpoint. Check that the Data Workbench server is still running and that the connection profile is valid.';
     }
-    return 'No result rows were returned because the query failed before completion.';
+    if (operation.includes('profile')) {
+      return 'The object profile could not be loaded. Reload the catalog, verify the object still exists, and check that the connection can read its metadata and sample rows.';
+    }
+    if (operation.includes('dependenc')) {
+      return 'The dependency view could not be loaded. Some sources may not expose dependency metadata, or the account may not have metadata permissions.';
+    }
+    if (operation.includes('audit')) {
+      return 'The local audit log could not be loaded. The query itself was not executed by this action.';
+    }
+    if (operation.includes('catalog')) {
+      return 'The object catalog could not be loaded. Check the connection, credentials, database name, and whether the account can read metadata.';
+    }
+    if (operation.includes('procedure')) {
+      return 'The stored procedure action failed before completion. Check required parameters, permissions, and the procedure error text above.';
+    }
+    return 'No result rows were returned because the action failed before completion.';
   }
 
-  function renderQueryError(error, query) {
-    const message = error?.message || 'Query failed.';
+  function renderResultError(error, context = {}) {
+    const title = context.title || 'Action failed';
+    const message = error?.message || `${title}.`;
     const code = error?.code ? String(error.code) : '';
-    const hint = queryErrorHint(error, query);
+    const hint = resultErrorHint(error, context);
     const pageSize = state.results.pageSize;
     state.results = {
       ...defaultResultsState(),
@@ -3274,7 +3309,7 @@ window.createConsoleApp = function createConsoleApp() {
     const panel = $('resultsPanel');
     const resultsCard = panel?.closest('.results-card');
     if (panel) {
-      panel.innerHTML = `<div class="result-error-card"><strong>Query failed</strong><p>${esc(message)}</p>${code ? `<code>${esc(code)}</code>` : ''}<span>${esc(hint)}</span></div>`;
+      panel.innerHTML = `<div class="result-error-card"><strong>${esc(title)}</strong><p>${esc(message)}</p>${code ? `<code>${esc(code)}</code>` : ''}<span>${esc(hint)}</span></div>`;
     }
     if (resultsCard) {
       resultsCard.dataset.resultsState = 'error';
@@ -3282,6 +3317,14 @@ window.createConsoleApp = function createConsoleApp() {
     updateResultScrollControls();
     applyPanelLayout();
     setStatus('error', message);
+  }
+
+  function renderQueryError(error, query) {
+    renderResultError(error, {
+      title: 'Query failed',
+      operation: 'query',
+      query
+    });
   }
 
   function sortedRows() {
@@ -3837,22 +3880,31 @@ window.createConsoleApp = function createConsoleApp() {
     }
     const sampleRows = Math.max(10, Math.min(1000, Number($('profileSampleRowsInput').value || 200)));
     setStatus('loading', `Profiling ${state.activeObject}...`);
-    const payload = await api('/api/object-insights', {
-      method: 'POST',
-      data: requestConnection({
-        action: 'profile',
-        object: state.activeObject,
-        selectedColumns: advancedTemplateColumns(),
-        sampleRows
-      })
-    });
-    setResults(payload.columns || [], payload.rows || [], {
-      totalRows: Number(payload.totalRows ?? (payload.rows || []).length),
-      output: payload.output || {},
-      visualKind: 'profile',
-      visualObject: payload.object || state.activeObject
-    });
-    setStatus('success', payload.message || `Profile loaded for ${state.activeObject}.`);
+    resetResultsForRun(`Profiling ${state.activeObject}...`);
+    try {
+      const payload = await api('/api/object-insights', {
+        method: 'POST',
+        data: requestConnection({
+          action: 'profile',
+          object: state.activeObject,
+          selectedColumns: advancedTemplateColumns(),
+          sampleRows
+        })
+      });
+      setResults(payload.columns || [], payload.rows || [], {
+        totalRows: Number(payload.totalRows ?? (payload.rows || []).length),
+        output: payload.output || {},
+        visualKind: 'profile',
+        visualObject: payload.object || state.activeObject
+      });
+      setStatus('success', payload.message || `Profile loaded for ${state.activeObject}.`);
+    } catch (error) {
+      renderResultError(error, {
+        title: 'Profile failed',
+        operation: 'profile',
+        object: state.activeObject
+      });
+    }
   }
 
   async function loadDependencyView() {
@@ -3864,20 +3916,29 @@ window.createConsoleApp = function createConsoleApp() {
       return;
     }
     setStatus('loading', `Loading dependencies for ${state.activeObject}...`);
-    const payload = await api('/api/object-insights', {
-      method: 'POST',
-      data: requestConnection({
-        action: 'dependencies',
+    resetResultsForRun(`Loading dependencies for ${state.activeObject}...`);
+    try {
+      const payload = await api('/api/object-insights', {
+        method: 'POST',
+        data: requestConnection({
+          action: 'dependencies',
+          object: state.activeObject
+        })
+      });
+      setResults(payload.columns || [], payload.rows || [], {
+        totalRows: Number(payload.totalRows ?? (payload.rows || []).length),
+        output: payload.output || {},
+        visualKind: 'dependencies',
+        visualObject: payload.object || state.activeObject
+      });
+      setStatus('success', payload.message || `Dependency view loaded for ${state.activeObject}.`);
+    } catch (error) {
+      renderResultError(error, {
+        title: 'Dependency view failed',
+        operation: 'dependencies',
         object: state.activeObject
-      })
-    });
-    setResults(payload.columns || [], payload.rows || [], {
-      totalRows: Number(payload.totalRows ?? (payload.rows || []).length),
-      output: payload.output || {},
-      visualKind: 'dependencies',
-      visualObject: payload.object || state.activeObject
-    });
-    setStatus('success', payload.message || `Dependency view loaded for ${state.activeObject}.`);
+      });
+    }
   }
 
   async function testConnection() {
@@ -4029,28 +4090,43 @@ window.createConsoleApp = function createConsoleApp() {
       return;
     }
     setStatus('loading', 'Preparing procedure execution...');
-    const payload = await api('/api/procedures', { method: 'POST', data: requestConnection({ procedure: state.activeProcedure, parameters: currentProcedureValues() }) });
-    if (payload.requiresConfirmation) {
-      setResults();
-      setStatus('success', payload.message);
-      openConfirm({
-        type: 'procedure',
-        title: 'Confirm procedure execution',
-        message: payload.message,
-        confirmLabel: 'Run procedure',
-                metrics: [{ label: 'Procedure', value: payload.procedure }, { label: 'Parameters', value: payload.parameterCount }],
-        request: { procedure: state.activeProcedure, parameters: currentProcedureValues(), confirmToken: payload.confirmationToken }
+    resetResultsForRun('Preparing procedure execution...');
+    try {
+      const payload = await api('/api/procedures', { method: 'POST', data: requestConnection({ procedure: state.activeProcedure, parameters: currentProcedureValues() }) });
+      if (payload.requiresConfirmation) {
+        setResults();
+        setStatus('success', payload.message);
+        openConfirm({
+          type: 'procedure',
+          title: 'Confirm procedure execution',
+          message: payload.message,
+          confirmLabel: 'Run procedure',
+          metrics: [{ label: 'Procedure', value: payload.procedure }, { label: 'Parameters', value: payload.parameterCount }],
+          request: { procedure: state.activeProcedure, parameters: currentProcedureValues(), confirmToken: payload.confirmationToken }
+        });
+        return;
+      }
+      renderResultError(new Error('Unexpected response from server.'), {
+        title: 'Procedure failed',
+        operation: 'procedure',
+        object: state.activeProcedure
       });
-      return;
+    } catch (error) {
+      renderResultError(error, {
+        title: 'Procedure failed',
+        operation: 'procedure',
+        object: state.activeProcedure
+      });
     }
-    setStatus('error', 'Unexpected response from server.');
   }
 
   async function confirmPendingAction() {
     if (!state.pendingAction) return;
-    setStatus('loading', state.pendingAction.type === 'procedure' ? 'Executing stored procedure...' : 'Executing write...');
+    const isProcedure = state.pendingAction.type === 'procedure';
+    setStatus('loading', isProcedure ? 'Executing stored procedure...' : 'Executing write...');
+    resetResultsForRun(isProcedure ? 'Executing stored procedure...' : 'Executing write...');
     try {
-      if (state.pendingAction.type === 'procedure') {
+      if (isProcedure) {
         const executedRequest = { ...state.pendingAction.request };
         const payload = await api('/api/procedures', { method: 'POST', data: requestConnection({ ...executedRequest }) });
         closeConfirm();
@@ -4075,24 +4151,39 @@ window.createConsoleApp = function createConsoleApp() {
       addQueryHistory(executedQuery);
       setStatus('success', `${payload.message} ${payload.rowsAffected} row${payload.rowsAffected === 1 ? '' : 's'} affected.`);
     } catch (error) {
-      setStatus('error', error.message);
+      const failedAction = state.pendingAction;
+      closeConfirm();
+      renderResultError(error, {
+        title: isProcedure ? 'Procedure execution failed' : 'Write execution failed',
+        operation: isProcedure ? 'procedure execution' : 'write execution',
+        query: failedAction?.request?.query || '',
+        object: failedAction?.request?.procedure || ''
+      });
     }
   }
 
   async function loadAudit() {
     setStatus('loading', 'Loading recent audit...');
-    const payload = await api('/api/audit?limit=25');
-    const rows = (payload.entries || []).map((entry) => ({
-      timestamp: formatTimestamp(entry.timestamp || ''),
-      sourceType: entry.sourceType || '',
-      event: entry.event || '',
-      outcome: entry.outcome || '',
-      action: entry.action || '',
-      database: entry.database || '',
-      detail: entry.detail || ''
-    }));
-    setResults(['timestamp', 'sourceType', 'event', 'outcome', 'action', 'database', 'detail'], rows, { totalRows: rows.length, visualKind: 'audit' });
-    setStatus('success', `Loaded ${rows.length} audit entries.`);
+    resetResultsForRun('Loading recent audit...');
+    try {
+      const payload = await api('/api/audit?limit=25');
+      const rows = (payload.entries || []).map((entry) => ({
+        timestamp: formatTimestamp(entry.timestamp || ''),
+        sourceType: entry.sourceType || '',
+        event: entry.event || '',
+        outcome: entry.outcome || '',
+        action: entry.action || '',
+        database: entry.database || '',
+        detail: entry.detail || ''
+      }));
+      setResults(['timestamp', 'sourceType', 'event', 'outcome', 'action', 'database', 'detail'], rows, { totalRows: rows.length, visualKind: 'audit' });
+      setStatus('success', `Loaded ${rows.length} audit entries.`);
+    } catch (error) {
+      renderResultError(error, {
+        title: 'Audit log failed',
+        operation: 'audit'
+      });
+    }
   }
 
   async function loadHealth() {
@@ -4132,7 +4223,10 @@ window.createConsoleApp = function createConsoleApp() {
       $('exitWorkbenchBtn').onclick = () => exitWorkbench();
     }
     $('testConnectionBtn').onclick = () => testConnection().catch((error) => setStatus('error', error.message));
-    $('loadTablesBtn').onclick = () => loadCatalog().catch((error) => setStatus('error', error.message));
+    $('loadTablesBtn').onclick = () => loadCatalog().catch((error) => renderResultError(error, {
+      title: 'Catalog load failed',
+      operation: 'catalog'
+    }));
     $('clearHistoryBtn').onclick = clearCurrentHistory;
     if ($('loadAuditBtn')) {
       $('loadAuditBtn').onclick = () => loadAudit().catch((error) => setStatus('error', error.message));
