@@ -1057,11 +1057,13 @@ window.createConsoleApp = function createConsoleApp() {
   function renderAdvancedOperationsVisibility() {
     const button = $('toggleAdvancedOperationsBtn');
     const content = $('advancedOperationsContent');
+    const shell = document.querySelector('.app-shell');
     if (!button || !content) {
       return;
     }
 
     content.classList.toggle('hidden', !state.advancedOperationsVisible);
+    shell?.classList.toggle('advanced-operations-expanded', state.advancedOperationsVisible);
     button.setAttribute('aria-expanded', state.advancedOperationsVisible ? 'true' : 'false');
     button.textContent = state.advancedOperationsVisible ? 'Hide advanced' : 'Show advanced';
   }
