@@ -611,6 +611,16 @@ export default function WorkbenchShell({ pageMode = 'sql' }) {
         </div>
       </div>
 
+      <div id="shutdownOverlay" className="shutdown-overlay hidden" aria-hidden="true">
+        <div className="shutdown-card">
+          <div className="shutdown-spinner" aria-hidden="true" />
+          <div>
+            <h2 id="shutdownTitle">Stopping Data Workbench</h2>
+            <p id="shutdownMessage">The local server is shutting down. You can close this browser tab.</p>
+          </div>
+        </div>
+      </div>
+
       <div id="resultsContextMenu" className="context-menu hidden" role="menu">
         <button id="contextCopyJsonBtn" className="context-menu-item" role="menuitem">Copy row as JSON</button>
         <button id="contextCopyCsvBtn" className="context-menu-item" role="menuitem">Copy row as CSV</button>

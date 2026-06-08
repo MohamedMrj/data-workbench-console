@@ -751,6 +751,24 @@ window.createConsoleApp = function createConsoleApp() {
     }, LIFECYCLE_HEARTBEAT_MS);
   }
 
+  function showShutdownOverlay(title, message, failed = false) {
+    const overlay = $('shutdownOverlay');
+    if (!overlay) {
+      return;
+    }
+
+    $('shutdownTitle').textContent = title;
+    $('shutdownMessage').textContent = message;
+    overlay.classList.toggle('failed', failed);
+    overlay.classList.remove('hidden');
+    overlay.setAttribute('aria-hidden', 'false');
+    document.querySelectorAll('button, input, select, textarea').forEach((element) => {
+      if (!overlay.contains(element)) {
+        element.disabled = true;
+      }
+    });
+  }
+
   async function exitWorkbench() {
     if (state.lifecycle.exitRequested) {
       return;
@@ -762,11 +780,17 @@ window.createConsoleApp = function createConsoleApp() {
     }
 
     state.lifecycle.exitRequested = true;
+    const exitButton = $('exitWorkbenchBtn');
+    if (exitButton) {
+      exitButton.textContent = 'Stopping...';
+      exitButton.disabled = true;
+    }
     if (state.lifecycle.heartbeatTimer) {
       window.clearInterval(state.lifecycle.heartbeatTimer);
       state.lifecycle.heartbeatTimer = null;
     }
 
+    showShutdownOverlay('Stopping Data Workbench', 'The local server is shutting down. You can close this browser tab.');
     setStatus('loading', 'Stopping Data Workbench server...');
     try {
       await api('/api/lifecycle/exit', { method: 'POST', data: { sessionId: lifecycleSessionId() } });
@@ -774,6 +798,11 @@ window.createConsoleApp = function createConsoleApp() {
       document.body.classList.add('server-exit-requested');
     } catch (error) {
       state.lifecycle.exitRequested = false;
+      if (exitButton) {
+        exitButton.textContent = 'Exit Data Workbench';
+        exitButton.disabled = false;
+      }
+      showShutdownOverlay('Shutdown failed', `The local server could not be stopped: ${error.message}`, true);
       setStatus('error', `Could not stop the local server: ${error.message}`);
     }
   }
