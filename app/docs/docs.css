@@ -1,7 +1,7 @@
 .docs-shell {
   position: relative;
   z-index: 1;
-  width: min(1420px, calc(100% - 28px));
+  width: min(1180px, calc(100% - 28px));
   margin: 0 auto;
   padding: 16px 0 32px;
 }
@@ -24,7 +24,7 @@
 .docs-hero {
   position: relative;
   overflow: hidden;
-  padding: clamp(18px, 2.5vw, 30px);
+  padding: clamp(16px, 2vw, 24px);
   margin-bottom: 12px;
   border-radius: var(--radius-lg);
 }
@@ -47,22 +47,22 @@
 .docs-hero h1 {
   max-width: 980px;
   margin-top: 6px;
-  font-size: clamp(1.8rem, 3vw, 2.75rem);
-  line-height: 1.05;
+  font-size: clamp(1.65rem, 2.5vw, 2.35rem);
+  line-height: 1.08;
   letter-spacing: 0;
   overflow-wrap: anywhere;
 }
 
 .docs-hero p {
   max-width: 860px;
-  margin-top: 10px;
+  margin-top: 8px;
   color: var(--muted);
-  font-size: 0.98rem;
-  line-height: 1.6;
+  font-size: 0.92rem;
+  line-height: 1.5;
 }
 
 .docs-highlight-row {
-  margin-top: 14px;
+  margin-top: 12px;
 }
 
 .docs-highlight {
@@ -96,9 +96,9 @@
 
 .docs-quick-steps {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
   gap: 8px;
-  margin: 14px 0 0;
+  margin: 12px 0 0;
   padding: 0;
   list-style: none;
   counter-reset: docs-step;
@@ -134,8 +134,9 @@
 
 .docs-layout {
   display: grid;
-  grid-template-columns: minmax(160px, 190px) minmax(0, 1fr);
-  gap: 12px;
+  grid-template-columns: minmax(160px, 190px) minmax(0, 820px);
+  justify-content: center;
+  gap: 14px;
   align-items: start;
 }
 
@@ -168,20 +169,20 @@
 
 .docs-content {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 10px;
   align-items: start;
 }
 
 .docs-section {
   min-width: 0;
-  padding: clamp(15px, 1.7vw, 20px);
+  padding: clamp(14px, 1.5vw, 18px);
   border-radius: var(--radius-md);
 }
 
 .docs-section h2 {
-  margin-bottom: 10px;
-  font-size: 1.16rem;
+  margin-bottom: 8px;
+  font-size: 1.08rem;
   line-height: 1.22;
   letter-spacing: 0;
 }
@@ -195,7 +196,7 @@
 }
 
 .docs-section-intro {
-  padding-bottom: 10px;
+  padding-bottom: 8px;
   border-bottom: 1px solid color-mix(in srgb, var(--line) 66%, transparent);
 }
 
@@ -203,8 +204,8 @@
 .docs-section li,
 .docs-section span {
   color: var(--muted);
-  line-height: 1.52;
-  font-size: 0.9rem;
+  line-height: 1.48;
+  font-size: 0.86rem;
 }
 
 .docs-section p + p {
@@ -238,8 +239,8 @@
 
 .docs-callout,
 .docs-example {
-  margin-top: 14px;
-  padding: 13px 14px;
+  margin-top: 10px;
+  padding: 11px 12px;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: color-mix(in srgb, var(--surface-soft) 68%, transparent);
@@ -294,11 +295,11 @@
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
-  margin-top: 12px;
+  margin-top: 10px;
 }
 
 .docs-mini-section {
-  padding: 9px 0;
+  padding: 8px 0;
   border-top: 1px solid color-mix(in srgb, var(--line) 68%, transparent);
 }
 
@@ -313,7 +314,7 @@
 
 .docs-card {
   min-width: 0;
-  padding: 10px;
+  padding: 9px;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: color-mix(in srgb, var(--surface-soft) 66%, transparent);
@@ -388,8 +389,8 @@
 .docs-flow > div {
   min-width: 0;
   display: grid;
-  gap: 8px;
-  padding: 9px 10px;
+  gap: 7px;
+  padding: 8px 9px;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: color-mix(in srgb, var(--surface-soft) 60%, transparent);
@@ -441,7 +442,12 @@
 }
 
 @media (max-width: 1120px) {
-  .docs-content {
+  .docs-layout {
+    grid-template-columns: minmax(150px, 180px) minmax(0, 1fr);
+  }
+
+  .docs-grid,
+  .docs-card-row {
     grid-template-columns: 1fr;
   }
 }
