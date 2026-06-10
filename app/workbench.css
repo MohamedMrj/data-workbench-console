@@ -517,7 +517,7 @@
 
 .app-shell[data-workspace-mode="compressed"] .workspace-grid {
   grid-template-columns:
-    minmax(220px, min(var(--explorer-width), 34%))
+    minmax(220px, min(var(--explorer-width), 46%))
     var(--panel-handle-size)
     minmax(0, 1fr);
   grid-template-areas:

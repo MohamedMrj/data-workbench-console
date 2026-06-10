@@ -26,6 +26,15 @@ window.createConsoleApp = function createConsoleApp() {
     builder: 420,
     procedure: 360
   };
+  const PANEL_LIMITS = {
+    controlRail: { min: 300, max: 460 },
+    explorer: { min: 240, max: 720 },
+    activity: { min: 260, max: 420 },
+    results: { min: 140, max: 460 },
+    builder: { min: 320, max: 760 },
+    procedure: { min: 320, max: 640 }
+  };
+  const MIN_STUDIO_SPACE_WITH_EXPLORER = 720;
   const FALLBACK_SOURCES = [
     { id: 'fabric-sql', label: 'Fabric SQL endpoint', authModes: ['servicePrincipal'], supportsProcedures: true },
     { id: 'fabric-lakehouse', label: 'Fabric Lakehouse SQL endpoint', authModes: ['servicePrincipal'], supportsProcedures: false },
@@ -288,13 +297,27 @@ window.createConsoleApp = function createConsoleApp() {
     return document.querySelector('.procedure-studio-grid')?.clientWidth || getStudioWidth();
   }
 
+  function getExplorerMaxWidth() {
+    const workspaceWidth = getWorkspaceGridWidth();
+    if (!workspaceWidth) {
+      return 420;
+    }
+
+    const activityReserve = state.sidePanels.activityPanelCollapsed
+      ? 0
+      : (panelLayout.activity || DEFAULT_PANEL_LAYOUT.activity) + 56;
+    const availableAfterStudio = workspaceWidth - MIN_STUDIO_SPACE_WITH_EXPLORER - activityReserve - 72;
+    const viewportCap = Math.floor(workspaceWidth * (state.sidePanels.activityPanelCollapsed ? 0.52 : 0.38));
+    return Math.max(300, Math.min(PANEL_LIMITS.explorer.max, viewportCap, availableAfterStudio));
+  }
+
   function getEffectivePanelWidths() {
     return {
-      controlRail: clamp(panelLayout.controlRail || DEFAULT_PANEL_LAYOUT.controlRail, 300, 460),
-      explorer: clamp(panelLayout.explorer || DEFAULT_PANEL_LAYOUT.explorer, 240, 420),
-      activity: clamp(panelLayout.activity || DEFAULT_PANEL_LAYOUT.activity, 260, 420),
-      builder: clamp(panelLayout.builder || DEFAULT_PANEL_LAYOUT.builder, 320, 760),
-      procedure: clamp(panelLayout.procedure || DEFAULT_PANEL_LAYOUT.procedure, 320, 640)
+      controlRail: clamp(panelLayout.controlRail || DEFAULT_PANEL_LAYOUT.controlRail, PANEL_LIMITS.controlRail.min, PANEL_LIMITS.controlRail.max),
+      explorer: clamp(panelLayout.explorer || DEFAULT_PANEL_LAYOUT.explorer, PANEL_LIMITS.explorer.min, getExplorerMaxWidth()),
+      activity: clamp(panelLayout.activity || DEFAULT_PANEL_LAYOUT.activity, PANEL_LIMITS.activity.min, PANEL_LIMITS.activity.max),
+      builder: clamp(panelLayout.builder || DEFAULT_PANEL_LAYOUT.builder, PANEL_LIMITS.builder.min, PANEL_LIMITS.builder.max),
+      procedure: clamp(panelLayout.procedure || DEFAULT_PANEL_LAYOUT.procedure, PANEL_LIMITS.procedure.min, PANEL_LIMITS.procedure.max)
     };
   }
 
@@ -305,12 +328,11 @@ window.createConsoleApp = function createConsoleApp() {
     const studioWidth = getSqlWorkspaceWidth();
     const widths = getEffectivePanelWidths();
     const controlRailDelta = state.sidePanels.controlRailCollapsed ? 0 : Math.max(0, widths.controlRail - DEFAULT_PANEL_LAYOUT.controlRail);
-    const explorerDelta = Math.max(0, widths.explorer - DEFAULT_PANEL_LAYOUT.explorer);
     const activityDelta = state.sidePanels.activityPanelCollapsed ? 0 : Math.max(0, widths.activity - DEFAULT_PANEL_LAYOUT.activity);
     const builderDelta = Math.max(0, widths.builder - DEFAULT_PANEL_LAYOUT.builder);
     const shellStackThreshold = Math.max(900, 820 + controlRailDelta);
-    const workspaceStackThreshold = 1180 + explorerDelta;
-    const workspaceWideThreshold = 1500 + explorerDelta + activityDelta;
+    const workspaceStackThreshold = 1180;
+    const workspaceWideThreshold = 1500 + activityDelta;
     const studioWideThreshold = 1360 + builderDelta;
 
     return {
@@ -336,8 +358,8 @@ window.createConsoleApp = function createConsoleApp() {
     if (!shellWide) {
       panelLayout.controlRail = DEFAULT_PANEL_LAYOUT.controlRail;
     } else {
-      const maxControlRail = Math.max(320, Math.min(460, Math.floor(shellWidth * 0.34)));
-      panelLayout.controlRail = clamp(panelLayout.controlRail, 300, maxControlRail);
+      const maxControlRail = Math.max(320, Math.min(PANEL_LIMITS.controlRail.max, Math.floor(shellWidth * 0.34)));
+      panelLayout.controlRail = clamp(panelLayout.controlRail, PANEL_LIMITS.controlRail.min, maxControlRail);
     }
 
     if (!workspaceWide && !workspaceCompressed) {
@@ -346,15 +368,15 @@ window.createConsoleApp = function createConsoleApp() {
       panelLayout.builder = DEFAULT_PANEL_LAYOUT.builder;
       panelLayout.procedure = DEFAULT_PANEL_LAYOUT.procedure;
     } else {
-      const maxExplorer = Math.max(280, Math.min(420, Math.floor(workspaceWidth * (workspaceWide ? 0.28 : 0.32))));
-      const maxActivity = Math.max(280, Math.min(420, Math.floor(workspaceWidth * 0.3)));
-      const maxBuilder = Math.max(360, Math.min(760, Math.floor(studioWidth * (studioWide ? 0.58 : 0.5))));
-      const maxProcedure = Math.max(360, Math.min(640, Math.floor(procedureStudioWidth * 0.42)));
+      const maxExplorer = getExplorerMaxWidth();
+      const maxActivity = Math.max(280, Math.min(PANEL_LIMITS.activity.max, Math.floor(workspaceWidth * 0.3)));
+      const maxBuilder = Math.max(360, Math.min(PANEL_LIMITS.builder.max, Math.floor(studioWidth * (studioWide ? 0.58 : 0.5))));
+      const maxProcedure = Math.max(360, Math.min(PANEL_LIMITS.procedure.max, Math.floor(procedureStudioWidth * 0.42)));
 
-      panelLayout.explorer = clamp(panelLayout.explorer, 240, maxExplorer);
-      panelLayout.activity = clamp(panelLayout.activity, 260, maxActivity);
-      panelLayout.builder = clamp(panelLayout.builder, 320, maxBuilder);
-      panelLayout.procedure = clamp(panelLayout.procedure, 320, maxProcedure);
+      panelLayout.explorer = clamp(panelLayout.explorer, PANEL_LIMITS.explorer.min, maxExplorer);
+      panelLayout.activity = clamp(panelLayout.activity, PANEL_LIMITS.activity.min, maxActivity);
+      panelLayout.builder = clamp(panelLayout.builder, PANEL_LIMITS.builder.min, maxBuilder);
+      panelLayout.procedure = clamp(panelLayout.procedure, PANEL_LIMITS.procedure.min, maxProcedure);
     }
 
     if (layoutMode.shellMode === 'stacked') {
@@ -403,12 +425,12 @@ window.createConsoleApp = function createConsoleApp() {
     }
 
     normalizePanelLayoutForViewport();
-    panelLayout.controlRail = clamp(panelLayout.controlRail, 300, 460);
-    panelLayout.explorer = clamp(panelLayout.explorer, 240, 420);
-    panelLayout.activity = clamp(panelLayout.activity, 260, 420);
-    panelLayout.results = clamp(panelLayout.results, 140, 460);
-    panelLayout.builder = clamp(panelLayout.builder, 320, 760);
-    panelLayout.procedure = clamp(panelLayout.procedure, 320, 640);
+    panelLayout.controlRail = clamp(panelLayout.controlRail, PANEL_LIMITS.controlRail.min, PANEL_LIMITS.controlRail.max);
+    panelLayout.explorer = clamp(panelLayout.explorer, PANEL_LIMITS.explorer.min, getExplorerMaxWidth());
+    panelLayout.activity = clamp(panelLayout.activity, PANEL_LIMITS.activity.min, PANEL_LIMITS.activity.max);
+    panelLayout.results = clamp(panelLayout.results, PANEL_LIMITS.results.min, PANEL_LIMITS.results.max);
+    panelLayout.builder = clamp(panelLayout.builder, PANEL_LIMITS.builder.min, PANEL_LIMITS.builder.max);
+    panelLayout.procedure = clamp(panelLayout.procedure, PANEL_LIMITS.procedure.min, PANEL_LIMITS.procedure.max);
 
     shell.style.setProperty('--control-rail-width', `${panelLayout.controlRail}px`);
     shell.style.setProperty('--explorer-width', `${panelLayout.explorer}px`);
@@ -481,21 +503,21 @@ window.createConsoleApp = function createConsoleApp() {
 
   function handleBounds(handleName) {
     if (handleName === 'controlRail') {
-      return { min: 300, max: 460 };
+      return PANEL_LIMITS.controlRail;
     }
     if (handleName === 'explorer') {
-      return { min: 240, max: 420 };
+      return { min: PANEL_LIMITS.explorer.min, max: getExplorerMaxWidth() };
     }
     if (handleName === 'activity') {
-      return { min: 260, max: 420 };
+      return PANEL_LIMITS.activity;
     }
     if (handleName === 'builder') {
-      return { min: 320, max: 760 };
+      return PANEL_LIMITS.builder;
     }
     if (handleName === 'procedure') {
-      return { min: 320, max: 640 };
+      return PANEL_LIMITS.procedure;
     }
-    return { min: 140, max: 460 };
+    return PANEL_LIMITS.results;
   }
 
   function setupResizablePanels() {
