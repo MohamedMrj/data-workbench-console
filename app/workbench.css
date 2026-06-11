@@ -838,6 +838,10 @@
   align-self: start;
 }
 
+.builder-card {
+  container-type: inline-size;
+}
+
 .editor-card textarea {
   flex: 0 1 auto;
   font-size: var(--sql-editor-font-size);
@@ -1128,6 +1132,13 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.explorer-panel .table-item strong,
+.explorer-panel .procedure-item strong {
+  overflow-wrap: anywhere;
+  text-overflow: clip;
+  white-space: normal;
 }
 
 .explorer-list::-webkit-scrollbar,
@@ -2340,6 +2351,31 @@
       'template'
       'safe'
       'analysis';
+  }
+}
+
+@container (max-width: 860px) {
+  .app-shell.advanced-operations-expanded .builder-primary-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  .app-shell.advanced-operations-expanded .builder-primary-grid > .builder-panel-operation,
+  .app-shell.advanced-operations-expanded .builder-primary-grid > .builder-panel-columns {
+    grid-column: 1 !important;
+  }
+
+  .app-shell.advanced-operations-expanded .builder-primary-grid > [data-resize-handle="builder"] {
+    display: none !important;
+  }
+
+  .builder-panel-columns {
+    min-height: clamp(110px, 14vh, 160px);
+    max-height: clamp(150px, 20vh, 220px);
+  }
+
+  .builder-panel-columns[data-columns-state="loaded"] {
+    min-height: clamp(180px, 26vh, 280px);
+    max-height: clamp(240px, 36vh, 420px);
   }
 }
 

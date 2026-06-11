@@ -35,6 +35,9 @@ window.createConsoleApp = function createConsoleApp() {
     procedure: { min: 320, max: 640 }
   };
   const MIN_STUDIO_SPACE_WITH_EXPLORER = 720;
+  const MIN_STUDIO_SPACE_WITH_ACTIVITY = 820;
+  const WORKSPACE_WIDE_FIXED_SPACE = 104;
+  const WORKSPACE_COMPRESSED_FIXED_SPACE = 52;
   const FALLBACK_SOURCES = [
     { id: 'fabric-sql', label: 'Fabric SQL endpoint', authModes: ['servicePrincipal'], supportsProcedures: true },
     { id: 'fabric-lakehouse', label: 'Fabric Lakehouse SQL endpoint', authModes: ['servicePrincipal'], supportsProcedures: false },
@@ -303,11 +306,8 @@ window.createConsoleApp = function createConsoleApp() {
       return 420;
     }
 
-    const activityReserve = state.sidePanels.activityPanelCollapsed
-      ? 0
-      : (panelLayout.activity || DEFAULT_PANEL_LAYOUT.activity) + 56;
-    const availableAfterStudio = workspaceWidth - MIN_STUDIO_SPACE_WITH_EXPLORER - activityReserve - 72;
-    const viewportCap = Math.floor(workspaceWidth * (state.sidePanels.activityPanelCollapsed ? 0.52 : 0.38));
+    const availableAfterStudio = workspaceWidth - MIN_STUDIO_SPACE_WITH_EXPLORER - 72;
+    const viewportCap = Math.floor(workspaceWidth * (state.sidePanels.activityPanelCollapsed ? 0.52 : 0.46));
     return Math.max(300, Math.min(PANEL_LIMITS.explorer.max, viewportCap, availableAfterStudio));
   }
 
@@ -334,13 +334,25 @@ window.createConsoleApp = function createConsoleApp() {
     const workspaceStackThreshold = 1180;
     const workspaceWideThreshold = 1500 + activityDelta;
     const studioWideThreshold = 1360 + builderDelta;
+    const studioSpaceWithActivity = workspaceWidth - widths.explorer - (state.sidePanels.activityPanelCollapsed ? 0 : widths.activity) - WORKSPACE_WIDE_FIXED_SPACE;
+    const studioSpaceCompressed = workspaceWidth - widths.explorer - WORKSPACE_COMPRESSED_FIXED_SPACE;
+    const workspaceMode = workspaceWidth <= workspaceStackThreshold || studioSpaceCompressed < MIN_STUDIO_SPACE_WITH_EXPLORER
+      ? 'stacked'
+      : workspaceWidth <= workspaceWideThreshold || (!state.sidePanels.activityPanelCollapsed && studioSpaceWithActivity < MIN_STUDIO_SPACE_WITH_ACTIVITY)
+        ? 'compressed'
+        : 'wide';
+    const estimatedStudioWidth = workspaceMode === 'wide'
+      ? studioSpaceWithActivity
+      : workspaceMode === 'compressed'
+        ? studioSpaceCompressed
+        : workspaceWidth;
 
     return {
       viewportWidth: viewport.width,
       viewportScale: viewport.scale,
       shellMode: shellWidth <= shellStackThreshold || viewport.width <= 900 ? 'stacked' : 'split',
-      workspaceMode: workspaceWidth <= workspaceStackThreshold ? 'stacked' : workspaceWidth <= workspaceWideThreshold ? 'compressed' : 'wide',
-      studioMode: studioWidth <= studioWideThreshold || workspaceWidth <= workspaceWideThreshold ? 'stacked' : 'wide'
+      workspaceMode,
+      studioMode: studioWidth <= studioWideThreshold || estimatedStudioWidth <= studioWideThreshold || workspaceMode !== 'wide' ? 'stacked' : 'wide'
     };
   }
 
