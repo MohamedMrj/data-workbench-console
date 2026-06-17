@@ -97,6 +97,11 @@ function SqlWorkspace({ hidden = false }) {
                     <div className="button-row wrap">
                       <button id="profileObjectBtn" className="ghost-btn">Sample profile</button>
                       <button id="dependencyViewBtn" className="ghost-btn">Dependency view</button>
+                      <button id="rowCountInsightBtn" className="ghost-btn">Row count</button>
+                      <button id="topValuesInsightBtn" className="ghost-btn">Top values</button>
+                      <button id="schemaCompareBtn" className="ghost-btn">Schema compare</button>
+                      <button id="resultShapeBtn" className="ghost-btn">Result shape</button>
+                      <button id="queryPlanBtn" className="ghost-btn">Estimated plan</button>
                     </div>
                     <div className="summary-text">
                       These actions are read-only and load the result grid without changing your saved SQL history.
@@ -273,6 +278,7 @@ function ResultsCard() {
           <div id="statusBadge" className="status-badge neutral">Idle</div>
         </div>
       </div>
+      <div id="resultTabs" className="result-tabs" aria-label="Result tabs" />
       <div id="resultsMeta" className="results-meta">No results yet.</div>
       <div id="resultsArtifacts" className="results-artifacts" />
       <div id="resultsPanel" className="results-panel empty-state">Run a query or procedure to see results.</div>
@@ -498,6 +504,30 @@ export default function WorkbenchShell({ pageMode = 'sql' }) {
                   <span>Search objects</span>
                   <input id="tableSearchInput" type="text" placeholder="dbo.TaskGroupInstances" />
                 </label>
+                <div className="explorer-filter-grid">
+                  <label className="field compact-field">
+                    <span>Type</span>
+                    <select id="objectTypeFilter">
+                      <option value="">All</option>
+                      <option value="table">Tables</option>
+                      <option value="view">Views</option>
+                    </select>
+                  </label>
+                  <label className="field compact-field">
+                    <span>Schema</span>
+                    <select id="objectSchemaFilter">
+                      <option value="">All schemas</option>
+                    </select>
+                  </label>
+                  <label className="toggle-field compact-toggle">
+                    <input id="pinnedOnlyObjectsToggle" type="checkbox" />
+                    <span>Pinned only</span>
+                  </label>
+                  <label className="toggle-field compact-toggle">
+                    <input id="recentOnlyObjectsToggle" type="checkbox" />
+                    <span>Recent only</span>
+                  </label>
+                </div>
                 <div id="tableList" className="explorer-list" />
               </div>
 
@@ -506,6 +536,22 @@ export default function WorkbenchShell({ pageMode = 'sql' }) {
                   <span>Search procedures</span>
                   <input id="procedureSearchInput" type="text" placeholder="dbo.usp_ProcessTaskGroup" />
                 </label>
+                <div className="explorer-filter-grid">
+                  <label className="field compact-field">
+                    <span>Schema</span>
+                    <select id="procedureSchemaFilter">
+                      <option value="">All schemas</option>
+                    </select>
+                  </label>
+                  <label className="toggle-field compact-toggle">
+                    <input id="pinnedOnlyProceduresToggle" type="checkbox" />
+                    <span>Pinned only</span>
+                  </label>
+                  <label className="toggle-field compact-toggle">
+                    <input id="recentOnlyProceduresToggle" type="checkbox" />
+                    <span>Recent only</span>
+                  </label>
+                </div>
                 <div id="procedureList" className="explorer-list" />
               </div>
             </section>
@@ -631,6 +677,28 @@ export default function WorkbenchShell({ pageMode = 'sql' }) {
         <button id="contextCopyColumnBtn" className="context-menu-item" role="menuitem">Copy column name</button>
         <button id="contextCopyJsonBtn" className="context-menu-item" role="menuitem">Copy row as JSON</button>
         <button id="contextCopyCsvBtn" className="context-menu-item" role="menuitem">Copy row as CSV</button>
+      </div>
+
+      <div id="auditFilterDialog" className="modal-backdrop hidden" aria-hidden="true">
+        <div className="modal-card audit-filter-card">
+          <div className="modal-header">
+            <h2>Audit filters</h2>
+            <button id="closeAuditFiltersBtn" className="icon-btn" type="button" aria-label="Close">×</button>
+          </div>
+          <div className="editor-controls-grid">
+            <label className="field compact-field"><span>Event</span><input id="auditEventFilter" type="text" placeholder="query" /></label>
+            <label className="field compact-field"><span>Outcome</span><input id="auditOutcomeFilter" type="text" placeholder="success" /></label>
+            <label className="field compact-field"><span>Action</span><input id="auditActionFilter" type="text" placeholder="SELECT" /></label>
+            <label className="field compact-field"><span>Source type</span><input id="auditSourceFilter" type="text" placeholder="fabric-sql" /></label>
+            <label className="field compact-field"><span>Database</span><input id="auditDatabaseFilter" type="text" placeholder="meta_store" /></label>
+            <label className="field compact-field"><span>Search</span><input id="auditSearchFilter" type="text" placeholder="free text" /></label>
+            <label className="field compact-field"><span>Limit</span><input id="auditLimitFilter" type="number" min="1" max="200" defaultValue="50" /></label>
+          </div>
+          <div className="button-row wrap right modal-actions">
+            <button id="clearAuditFiltersBtn" className="ghost-btn" type="button">Clear</button>
+            <button id="applyAuditFiltersBtn" className="primary-btn" type="button">Load audit</button>
+          </div>
+        </div>
       </div>
 
       <Script src="/console-core.js" strategy="afterInteractive" />

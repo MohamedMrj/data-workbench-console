@@ -152,7 +152,14 @@ function attachMocks(window) {
     }
 
     if (String(url).includes('/api/audit')) {
-      return new Response(JSON.stringify({ success: true, entries: [], limit: 25 }), {
+      return new Response(JSON.stringify({
+        success: true,
+        entries: [
+          { timestamp: '2026-06-17T10:00:00.000Z', sourceType: 'fabric-sql', event: 'query', outcome: 'success', action: 'SELECT', database: 'meta_store', detail: 'SELECT TOP (100)' }
+        ],
+        limit: 25,
+        totalMatched: 1
+      }), {
         status: 200,
         headers: { 'Content-Type': 'application/json' }
       });
@@ -173,6 +180,53 @@ function attachMocks(window) {
     }
 
     if (String(url).includes('/api/object-insights')) {
+      if (body.action === 'rowCount') {
+        return new Response(JSON.stringify({
+          success: true,
+          action: 'rowCount',
+          object: body.object || 'dbo.Alerts',
+          columns: ['object_name', 'row_count', 'source', 'exact'],
+          rows: [{ object_name: body.object || 'dbo.Alerts', row_count: 2, source: 'sys_dm_db_partition_stats', exact: 'NO' }],
+          totalRows: 1,
+          output: { row_count: 2 },
+          message: 'Loaded metadata row count.'
+        }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
+
+      if (body.action === 'topValues') {
+        return new Response(JSON.stringify({
+          success: true,
+          action: 'topValues',
+          object: body.object || 'dbo.Alerts',
+          columns: ['column_name', 'value', 'value_count'],
+          rows: [{ column_name: 'Status', value: 'FAILED', value_count: 1 }],
+          totalRows: 1,
+          output: { analyzed_columns: 1 },
+          message: 'Loaded top values.'
+        }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
+
+      if (body.action === 'resultShape') {
+        return new Response(JSON.stringify({
+          success: true,
+          action: 'resultShape',
+          columns: ['column_ordinal', 'name', 'system_type_name', 'is_nullable', 'error_number', 'error_message'],
+          rows: [{ column_ordinal: 1, name: 'AlertId', system_type_name: 'int', is_nullable: false, error_number: null, error_message: null }],
+          totalRows: 1,
+          output: { query_columns: 1 },
+          message: 'Loaded result shape metadata.'
+        }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
+
       if (body.action === 'profile') {
         return new Response(JSON.stringify({
           success: true,
@@ -204,12 +258,53 @@ function attachMocks(window) {
         rows: [
           { dependency_direction: 'referenced_by', primary_object: 'dbo.Alerts', related_object: 'dbo.AlertView', related_type: 'VIEW' }
         ],
+        nodes: [
+          { id: body.object || 'dbo.Alerts', role: 'selected' },
+          { id: 'dbo.AlertView', role: 'downstream' }
+        ],
+        edges: [
+          { id: 'edge-1', from: 'dbo.AlertView', to: body.object || 'dbo.Alerts', direction: 'referenced_by' }
+        ],
+        upstreamCount: 0,
+        downstreamCount: 1,
         totalRows: 1,
         output: {
           object: body.object || 'dbo.Alerts',
           dependency_rows: 1
         },
         message: `Loaded 1 dependency row(s) for ${body.object || 'dbo.Alerts'}.`
+      }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+
+    if (String(url).includes('/api/schema-compare')) {
+      return new Response(JSON.stringify({
+        success: true,
+        leftObject: body.leftObject || 'dbo.Alerts',
+        rightObject: body.rightObject || 'dbo.Alerts',
+        objectType: body.objectType || 'table',
+        columns: ['item', 'difference', 'left', 'right'],
+        rows: [{ item: 'Status', difference: 'nullable', left: 'true', right: 'false' }],
+        differences: [{ kind: 'changed', column: 'Status', field: 'nullable', left: true, right: false }],
+        summary: { differenceCount: 1 },
+        warnings: []
+      }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+
+    if (String(url).includes('/api/query-plan')) {
+      return new Response(JSON.stringify({
+        success: true,
+        mode: 'estimated',
+        planXml: '<ShowPlanXML />',
+        columns: ['property', 'value'],
+        rows: [{ property: 'mode', value: 'estimated' }, { property: 'plan_xml_length', value: '15' }],
+        totalRows: 2,
+        message: 'Loaded estimated execution plan. The query was not executed.'
       }), {
         status: 200,
         headers: { 'Content-Type': 'application/json' }
@@ -507,6 +602,63 @@ if (!sqlWindow.document.querySelector('.results-table')?.textContent.includes('d
 }
 if (!sqlWindow.document.querySelector('.dependency-visual')?.textContent.includes('Dependency map')) {
   throw new Error('Dependency view action did not render the dependency visual helper.');
+}
+if (sqlWindow.document.querySelectorAll('#resultTabs .result-tab').length < 2) {
+  throw new Error('Profile and dependency actions should create result tabs.');
+}
+
+sqlWindow.document.querySelector('[data-pin-object="dbo.Alerts"]').click();
+await flush();
+if (!sqlWindow.document.querySelector('[data-object="dbo.Alerts"]')?.textContent.includes('★')) {
+  throw new Error('Pinned object did not render with a visible pin marker.');
+}
+sqlWindow.document.getElementById('pinnedOnlyObjectsToggle').checked = true;
+sqlWindow.document.getElementById('pinnedOnlyObjectsToggle').dispatchEvent(new sqlWindow.Event('change', { bubbles: true }));
+if (!sqlWindow.document.querySelector('[data-object="dbo.Alerts"]') || sqlWindow.document.querySelector('[data-object="dbo.AlertView"]')) {
+  throw new Error('Pinned-only object filter did not restrict the explorer list.');
+}
+sqlWindow.document.getElementById('pinnedOnlyObjectsToggle').checked = false;
+sqlWindow.document.getElementById('pinnedOnlyObjectsToggle').dispatchEvent(new sqlWindow.Event('change', { bubbles: true }));
+
+sqlWindow.document.getElementById('rowCountInsightBtn').click();
+await flush();
+if (!sqlWindow.document.querySelector('.results-table')?.textContent.includes('row_count')) {
+  throw new Error('Row count insight did not render a result grid.');
+}
+sqlWindow.document.getElementById('topValuesInsightBtn').click();
+await flush();
+if (!sqlWindow.document.querySelector('.results-table')?.textContent.includes('FAILED')) {
+  throw new Error('Top values insight did not render expected value counts.');
+}
+sqlWindow.document.getElementById('schemaCompareBtn').click();
+await flush();
+if (!sqlWindow.document.querySelector('.results-table')?.textContent.includes('nullable')) {
+  throw new Error('Schema compare did not render difference rows.');
+}
+sqlWindow.document.getElementById('resultShapeBtn').click();
+await flush();
+if (!sqlWindow.document.querySelector('.results-table')?.textContent.includes('system_type_name')) {
+  throw new Error('Result shape insight did not render metadata rows.');
+}
+sqlWindow.document.getElementById('queryPlanBtn').click();
+await flush();
+if (!sqlWindow.document.getElementById('statusText').textContent.includes('estimated')) {
+  throw new Error('Estimated plan action did not update status text.');
+}
+if (sqlWindow.document.querySelectorAll('#resultTabs .result-tab').length > 5) {
+  throw new Error('Result tabs exceeded the configured five-tab cap.');
+}
+
+sqlWindow.document.getElementById('loadAuditBtn').click();
+await flush();
+if (sqlWindow.document.getElementById('auditFilterDialog').classList.contains('hidden')) {
+  throw new Error('Audit log button did not open the audit filter dialog.');
+}
+sqlWindow.document.getElementById('auditEventFilter').value = 'query';
+sqlWindow.document.getElementById('applyAuditFiltersBtn').click();
+await flush();
+if (!sqlWindow.document.querySelector('.results-table')?.textContent.includes('SELECT')) {
+  throw new Error('Filtered audit load did not render audit entries.');
 }
 
 const editor = sqlWindow.document.getElementById('queryEditor');

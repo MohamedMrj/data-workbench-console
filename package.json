@@ -1,6 +1,6 @@
 {
   "name": "db_interface",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "description": "Production-safe multi-source SQL and procedure workbench for Fabric and SQL Server",
   "engines": {
     "node": ">=20"
@@ -11,7 +11,7 @@
     "start": "next start",
     "clean": "node -e \"require('fs').rmSync('.next', { recursive: true, force: true })\"",
     "responsive:audit": "node scripts/responsive-audit.mjs",
-    "verify": "npm run clean && npm run build && node scripts/smoke-test.mjs && node scripts/ui-smoke.mjs && npm run responsive:audit"
+    "verify": "npm run clean && npm run build && node scripts/sql-classifier.test.mjs && node scripts/sql-metadata.test.mjs && node scripts/smoke-test.mjs && node scripts/ui-smoke.mjs && npm run responsive:audit"
   },
   "keywords": [
     "fabric",

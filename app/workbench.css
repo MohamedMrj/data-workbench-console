@@ -630,6 +630,18 @@
   overscroll-behavior: contain;
 }
 
+.explorer-filter-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.compact-toggle {
+  min-height: 42px;
+  align-items: center;
+  align-self: end;
+}
+
 .table-item,
 .procedure-item,
 .saved-item-main,
@@ -938,6 +950,21 @@
    collapse into a narrow side rail. */
 .app-shell.advanced-operations-expanded.builder-primary-split .builder-primary-grid {
   grid-template-columns: 1fr !important;
+}
+
+.pin-toggle {
+  margin-left: auto;
+  color: var(--muted);
+  font-style: normal;
+  opacity: 0.72;
+}
+
+.table-item:hover .pin-toggle,
+.procedure-item:hover .pin-toggle,
+.table-item.active .pin-toggle,
+.procedure-item.active .pin-toggle {
+  color: var(--accent);
+  opacity: 1;
 }
 
 .builder-primary-grid > * {
@@ -1554,6 +1581,62 @@
 .results-meta {
   margin: 6px 0 8px;
   line-height: 1.5;
+}
+
+.result-tabs {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding: 2px 0 8px;
+}
+
+.result-tab {
+  display: inline-grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 4px 8px;
+  align-items: center;
+  min-width: 130px;
+  max-width: 230px;
+  padding: 7px 9px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-strong);
+  color: var(--text);
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+}
+
+.result-tab span {
+  grid-column: 1 / -1;
+  color: var(--muted);
+  font-size: 0.72rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.result-tab i {
+  color: var(--muted);
+  font-style: normal;
+}
+
+.result-tab.active {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 35%, transparent);
+}
+
+.monaco-query-editor {
+  position: relative;
+  z-index: 2;
+  min-height: 300px;
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.audit-filter-card {
+  max-width: 760px;
 }
 
 .results-artifacts {

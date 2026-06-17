@@ -5,6 +5,43 @@ All notable Data Workbench Console changes are tracked here.
 The in-app version is read from `package.json` and exposed through `/api/version`
 together with the current git commit and build information.
 
+## 1.3.0 - 2026-06-17
+
+Metadata, explorer, results, editor, audit, and regression coverage release.
+
+### Added
+
+- Added richer generated SQL Server/Fabric SQL table scripts with keys,
+  constraints, checks, indexes, computed columns, identity, defaults, and
+  foreign keys where catalog metadata exposes them.
+- Added dependency graph response metadata with nodes, edges, upstream counts,
+  downstream counts, and source limitation warnings.
+- Added pinned/recent object and procedure explorer behavior scoped to the
+  active connection.
+- Added explorer filters for object type, schema, pinned items, recent items,
+  and loaded column-name search.
+- Added `POST /api/schema-compare` for read-only table/view schema comparison.
+- Added `POST /api/query-plan` for estimated read-query plans only.
+- Added row count, top values, and result shape metadata helpers through
+  `/api/object-insights`.
+- Added capped result tabs so query/procedure/metadata outputs can be compared
+  without replacing every previous result.
+- Added a SQL editor compatibility adapter that preserves current textarea
+  behavior and can adopt a client-side Monaco instance when present.
+- Added audit filtering by event, outcome, action, source type, database, search
+  text, and limit.
+- Added metadata and UI smoke regression coverage for the new metadata,
+  explorer, audit, and result-tab behavior.
+
+### Changed
+
+- `npm run verify` now includes SQL classifier tests, SQL metadata tests,
+  smoke tests, UI smoke tests, build, and responsive audit.
+- SQL Server/Fabric SQL table DDL is explicitly labeled as generated catalog
+  metadata instead of exact original source text.
+- Metadata actions continue to load result grids and audit reads without adding
+  any new write execution path.
+
 ## 1.2.0 - 2026-06-17
 
 Production-facing update after the initial `1.1.0` metadata version.

@@ -13,6 +13,9 @@ window.createConsoleApp = function createConsoleApp() {
   const SIDE_PANEL_VISIBILITY_KEY = 'dataWorkbenchSidePanelVisibilityV1';
   const ADVANCED_OPERATIONS_VISIBILITY_KEY = 'dataWorkbenchAdvancedOperationsVisibleV1';
   const LIFECYCLE_SESSION_KEY = 'dataWorkbenchLifecycleSessionV1';
+  const PINNED_OBJECTS_KEY = 'dataWorkbenchPinnedObjectsV1';
+  const RECENT_OBJECTS_KEY = 'dataWorkbenchRecentObjectsV1';
+  const RESULT_TABS_MAX = 5;
   const LIFECYCLE_HEARTBEAT_MS = 10_000;
   const THEMES = ['midnight', 'harbor', 'forge', 'field', 'ink', 'paper'];
   const CONNECTION_HISTORY_MAX = 12;
@@ -86,6 +89,13 @@ window.createConsoleApp = function createConsoleApp() {
     activeProcedure: null,
     procedureParameters: [],
     procedureValues: {},
+    pinnedItems: {},
+    recentItems: {},
+    objectColumnIndex: {},
+    auditFilters: {},
+    resultTabs: [],
+    activeResultTabId: '',
+    editorAdapter: null,
     pendingAction: null,
     lastFocusedElement: null,
     connectionTest: null,
@@ -139,6 +149,107 @@ window.createConsoleApp = function createConsoleApp() {
       visualKind: '',
       visualObject: ''
     };
+  }
+
+  function createResultTab(title = 'Results', results = defaultResultsState(), options = {}) {
+    const tabId = options.id || `tab_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+    return {
+      id: tabId,
+      key: options.key || tabId,
+      title: String(title || 'Results').slice(0, 48),
+      workspace: state.workspace || 'sql',
+      createdAt: new Date().toISOString(),
+      results: normalizeResultsSnapshot(results)
+    };
+  }
+
+  function syncActiveResultsToTab() {
+    if (!state.activeResultTabId) {
+      return;
+    }
+    const tab = state.resultTabs.find((item) => item.id === state.activeResultTabId);
+    if (tab) {
+      tab.results = normalizeResultsSnapshot(state.results);
+    }
+  }
+
+  function activateResultTab(tabId) {
+    syncActiveResultsToTab();
+    const tab = state.resultTabs.find((item) => item.id === tabId);
+    if (!tab) {
+      return;
+    }
+    state.activeResultTabId = tab.id;
+    state.results = normalizeResultsSnapshot(tab.results);
+    renderResultTabs();
+    renderResults();
+    persistWorkspaceState(state.workspace);
+  }
+
+  function closeResultTab(tabId) {
+    const index = state.resultTabs.findIndex((item) => item.id === tabId);
+    if (index < 0) {
+      return;
+    }
+    state.resultTabs.splice(index, 1);
+    if (state.activeResultTabId === tabId) {
+      const next = state.resultTabs[Math.max(0, index - 1)] || state.resultTabs[0];
+      state.activeResultTabId = next?.id || '';
+      state.results = next ? normalizeResultsSnapshot(next.results) : defaultResultsState();
+    }
+    renderResultTabs();
+    renderResults();
+    persistWorkspaceState(state.workspace);
+  }
+
+  function upsertResultTab(title, results, options = {}) {
+    syncActiveResultsToTab();
+    const reusable = options.key
+      ? state.resultTabs.find((item) => item.key === options.key && item.workspace === (state.workspace || 'sql'))
+      : null;
+    const tab = reusable || createResultTab(title, results, options);
+    tab.title = String(title || tab.title || 'Results').slice(0, 48);
+    tab.results = normalizeResultsSnapshot(results);
+    tab.createdAt = new Date().toISOString();
+    if (!reusable) {
+      state.resultTabs.unshift(tab);
+    }
+    state.activeResultTabId = tab.id;
+    while (state.resultTabs.length > RESULT_TABS_MAX) {
+      const removed = state.resultTabs.pop();
+      if (removed?.id === state.activeResultTabId) {
+        state.activeResultTabId = state.resultTabs[0]?.id || '';
+      }
+    }
+    renderResultTabs();
+  }
+
+  function renderResultTabs() {
+    const container = $('resultTabs');
+    if (!container) {
+      return;
+    }
+    if (!state.resultTabs.length) {
+      container.innerHTML = '';
+      return;
+    }
+    container.innerHTML = state.resultTabs.map((tab) => (
+      `<button class="result-tab${tab.id === state.activeResultTabId ? ' active' : ''}" data-result-tab="${esc(tab.id)}" type="button" title="${esc(tab.title)}">${esc(tab.title)}<span>${esc(formatTimestamp(tab.createdAt).replace(/ UTC$/, ''))}</span><i data-close-result-tab="${esc(tab.id)}" title="Close tab">×</i></button>`
+    )).join('');
+    container.querySelectorAll('[data-result-tab]').forEach((button) => {
+      button.onclick = (event) => {
+        if (event.target?.matches?.('[data-close-result-tab]')) {
+          return;
+        }
+        activateResultTab(button.dataset.resultTab);
+      };
+    });
+    container.querySelectorAll('[data-close-result-tab]').forEach((button) => {
+      button.onclick = (event) => {
+        event.stopPropagation();
+        closeResultTab(button.dataset.closeResultTab);
+      };
+    });
   }
 
   const $ = (id) => document.getElementById(id);
@@ -213,6 +324,28 @@ window.createConsoleApp = function createConsoleApp() {
   function loadTextPreferences() {
     state.editorTextSize = clamp(Number(safeGet(EDITOR_TEXT_SIZE_KEY)) || 0.95, 0.8, 1.35);
     state.resultsTextSize = clamp(Number(safeGet(RESULTS_TEXT_SIZE_KEY)) || 0.9, 0.78, 1.25);
+  }
+
+  function scopedStorageKey(baseKey) {
+    return `${baseKey}:${connectionSignature() || 'no-connection'}`;
+  }
+
+  function loadPinnedAndRecentItems() {
+    try {
+      state.pinnedItems = JSON.parse(safeGet(scopedStorageKey(PINNED_OBJECTS_KEY)) || '{}') || {};
+    } catch {
+      state.pinnedItems = {};
+    }
+    try {
+      state.recentItems = JSON.parse(safeGet(scopedStorageKey(RECENT_OBJECTS_KEY)) || '{}') || {};
+    } catch {
+      state.recentItems = {};
+    }
+  }
+
+  function savePinnedAndRecentItems() {
+    safeSet(scopedStorageKey(PINNED_OBJECTS_KEY), JSON.stringify(state.pinnedItems || {}));
+    safeSet(scopedStorageKey(RECENT_OBJECTS_KEY), JSON.stringify(state.recentItems || {}));
   }
 
   function applyTextPreferences() {
@@ -1183,6 +1316,7 @@ window.createConsoleApp = function createConsoleApp() {
       activeObjectType: state.activeObjectType,
       activeColumns: state.activeColumns,
       selectedColumns: [...state.selectedColumns],
+      objectColumnIndex: state.objectColumnIndex,
       activeProcedure: state.activeProcedure,
       procedureParameters: state.procedureParameters,
       procedureValues: state.procedureValues
@@ -1229,13 +1363,15 @@ window.createConsoleApp = function createConsoleApp() {
   }
 
   function currentBuilderSnapshot() {
-    const editor = $('queryEditor');
+    const adapter = editorAdapter();
+    const selection = adapter.getSelection();
+    const scroll = adapter.getScroll();
     return {
       query: getQuery(),
-      selectionStart: Number(editor?.selectionStart || 0),
-      selectionEnd: Number(editor?.selectionEnd || 0),
-      editorScrollTop: Number(editor?.scrollTop || 0),
-      editorScrollLeft: Number(editor?.scrollLeft || 0),
+      selectionStart: Number(selection.start || 0),
+      selectionEnd: Number(selection.end || 0),
+      editorScrollTop: Number(scroll.top || 0),
+      editorScrollLeft: Number(scroll.left || 0),
       queryMode: state.queryMode,
       filters: getFilters(),
       sortColumn: $('sortColumnSelect')?.value || '',
@@ -1253,6 +1389,7 @@ window.createConsoleApp = function createConsoleApp() {
     if (!$('queryEditor')) {
       return;
     }
+    syncActiveResultsToTab();
     const allState = readWorkspaceState();
     const key = workspace === 'procedure' ? 'procedure' : 'sql';
     const snapshot = {
@@ -1263,6 +1400,14 @@ window.createConsoleApp = function createConsoleApp() {
       procedureParameters: Array.isArray(state.procedureParameters) ? state.procedureParameters : [],
       historyFilter: state.historyFilter || '',
       results: normalizeResultsSnapshot(state.results),
+      resultTabs: state.resultTabs
+        .filter((tab) => tab.workspace === key)
+        .slice(0, RESULT_TABS_MAX)
+        .map((tab) => ({
+          ...tab,
+          results: normalizeResultsSnapshot(tab.results)
+        })),
+      activeResultTabId: state.activeResultTabId || '',
       scrollY: Number(window.scrollY || 0),
       resultsScrollLeft: Number($('resultsPanel')?.scrollLeft || 0),
       resultsScrollTop: Number($('resultsPanel')?.scrollTop || 0),
@@ -1308,15 +1453,13 @@ window.createConsoleApp = function createConsoleApp() {
       if ($('profileSampleRowsInput')) $('profileSampleRowsInput').value = builder.profileSampleRows || '200';
       restoreFilterRows(Array.isArray(builder.filters) ? builder.filters : []);
       setQuery(typeof builder.query === 'string' ? builder.query : getQuery());
-      const editor = $('queryEditor');
-      if (editor) {
-        const start = Math.max(0, Math.min(Number(builder.selectionStart || 0), editor.value.length));
-        const end = Math.max(start, Math.min(Number(builder.selectionEnd || start), editor.value.length));
-        editor.setSelectionRange?.(start, end);
-        editor.scrollTop = Number(builder.editorScrollTop || 0);
-        editor.scrollLeft = Number(builder.editorScrollLeft || 0);
-        syncEditorBackdrop();
-      }
+      const adapter = editorAdapter();
+      const queryLength = getQuery().length;
+      const start = Math.max(0, Math.min(Number(builder.selectionStart || 0), queryLength));
+      const end = Math.max(start, Math.min(Number(builder.selectionEnd || start), queryLength));
+      adapter.setSelection(start, end);
+      adapter.setScroll(Number(builder.editorScrollTop || 0), Number(builder.editorScrollLeft || 0));
+      syncEditorBackdrop();
       updateAdvancedOperationsSummary();
     } else {
       if (snapshot.activeProcedure && snapshot.activeProcedure === state.activeProcedure) {
@@ -1331,10 +1474,25 @@ window.createConsoleApp = function createConsoleApp() {
       $('queryHistorySearch').value = state.historyFilter;
     }
     state.results = normalizeResultsSnapshot(snapshot.results);
+    state.resultTabs = Array.isArray(snapshot.resultTabs)
+      ? snapshot.resultTabs.slice(0, RESULT_TABS_MAX).map((tab) => ({
+        ...tab,
+        workspace: tab.workspace === 'procedure' ? 'procedure' : 'sql',
+        results: normalizeResultsSnapshot(tab.results)
+      }))
+      : [];
+    state.activeResultTabId = snapshot.activeResultTabId && state.resultTabs.some((tab) => tab.id === snapshot.activeResultTabId)
+      ? snapshot.activeResultTabId
+      : (state.resultTabs[0]?.id || '');
+    if (state.activeResultTabId) {
+      const activeTab = state.resultTabs.find((tab) => tab.id === state.activeResultTabId);
+      state.results = normalizeResultsSnapshot(activeTab?.results || state.results);
+    }
     if ($('localResultsFilter')) {
       $('localResultsFilter').value = state.results.localFilter || '';
     }
     renderHistoryPanel();
+    renderResultTabs();
     renderResults();
     window.setTimeout(() => {
       try {
@@ -1378,6 +1536,9 @@ window.createConsoleApp = function createConsoleApp() {
     state.activeProcedure = saved.activeProcedure || null;
     state.procedureParameters = Array.isArray(saved.procedureParameters) ? saved.procedureParameters : [];
     state.procedureValues = saved.procedureValues && typeof saved.procedureValues === 'object' ? saved.procedureValues : {};
+    state.objectColumnIndex = saved.objectColumnIndex && typeof saved.objectColumnIndex === 'object' ? saved.objectColumnIndex : {};
+    loadPinnedAndRecentItems();
+    populateExplorerFilters();
 
     renderObjects();
     renderProcedures();
@@ -2198,20 +2359,126 @@ window.createConsoleApp = function createConsoleApp() {
     $('explorerSummary').textContent = `${objectsLabel} • ${proceduresLabel}`;
   }
 
+  function itemStorageId(kind, fullName) {
+    return `${kind}:${String(fullName || '').toLowerCase()}`;
+  }
+
+  function markRecentItem(kind, fullName) {
+    if (!fullName) return;
+    state.recentItems[itemStorageId(kind, fullName)] = new Date().toISOString();
+    const entries = Object.entries(state.recentItems)
+      .sort((left, right) => String(right[1]).localeCompare(String(left[1])))
+      .slice(0, 40);
+    state.recentItems = Object.fromEntries(entries);
+    savePinnedAndRecentItems();
+  }
+
+  function togglePinnedItem(kind, fullName) {
+    const key = itemStorageId(kind, fullName);
+    if (state.pinnedItems[key]) {
+      delete state.pinnedItems[key];
+    } else {
+      state.pinnedItems[key] = { kind, fullName, pinnedAt: new Date().toISOString() };
+    }
+    savePinnedAndRecentItems();
+    renderObjects();
+    renderProcedures();
+  }
+
+  function isPinned(kind, fullName) {
+    return Boolean(state.pinnedItems[itemStorageId(kind, fullName)]);
+  }
+
+  function isRecent(kind, fullName) {
+    return Boolean(state.recentItems[itemStorageId(kind, fullName)]);
+  }
+
+  function populateExplorerFilters() {
+    const objectSchemas = [...new Set(state.objects.map((item) => item.schema).filter(Boolean))].sort();
+    const procedureSchemas = [...new Set(state.procedures.map((item) => item.schema).filter(Boolean))].sort();
+    if ($('objectSchemaFilter')) {
+      const current = $('objectSchemaFilter').value;
+      $('objectSchemaFilter').innerHTML = '<option value="">All schemas</option>' + objectSchemas.map((schema) => `<option value="${esc(schema)}">${esc(schema)}</option>`).join('');
+      $('objectSchemaFilter').value = objectSchemas.includes(current) ? current : '';
+    }
+    if ($('procedureSchemaFilter')) {
+      const current = $('procedureSchemaFilter').value;
+      $('procedureSchemaFilter').innerHTML = '<option value="">All schemas</option>' + procedureSchemas.map((schema) => `<option value="${esc(schema)}">${esc(schema)}</option>`).join('');
+      $('procedureSchemaFilter').value = procedureSchemas.includes(current) ? current : '';
+    }
+  }
+
+  function objectMatchesColumnSearch(item, search) {
+    if (!search) return true;
+    if (item.fullName.toLowerCase().includes(search)) return true;
+    const columns = state.objectColumnIndex[String(item.fullName || '').toLowerCase()] || [];
+    return columns.some((column) => String(column).toLowerCase().includes(search));
+  }
+
+  function applyExplorerFilters() {
+    const objectSearch = ($('tableSearchInput')?.value || '').trim().toLowerCase();
+    const objectType = $('objectTypeFilter')?.value || '';
+    const objectSchema = $('objectSchemaFilter')?.value || '';
+    const objectsPinnedOnly = Boolean($('pinnedOnlyObjectsToggle')?.checked);
+    const objectsRecentOnly = Boolean($('recentOnlyObjectsToggle')?.checked);
+    state.filteredObjects = state.objects
+      .filter((item) => !objectType || item.objectType === objectType)
+      .filter((item) => !objectSchema || item.schema === objectSchema)
+      .filter((item) => !objectsPinnedOnly || isPinned('object', item.fullName))
+      .filter((item) => !objectsRecentOnly || isRecent('object', item.fullName))
+      .filter((item) => objectMatchesColumnSearch(item, objectSearch))
+      .sort((left, right) => {
+        const leftPinned = isPinned('object', left.fullName) ? 1 : 0;
+        const rightPinned = isPinned('object', right.fullName) ? 1 : 0;
+        if (leftPinned !== rightPinned) return rightPinned - leftPinned;
+        const leftRecent = state.recentItems[itemStorageId('object', left.fullName)] || '';
+        const rightRecent = state.recentItems[itemStorageId('object', right.fullName)] || '';
+        if (leftRecent !== rightRecent) return String(rightRecent).localeCompare(String(leftRecent));
+        return String(left.fullName).localeCompare(String(right.fullName));
+      });
+
+    const procedureSearch = ($('procedureSearchInput')?.value || '').trim().toLowerCase();
+    const procedureSchema = $('procedureSchemaFilter')?.value || '';
+    const proceduresPinnedOnly = Boolean($('pinnedOnlyProceduresToggle')?.checked);
+    const proceduresRecentOnly = Boolean($('recentOnlyProceduresToggle')?.checked);
+    state.filteredProcedures = state.procedures
+      .filter((item) => !procedureSchema || item.schema === procedureSchema)
+      .filter((item) => !proceduresPinnedOnly || isPinned('procedure', item.fullName))
+      .filter((item) => !proceduresRecentOnly || isRecent('procedure', item.fullName))
+      .filter((item) => !procedureSearch || item.fullName.toLowerCase().includes(procedureSearch))
+      .sort((left, right) => {
+        const leftPinned = isPinned('procedure', left.fullName) ? 1 : 0;
+        const rightPinned = isPinned('procedure', right.fullName) ? 1 : 0;
+        if (leftPinned !== rightPinned) return rightPinned - leftPinned;
+        const leftRecent = state.recentItems[itemStorageId('procedure', left.fullName)] || '';
+        const rightRecent = state.recentItems[itemStorageId('procedure', right.fullName)] || '';
+        if (leftRecent !== rightRecent) return String(rightRecent).localeCompare(String(leftRecent));
+        return String(left.fullName).localeCompare(String(right.fullName));
+      });
+  }
+
   function renderObjects() {
     const container = $('tableList');
+    applyExplorerFilters();
     if (!state.filteredObjects.length) {
       container.innerHTML = '<div class="empty-note">No objects loaded.</div>';
       return;
     }
-    container.innerHTML = state.filteredObjects.map((item) => `<button class="table-item ${state.activeObject === item.fullName ? 'active' : ''}" data-object="${esc(item.fullName)}" data-object-type="${esc(item.objectType)}" type="button" title="${esc(item.fullName)}"><strong>${esc(item.fullName)}</strong><span>${esc(item.objectType)}</span></button>`).join('');
+    container.innerHTML = state.filteredObjects.map((item) => `<button class="table-item ${state.activeObject === item.fullName ? 'active' : ''}" data-object="${esc(item.fullName)}" data-object-type="${esc(item.objectType)}" type="button" title="${esc(item.fullName)}"><strong>${isPinned('object', item.fullName) ? '★ ' : ''}${esc(item.fullName)}</strong><span>${esc(item.objectType)}${isRecent('object', item.fullName) ? ' • recent' : ''}</span><i class="pin-toggle" data-pin-object="${esc(item.fullName)}" title="${isPinned('object', item.fullName) ? 'Unpin object' : 'Pin object'}">★</i></button>`).join('');
     container.querySelectorAll('[data-object]').forEach((button) => {
       button.onclick = () => selectObject(button.dataset.object, button.dataset.objectType).catch((error) => setStatus('error', error.message));
+    });
+    container.querySelectorAll('[data-pin-object]').forEach((button) => {
+      button.onclick = (event) => {
+        event.stopPropagation();
+        togglePinnedItem('object', button.dataset.pinObject);
+      };
     });
   }
 
   function renderProcedures() {
     const container = $('procedureList');
+    applyExplorerFilters();
     if (state.procedureNote) {
       container.innerHTML = `<div class="empty-note">${esc(state.procedureNote)}</div>`;
       return;
@@ -2220,21 +2487,23 @@ window.createConsoleApp = function createConsoleApp() {
       container.innerHTML = '<div class="empty-note">No procedures loaded.</div>';
       return;
     }
-    container.innerHTML = state.filteredProcedures.map((item) => `<button class="procedure-item ${state.activeProcedure === item.fullName ? 'active' : ''}" data-procedure="${esc(item.fullName)}" type="button" title="${esc(item.fullName)}"><strong>${esc(item.fullName)}</strong><span>Stored procedure</span></button>`).join('');
+    container.innerHTML = state.filteredProcedures.map((item) => `<button class="procedure-item ${state.activeProcedure === item.fullName ? 'active' : ''}" data-procedure="${esc(item.fullName)}" type="button" title="${esc(item.fullName)}"><strong>${isPinned('procedure', item.fullName) ? '★ ' : ''}${esc(item.fullName)}</strong><span>Stored procedure${isRecent('procedure', item.fullName) ? ' • recent' : ''}</span><i class="pin-toggle" data-pin-procedure="${esc(item.fullName)}" title="${isPinned('procedure', item.fullName) ? 'Unpin procedure' : 'Pin procedure'}">★</i></button>`).join('');
     container.querySelectorAll('[data-procedure]').forEach((button) => {
       button.onclick = () => selectProcedure(button.dataset.procedure).catch((error) => setStatus('error', error.message));
+    });
+    container.querySelectorAll('[data-pin-procedure]').forEach((button) => {
+      button.onclick = (event) => {
+        event.stopPropagation();
+        togglePinnedItem('procedure', button.dataset.pinProcedure);
+      };
     });
   }
 
   function filterObjects() {
-    const search = $('tableSearchInput').value.trim().toLowerCase();
-    state.filteredObjects = state.objects.filter((item) => item.fullName.toLowerCase().includes(search));
     renderObjects();
   }
 
   function filterProcedures() {
-    const search = $('procedureSearchInput').value.trim().toLowerCase();
-    state.filteredProcedures = state.procedures.filter((item) => item.fullName.toLowerCase().includes(search));
     renderProcedures();
   }
 
@@ -2572,8 +2841,100 @@ window.createConsoleApp = function createConsoleApp() {
     });
   }
 
+  function textareaEditorAdapter() {
+    const editor = $('queryEditor');
+    return {
+      kind: 'textarea',
+      getValue: () => editor?.value || '',
+      setValue: (value) => {
+        if (editor) editor.value = String(value || '');
+      },
+      getSelection: () => ({
+        start: Number(editor?.selectionStart || 0),
+        end: Number(editor?.selectionEnd || 0)
+      }),
+      setSelection: (start, end = start) => editor?.setSelectionRange?.(start, end),
+      getScroll: () => ({
+        top: Number(editor?.scrollTop || 0),
+        left: Number(editor?.scrollLeft || 0)
+      }),
+      setScroll: (top, left) => {
+        if (editor) {
+          editor.scrollTop = Number(top || 0);
+          editor.scrollLeft = Number(left || 0);
+        }
+      },
+      focus: () => editor?.focus?.()
+    };
+  }
+
+  function initEditorAdapter() {
+    state.editorAdapter = textareaEditorAdapter();
+    const container = $('editorContainer');
+    if (window.monaco?.editor && container && !$('monacoQueryEditor')) {
+      try {
+        const editor = $('queryEditor');
+        const monacoHost = document.createElement('div');
+        monacoHost.id = 'monacoQueryEditor';
+        monacoHost.className = 'monaco-query-editor';
+        monacoHost.style.minHeight = `${Math.max(260, editor?.clientHeight || 320)}px`;
+        container.appendChild(monacoHost);
+        const monacoEditor = window.monaco.editor.create(monacoHost, {
+          value: editor?.value || '',
+          language: 'sql',
+          minimap: { enabled: false },
+          automaticLayout: true,
+          fontSize: Math.round(state.editorTextSize * 15),
+          theme: 'vs-dark'
+        });
+        editor?.classList.add('hidden');
+        $('queryEditorBackdrop')?.classList.add('hidden');
+        monacoEditor.onDidChangeModelContent(() => {
+          updateEditorStats();
+          persistWorkspaceState('sql');
+        });
+        state.editorAdapter = {
+          kind: 'monaco',
+          getValue: () => monacoEditor.getValue(),
+          setValue: (value) => monacoEditor.setValue(String(value || '')),
+          getSelection: () => {
+            const model = monacoEditor.getModel();
+            const selection = monacoEditor.getSelection();
+            return {
+              start: model.getOffsetAt(selection.getStartPosition()),
+              end: model.getOffsetAt(selection.getEndPosition())
+            };
+          },
+          setSelection: (start, end = start) => {
+            const model = monacoEditor.getModel();
+            const startPos = model.getPositionAt(Number(start || 0));
+            const endPos = model.getPositionAt(Number(end || start || 0));
+            monacoEditor.setSelection(new window.monaco.Selection(startPos.lineNumber, startPos.column, endPos.lineNumber, endPos.column));
+          },
+          getScroll: () => ({ top: monacoEditor.getScrollTop(), left: monacoEditor.getScrollLeft() }),
+          setScroll: (top, left) => {
+            monacoEditor.setScrollTop(Number(top || 0));
+            monacoEditor.setScrollLeft(Number(left || 0));
+          },
+          focus: () => monacoEditor.focus()
+        };
+        setStatus('neutral', 'Monaco SQL editor active.');
+      } catch (error) {
+        console.warn('Monaco editor initialization failed; using textarea fallback.', error);
+        state.editorAdapter = textareaEditorAdapter();
+      }
+    }
+  }
+
+  function editorAdapter() {
+    if (!state.editorAdapter) {
+      initEditorAdapter();
+    }
+    return state.editorAdapter || textareaEditorAdapter();
+  }
+
   function getQuery() {
-    return $('queryEditor')?.value || '';
+    return editorAdapter().getValue();
   }
 
   function highlightSql(text) {
@@ -2645,6 +3006,7 @@ window.createConsoleApp = function createConsoleApp() {
   }
 
   function syncEditorBackdrop() {
+    if (state.editorAdapter?.kind === 'monaco') return;
     const editor = $('queryEditor');
     const backdrop = $('queryEditorBackdrop');
     if (!editor || !backdrop) return;
@@ -2654,10 +3016,8 @@ window.createConsoleApp = function createConsoleApp() {
   }
 
   function setQuery(query) {
-    if ($('queryEditor')) {
-      $('queryEditor').value = String(query || '');
-      syncEditorBackdrop();
-    }
+    editorAdapter().setValue(String(query || ''));
+    syncEditorBackdrop();
     updateEditorStats();
     persistWorkspaceState('sql');
   }
@@ -2968,14 +3328,17 @@ window.createConsoleApp = function createConsoleApp() {
   }
 
   function insertAtCursor(text) {
-    const editor = $('queryEditor');
-    const start = editor.selectionStart;
-    const end = editor.selectionEnd;
-    editor.value = `${editor.value.slice(0, start)}${text}${editor.value.slice(end)}`;
-    editor.focus();
-    editor.selectionStart = editor.selectionEnd = start + text.length;
+    const adapter = editorAdapter();
+    const query = adapter.getValue();
+    const selection = adapter.getSelection();
+    const start = Number(selection.start || 0);
+    const end = Number(selection.end || start);
+    adapter.setValue(`${query.slice(0, start)}${text}${query.slice(end)}`);
+    adapter.focus();
+    adapter.setSelection(start + text.length, start + text.length);
     updateEditorStats();
     syncEditorBackdrop();
+    persistWorkspaceState('sql');
   }
 
   function preferredColumnExpression() {
@@ -2985,9 +3348,11 @@ window.createConsoleApp = function createConsoleApp() {
   }
 
   function editorSelectionOrColumn() {
-    const editor = $('queryEditor');
-    const selectedText = editor && editor.selectionStart !== editor.selectionEnd
-      ? editor.value.slice(editor.selectionStart, editor.selectionEnd).trim()
+    const adapter = editorAdapter();
+    const selection = adapter.getSelection();
+    const query = adapter.getValue();
+    const selectedText = selection.start !== selection.end
+      ? query.slice(selection.start, selection.end).trim()
       : '';
     return selectedText || preferredColumnExpression();
   }
@@ -3044,6 +3409,7 @@ window.createConsoleApp = function createConsoleApp() {
     renderProcedureWorkspace();
 
     const payload = requestConnection();
+    loadPinnedAndRecentItems();
     const [objectsResult, proceduresResult] = await Promise.allSettled([
       api('/api/tables', { method: 'POST', data: payload }),
       api('/api/procedures', { method: 'POST', data: payload })
@@ -3054,6 +3420,7 @@ window.createConsoleApp = function createConsoleApp() {
     if (objectsResult.status === 'fulfilled') {
       state.objects = objectsResult.value.objects || objectsResult.value.tables || [];
       state.filteredObjects = [...state.objects];
+      populateExplorerFilters();
       renderObjects();
       populateAdvancedObjectOptions();
     } else {
@@ -3068,6 +3435,7 @@ window.createConsoleApp = function createConsoleApp() {
       state.procedures = proceduresResult.value.procedures || [];
       state.filteredProcedures = [...state.procedures];
       state.procedureNote = proceduresResult.value.supported === false ? (proceduresResult.value.note || 'Procedures unavailable for this source.') : '';
+      populateExplorerFilters();
       renderProcedures();
     } else {
       state.procedures = [];
@@ -3199,6 +3567,8 @@ window.createConsoleApp = function createConsoleApp() {
     try {
       const payload = await api('/api/columns', { method: 'POST', data: requestConnection({ object: state.activeObject }) });
       state.activeColumns = payload.columns || [];
+      state.objectColumnIndex[String(state.activeObject || '').toLowerCase()] = state.activeColumns.map((column) => column.name);
+      markRecentItem('object', state.activeObject);
       populateColumnInputs();
       renderColumns();
       persistCatalogState();
@@ -3246,6 +3616,7 @@ window.createConsoleApp = function createConsoleApp() {
     const payload = await api('/api/procedure-parameters', { method: 'POST', data: requestConnection({ procedure: fullName }) });
     resetActiveObject();
     state.activeProcedure = fullName;
+    markRecentItem('procedure', fullName);
     state.procedureParameters = payload.parameters || [];
     state.procedureValues = restoredValues && typeof restoredValues === 'object' ? { ...restoredValues } : {};
     setWorkspace('procedure');
@@ -3314,6 +3685,9 @@ window.createConsoleApp = function createConsoleApp() {
       visualKind: meta.visualKind || '',
       visualObject: meta.visualObject || meta.object || ''
     };
+    upsertResultTab(meta.tabTitle || meta.message || meta.visualKind || 'Results', state.results, {
+      key: meta.tabKey || ''
+    });
     renderResults();
     persistWorkspaceState(state.workspace);
   }
@@ -3341,6 +3715,7 @@ window.createConsoleApp = function createConsoleApp() {
     }
     const panel = $('resultsPanel');
     const resultsCard = panel?.closest('.results-card');
+    state.activeResultTabId = '';
     if (panel) {
       panel.innerHTML = `<div class="empty-state">${esc(message)}</div>`;
     }
@@ -3348,6 +3723,7 @@ window.createConsoleApp = function createConsoleApp() {
       resultsCard.dataset.resultsState = 'loading';
     }
     updateResultScrollControls();
+    renderResultTabs();
   }
 
   function resultErrorHint(error, context = {}) {
@@ -4075,7 +4451,9 @@ window.createConsoleApp = function createConsoleApp() {
         totalRows: Number(payload.totalRows ?? (payload.rows || []).length),
         output: payload.output || {},
         visualKind: 'profile',
-        visualObject: payload.object || state.activeObject
+        visualObject: payload.object || state.activeObject,
+        tabTitle: `Profile ${payload.object || state.activeObject}`,
+        tabKey: `profile:${payload.object || state.activeObject}`
       });
       setStatus('success', payload.message || `Profile loaded for ${state.activeObject}.`);
     } catch (error) {
@@ -4109,7 +4487,9 @@ window.createConsoleApp = function createConsoleApp() {
         totalRows: Number(payload.totalRows ?? (payload.rows || []).length),
         output: payload.output || {},
         visualKind: 'dependencies',
-        visualObject: payload.object || state.activeObject
+        visualObject: payload.object || state.activeObject,
+        tabTitle: `Dependencies ${payload.object || state.activeObject}`,
+        tabKey: `dependencies:${payload.object || state.activeObject}`
       });
       setStatus('success', payload.message || `Dependency view loaded for ${state.activeObject}.`);
     } catch (error) {
@@ -4118,6 +4498,152 @@ window.createConsoleApp = function createConsoleApp() {
         operation: 'dependencies',
         object: state.activeObject
       });
+    }
+  }
+
+  async function loadRowCountInsight() {
+    if (!ensureReadyConnection('loading row count')) return;
+    if (!state.activeObject) {
+      setStatus('error', 'Select a table or view first.');
+      return;
+    }
+    setStatus('loading', `Loading row count for ${state.activeObject}...`);
+    resetResultsForRun(`Loading row count for ${state.activeObject}...`);
+    try {
+      const payload = await api('/api/object-insights', {
+        method: 'POST',
+        data: requestConnection({ action: 'rowCount', object: state.activeObject })
+      });
+      setResults(payload.columns || [], payload.rows || [], {
+        totalRows: Number(payload.totalRows ?? (payload.rows || []).length),
+        output: payload.output || {},
+        visualKind: 'query',
+        visualObject: payload.object || state.activeObject,
+        tabTitle: `Row count ${payload.object || state.activeObject}`,
+        tabKey: `rowCount:${payload.object || state.activeObject}`
+      });
+      setStatus('success', payload.message || `Loaded row count for ${state.activeObject}.`);
+    } catch (error) {
+      renderResultError(error, { title: 'Row count failed', operation: 'row count', object: state.activeObject });
+    }
+  }
+
+  async function loadTopValuesInsight() {
+    if (!ensureReadyConnection('loading top values')) return;
+    if (!state.activeObject) {
+      setStatus('error', 'Select a table or view first.');
+      return;
+    }
+    setStatus('loading', `Loading top values for ${state.activeObject}...`);
+    resetResultsForRun(`Loading top values for ${state.activeObject}...`);
+    try {
+      const payload = await api('/api/object-insights', {
+        method: 'POST',
+        data: requestConnection({
+          action: 'topValues',
+          object: state.activeObject,
+          selectedColumns: selectedColumns().slice(0, 8),
+          topN: 10
+        })
+      });
+      setResults(payload.columns || [], payload.rows || [], {
+        totalRows: Number(payload.totalRows ?? (payload.rows || []).length),
+        output: payload.output || {},
+        visualKind: 'query',
+        visualObject: payload.object || state.activeObject,
+        tabTitle: `Top values ${payload.object || state.activeObject}`,
+        tabKey: `topValues:${payload.object || state.activeObject}`
+      });
+      setStatus('success', payload.message || `Loaded top values for ${state.activeObject}.`);
+    } catch (error) {
+      renderResultError(error, { title: 'Top values failed', operation: 'top values', object: state.activeObject });
+    }
+  }
+
+  async function loadResultShapeInsight() {
+    if (!ensureReadyConnection('loading result shape')) return;
+    const query = getQuery().trim();
+    if (!query) {
+      setStatus('error', 'Enter a read query first.');
+      return;
+    }
+    setStatus('loading', 'Loading result shape metadata...');
+    resetResultsForRun('Loading result shape metadata...');
+    try {
+      const payload = await api('/api/object-insights', {
+        method: 'POST',
+        data: requestConnection({ action: 'resultShape', query })
+      });
+      setResults(payload.columns || [], payload.rows || [], {
+        totalRows: Number(payload.totalRows ?? (payload.rows || []).length),
+        output: payload.output || {},
+        visualKind: 'query',
+        tabTitle: 'Result shape',
+        tabKey: `resultShape:${query.slice(0, 120)}`
+      });
+      setStatus('success', payload.message || 'Loaded result shape metadata.');
+    } catch (error) {
+      renderResultError(error, { title: 'Result shape failed', operation: 'result shape', query });
+    }
+  }
+
+  async function loadEstimatedPlan() {
+    if (!ensureReadyConnection('loading an estimated plan')) return;
+    const query = getQuery().trim();
+    if (!query) {
+      setStatus('error', 'Enter a read query first.');
+      return;
+    }
+    setStatus('loading', 'Loading estimated execution plan...');
+    resetResultsForRun('Loading estimated execution plan...');
+    try {
+      const payload = await api('/api/query-plan', {
+        method: 'POST',
+        data: requestConnection({ query })
+      });
+      setResults(payload.columns || [], payload.rows || [], {
+        totalRows: Number(payload.totalRows ?? (payload.rows || []).length),
+        output: { planXml: payload.planXml || '', mode: payload.mode || 'estimated' },
+        visualKind: 'query',
+        tabTitle: 'Estimated plan',
+        tabKey: `plan:${query.slice(0, 120)}`
+      });
+      setStatus('success', payload.message || 'Loaded estimated plan. The query was not executed.');
+    } catch (error) {
+      renderResultError(error, { title: 'Estimated plan failed', operation: 'query plan', query });
+    }
+  }
+
+  async function loadSchemaCompare() {
+    if (!ensureReadyConnection('comparing schemas')) return;
+    if (!state.activeObject) {
+      setStatus('error', 'Select a table or view first.');
+      return;
+    }
+    setStatus('loading', `Comparing ${state.activeObject}...`);
+    resetResultsForRun(`Comparing ${state.activeObject}...`);
+    try {
+      const payload = await api('/api/schema-compare', {
+        method: 'POST',
+        data: {
+          leftConnection: requestConnection(),
+          rightConnection: requestConnection(),
+          leftObject: state.activeObject,
+          rightObject: $('advancedSourceObjectSelect')?.value || state.activeObject,
+          objectType: state.activeObjectType || 'table'
+        }
+      });
+      setResults(payload.columns || [], payload.rows || [], {
+        totalRows: Number(payload.rows?.length || 0),
+        output: payload.summary || {},
+        visualKind: 'query',
+        visualObject: state.activeObject,
+        tabTitle: `Compare ${state.activeObject}`,
+        tabKey: `schemaCompare:${state.activeObject}:${$('advancedSourceObjectSelect')?.value || state.activeObject}`
+      });
+      setStatus('success', `Schema compare found ${payload.differences?.length || 0} difference(s).`);
+    } catch (error) {
+      renderResultError(error, { title: 'Schema compare failed', operation: 'schema compare', object: state.activeObject });
     }
   }
 
@@ -4234,7 +4760,11 @@ window.createConsoleApp = function createConsoleApp() {
     try {
       const payload = await api('/api/query', { method: 'POST', data: requestConnection({ query }) });
       if (payload.requiresConfirmation) {
-        setResults([], [], { rowsAffected: Number(payload.rowsAffected || 0) });
+        setResults([], [], {
+          rowsAffected: Number(payload.rowsAffected || 0),
+          tabTitle: `${payload.action || 'Write'} review`,
+          tabKey: ''
+        });
         setStatus('success', payload.message);
         openConfirm({
           type: 'write',
@@ -4250,7 +4780,9 @@ window.createConsoleApp = function createConsoleApp() {
         rowsAffected: Number(payload.rowsAffected || 0),
         totalRows: Number(payload.totalRows ?? (payload.rows || []).length),
         truncated: Boolean(payload.truncated),
-        visualKind: 'query'
+        visualKind: 'query',
+        tabTitle: state.activeObject ? `Query ${state.activeObject}` : 'Query result',
+        tabKey: ''
       });
       addQueryHistory(query);
       const rowCount = Array.isArray(payload.rows) ? payload.rows.length : 0;
@@ -4274,7 +4806,10 @@ window.createConsoleApp = function createConsoleApp() {
     try {
       const payload = await api('/api/procedures', { method: 'POST', data: requestConnection({ procedure: state.activeProcedure, parameters: currentProcedureValues() }) });
       if (payload.requiresConfirmation) {
-        setResults();
+        setResults([], [], {
+          tabTitle: `Prepare ${state.activeProcedure}`,
+          tabKey: ''
+        });
         setStatus('success', payload.message);
         openConfirm({
           type: 'procedure',
@@ -4317,7 +4852,9 @@ window.createConsoleApp = function createConsoleApp() {
           output: payload.output || {},
           returnValue: payload.returnValue,
           visualKind: 'procedure',
-          visualObject: payload.procedure || state.activeProcedure
+          visualObject: payload.procedure || state.activeProcedure,
+          tabTitle: `Procedure ${payload.procedure || state.activeProcedure}`,
+          tabKey: ''
         });
         addProcedureHistory(payload.procedure || executedRequest.procedure || state.activeProcedure, executedRequest.parameters || {});
         setStatus('success', payload.message);
@@ -4327,7 +4864,11 @@ window.createConsoleApp = function createConsoleApp() {
       const payload = await api('/api/query', { method: 'POST', data: requestConnection({ ...state.pendingAction.request }) });
       const executedQuery = state.pendingAction.request.query;
       closeConfirm();
-      setResults([], [], { rowsAffected: Number(payload.rowsAffected || 0) });
+      setResults([], [], {
+        rowsAffected: Number(payload.rowsAffected || 0),
+        tabTitle: `${payload.action || 'Write'} executed`,
+        tabKey: ''
+      });
       addQueryHistory(executedQuery);
       setStatus('success', `${payload.message} ${payload.rowsAffected} row${payload.rowsAffected === 1 ? '' : 's'} affected.`);
     } catch (error) {
@@ -4346,7 +4887,21 @@ window.createConsoleApp = function createConsoleApp() {
     setStatus('loading', 'Loading recent audit...');
     resetResultsForRun('Loading recent audit...');
     try {
-      const payload = await api('/api/audit?limit=25');
+      const filters = {
+        event: $('auditEventFilter')?.value || '',
+        outcome: $('auditOutcomeFilter')?.value || '',
+        action: $('auditActionFilter')?.value || '',
+        sourceType: $('auditSourceFilter')?.value || '',
+        database: $('auditDatabaseFilter')?.value || '',
+        search: $('auditSearchFilter')?.value || '',
+        limit: $('auditLimitFilter')?.value || '50'
+      };
+      state.auditFilters = filters;
+      const params = new URLSearchParams();
+      Object.entries(filters).forEach(([key, value]) => {
+        if (String(value || '').trim()) params.set(key, value);
+      });
+      const payload = await api(`/api/audit?${params.toString() || 'limit=50'}`);
       const rows = (payload.entries || []).map((entry) => ({
         timestamp: formatTimestamp(entry.timestamp || ''),
         sourceType: entry.sourceType || '',
@@ -4356,14 +4911,43 @@ window.createConsoleApp = function createConsoleApp() {
         database: entry.database || '',
         detail: entry.detail || ''
       }));
-      setResults(['timestamp', 'sourceType', 'event', 'outcome', 'action', 'database', 'detail'], rows, { totalRows: rows.length, visualKind: 'audit' });
-      setStatus('success', `Loaded ${rows.length} audit entries.`);
+      setResults(['timestamp', 'sourceType', 'event', 'outcome', 'action', 'database', 'detail'], rows, {
+        totalRows: rows.length,
+        visualKind: 'audit',
+        tabTitle: 'Audit log',
+        tabKey: `audit:${JSON.stringify(filters)}`
+      });
+      $('auditFilterDialog')?.classList.add('hidden');
+      setStatus('success', `Loaded ${rows.length} audit entries${payload.totalMatched != null ? ` (${payload.totalMatched} matched)` : ''}.`);
     } catch (error) {
       renderResultError(error, {
         title: 'Audit log failed',
         operation: 'audit'
       });
     }
+  }
+
+  function openAuditFilters() {
+    const dialog = $('auditFilterDialog');
+    if (!dialog) {
+      loadAudit().catch((error) => setStatus('error', error.message));
+      return;
+    }
+    dialog.classList.remove('hidden');
+    dialog.setAttribute('aria-hidden', 'false');
+    $('auditLimitFilter')?.focus();
+  }
+
+  function closeAuditFilters() {
+    $('auditFilterDialog')?.classList.add('hidden');
+    $('auditFilterDialog')?.setAttribute('aria-hidden', 'true');
+  }
+
+  function clearAuditFilters() {
+    ['auditEventFilter', 'auditOutcomeFilter', 'auditActionFilter', 'auditSourceFilter', 'auditDatabaseFilter', 'auditSearchFilter'].forEach((id) => {
+      if ($(id)) $(id).value = '';
+    });
+    if ($('auditLimitFilter')) $('auditLimitFilter').value = '50';
   }
 
   async function loadHealth() {
@@ -4409,8 +4993,11 @@ window.createConsoleApp = function createConsoleApp() {
     }));
     $('clearHistoryBtn').onclick = clearCurrentHistory;
     if ($('loadAuditBtn')) {
-      $('loadAuditBtn').onclick = () => loadAudit().catch((error) => setStatus('error', error.message));
+      $('loadAuditBtn').onclick = openAuditFilters;
     }
+    if ($('closeAuditFiltersBtn')) $('closeAuditFiltersBtn').onclick = closeAuditFilters;
+    if ($('clearAuditFiltersBtn')) $('clearAuditFiltersBtn').onclick = clearAuditFilters;
+    if ($('applyAuditFiltersBtn')) $('applyAuditFiltersBtn').onclick = () => loadAudit().catch((error) => setStatus('error', error.message));
     $('runQueryBtn').onclick = () => runQuery().catch((error) => setStatus('error', error.message));
     $('decreaseEditorTextBtn').onclick = () => changeEditorTextSize(-0.05);
     $('increaseEditorTextBtn').onclick = () => changeEditorTextSize(0.05);
@@ -4436,6 +5023,11 @@ window.createConsoleApp = function createConsoleApp() {
     $('mergePreviewBtn').onclick = createMergePreviewTemplate;
     $('profileObjectBtn').onclick = () => loadObjectProfile().catch((error) => setStatus('error', error.message));
     $('dependencyViewBtn').onclick = () => loadDependencyView().catch((error) => setStatus('error', error.message));
+    $('rowCountInsightBtn').onclick = () => loadRowCountInsight().catch((error) => setStatus('error', error.message));
+    $('topValuesInsightBtn').onclick = () => loadTopValuesInsight().catch((error) => setStatus('error', error.message));
+    $('schemaCompareBtn').onclick = () => loadSchemaCompare().catch((error) => setStatus('error', error.message));
+    $('resultShapeBtn').onclick = () => loadResultShapeInsight().catch((error) => setStatus('error', error.message));
+    $('queryPlanBtn').onclick = () => loadEstimatedPlan().catch((error) => setStatus('error', error.message));
     $('previewRowsBtn').onclick = () => {
       setMode('select');
       $('topRowsInput').value = 100;
@@ -4571,6 +5163,12 @@ window.createConsoleApp = function createConsoleApp() {
     };
     $('tableSearchInput').oninput = debounce(filterObjects, 120);
     $('procedureSearchInput').oninput = debounce(filterProcedures, 120);
+    ['objectTypeFilter', 'objectSchemaFilter', 'pinnedOnlyObjectsToggle', 'recentOnlyObjectsToggle'].forEach((id) => {
+      if ($(id)) $(id).onchange = filterObjects;
+    });
+    ['procedureSchemaFilter', 'pinnedOnlyProceduresToggle', 'recentOnlyProceduresToggle'].forEach((id) => {
+      if ($(id)) $(id).onchange = filterProcedures;
+    });
     if ($('queryHistorySearch')) {
       $('queryHistorySearch').oninput = debounce(() => {
         state.historyFilter = ($('queryHistorySearch').value || '').trim().toLowerCase();
@@ -4593,6 +5191,7 @@ window.createConsoleApp = function createConsoleApp() {
     window.addEventListener('scroll', window.__dataWorkbenchResultsDockHandler, true);
     window.addEventListener('resize', window.__dataWorkbenchResultsDockHandler);
 
+    initEditorAdapter();
     const editor = $('queryEditor');
     if (editor) {
       editor.oninput = () => {
