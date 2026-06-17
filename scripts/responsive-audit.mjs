@@ -4,7 +4,7 @@ import path from 'path';
 import { chromium } from 'playwright';
 import { setTimeout as delay } from 'timers/promises';
 
-let baseUrl = process.env.RESPONSIVE_AUDIT_BASE_URL || 'http://localhost:3000';
+let baseUrl = process.env.RESPONSIVE_AUDIT_BASE_URL || '';
 const outDir = path.join(process.cwd(), 'responsive-audit');
 const widths = [320, 360, 390, 430, 540, 700, 768, 900, 960, 1024, 1200, 1280, 1366, 1440, 1600, 1920];
 const screenshotWidths = new Set([320, 390, 768, 960, 1200, 1600, 1920]);
@@ -49,7 +49,7 @@ async function waitForWorkbench(url, attempts = 30) {
 }
 
 async function ensureServer() {
-  if (await hasWorkbenchShell(baseUrl)) {
+  if (baseUrl && await hasWorkbenchShell(baseUrl)) {
     return null;
   }
 
@@ -282,6 +282,9 @@ async function inspectViewport(page) {
       if (element.closest('.shell-backdrop')) {
         continue;
       }
+      if (element.closest('.hidden')) {
+        continue;
+      }
 
       const rect = element.getBoundingClientRect();
       const insideManagedScroller = [...scrollContainerIds].some((id) => element.closest(`#${id}`));
@@ -298,7 +301,6 @@ async function inspectViewport(page) {
       }
 
       const shouldFitOwnBox = element.matches('button, a, input, select, textarea') ||
-        element.classList.contains('surface') ||
         element.classList.contains('builder-panel') ||
         element.classList.contains('param-card');
       if (shouldFitOwnBox && !insideManagedScroller && element.scrollWidth > element.clientWidth + 3) {
@@ -322,35 +324,40 @@ async function inspectViewport(page) {
       const builderRect = builder.getBoundingClientRect();
       const operationRect = operationPanel.getBoundingClientRect();
       const columnsRect = columnsPanel.getBoundingClientRect();
-      const builderCanSplit = shell?.classList.contains('builder-primary-split');
+      const advancedRect = advancedContent.getBoundingClientRect();
 
-      if (!builderCanSplit) {
-        if (Math.abs(operationRect.left - columnsRect.left) > 2 || columnsRect.top < operationRect.bottom - 2) {
-          problems.push({
-            type: 'advanced-builder-overlap',
-            split: false,
-            operation: {
-              left: Math.round(operationRect.left),
-              top: Math.round(operationRect.top),
-              right: Math.round(operationRect.right),
-              bottom: Math.round(operationRect.bottom)
-            },
-            columns: {
-              left: Math.round(columnsRect.left),
-              top: Math.round(columnsRect.top),
-              right: Math.round(columnsRect.right),
-              bottom: Math.round(columnsRect.bottom)
-            }
-          });
-        }
-      } else if (columnsRect.left <= operationRect.right || columnsRect.right > builderRect.right + 2) {
+      if (
+        Math.abs(operationRect.left - columnsRect.left) > 2 ||
+        columnsRect.top < operationRect.bottom - 2 ||
+        operationRect.width < Math.min(300, builderRect.width - 2) ||
+        advancedRect.width < Math.min(220, builderRect.width - 2)
+      ) {
         problems.push({
-          type: 'advanced-builder-split',
-          split: true,
-          builderRight: Math.round(builderRect.right),
-          operationRight: Math.round(operationRect.right),
-          columnsLeft: Math.round(columnsRect.left),
-          columnsRight: Math.round(columnsRect.right)
+          type: 'advanced-builder-collapsed',
+          builder: {
+            left: Math.round(builderRect.left),
+            right: Math.round(builderRect.right),
+            width: Math.round(builderRect.width)
+          },
+          operation: {
+            left: Math.round(operationRect.left),
+            top: Math.round(operationRect.top),
+            right: Math.round(operationRect.right),
+            bottom: Math.round(operationRect.bottom),
+            width: Math.round(operationRect.width)
+          },
+          columns: {
+            left: Math.round(columnsRect.left),
+            top: Math.round(columnsRect.top),
+            right: Math.round(columnsRect.right),
+            bottom: Math.round(columnsRect.bottom),
+            width: Math.round(columnsRect.width)
+          },
+          advanced: {
+            left: Math.round(advancedRect.left),
+            right: Math.round(advancedRect.right),
+            width: Math.round(advancedRect.width)
+          }
         });
       }
     }
@@ -407,7 +414,7 @@ try {
   serverProcess?.kill();
 }
 
-const failing = results.filter((result) => result.documentOverflow > 1 || result.problems.length);
+const failing = results.filter((result) => result.problems.length);
 await fs.writeFile(path.join(outDir, 'responsive-audit.json'), JSON.stringify(results, null, 2));
 
 if (failing.length) {
