@@ -158,6 +158,20 @@ function attachMocks(window) {
       });
     }
 
+    if (String(url).includes('/api/lifecycle/heartbeat')) {
+      return new Response(JSON.stringify({ success: true }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+
+    if (String(url).includes('/api/version')) {
+      return new Response(JSON.stringify({ success: true, version: 'ui-smoke' }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+
     if (String(url).includes('/api/object-insights')) {
       if (body.action === 'profile') {
         return new Response(JSON.stringify({
@@ -479,7 +493,7 @@ if (!sqlWindow.document.getElementById('statusText').textContent.includes('Profi
 if (!sqlWindow.document.querySelector('.results-table')?.textContent.includes('AlertId')) {
   throw new Error('Object profile action did not render profile results.');
 }
-if (!sqlWindow.document.querySelector('.visual-helper-card')?.textContent.includes('Profile summary')) {
+if (!sqlWindow.document.querySelector('.visual-helper-card')?.textContent.includes('Profile insights')) {
   throw new Error('Object profile action did not render visual helper cards.');
 }
 
@@ -824,3 +838,4 @@ if (!narrowWindow.document.querySelector('.app-shell')?.classList.contains('pane
 });
 
 console.log('UI smoke test passed.');
+process.exit(0);

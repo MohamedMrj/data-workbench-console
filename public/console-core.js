@@ -454,11 +454,13 @@ window.createConsoleApp = function createConsoleApp() {
     shell.classList.toggle('activity-panel-collapsed', state.sidePanels.activityPanelCollapsed);
     const layoutMode = getLayoutMode();
     const procedureLayoutMode = layoutMode.shellMode === 'stacked' || getProcedureStudioWidth() <= 920 ? 'stacked' : 'split';
+    const builderPrimarySplit = resizeEnabled('builder');
     shell.dataset.layoutMode = layoutMode.shellMode;
     shell.dataset.workspaceMode = layoutMode.workspaceMode;
     shell.dataset.studioMode = layoutMode.studioMode;
     shell.dataset.procedureLayoutMode = procedureLayoutMode;
     shell.dataset.viewportScale = String(Math.round(layoutMode.viewportScale * 100) / 100);
+    shell.classList.toggle('builder-primary-split', builderPrimarySplit);
 
     document.querySelectorAll('[data-resize-handle]').forEach((handle) => {
       const enabled = resizeEnabled(handle.dataset.resizeHandle);

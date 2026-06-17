@@ -237,6 +237,8 @@ async function populateSqlPage(page) {
   await page.waitForTimeout(250);
   await page.click('[data-object]');
   await page.waitForTimeout(250);
+  await page.click('#toggleAdvancedOperationsBtn');
+  await page.waitForTimeout(100);
   await page.click('#addFilterBtn');
   await page.click('#runQueryBtn');
   await page.waitForTimeout(300);
@@ -308,6 +310,47 @@ async function inspectViewport(page) {
           scrollWidth: element.scrollWidth,
           clientWidth: element.clientWidth,
           text: element.textContent.trim().slice(0, 80)
+        });
+      }
+    }
+
+    const builder = document.querySelector('.builder-primary-grid');
+    const operationPanel = document.querySelector('.builder-panel-operation');
+    const columnsPanel = document.querySelector('.builder-panel-columns');
+    const advancedContent = document.querySelector('#advancedOperationsContent');
+    if (builder && operationPanel && columnsPanel && advancedContent && !advancedContent.classList.contains('hidden')) {
+      const builderRect = builder.getBoundingClientRect();
+      const operationRect = operationPanel.getBoundingClientRect();
+      const columnsRect = columnsPanel.getBoundingClientRect();
+      const builderCanSplit = shell?.classList.contains('builder-primary-split');
+
+      if (!builderCanSplit) {
+        if (Math.abs(operationRect.left - columnsRect.left) > 2 || columnsRect.top < operationRect.bottom - 2) {
+          problems.push({
+            type: 'advanced-builder-overlap',
+            split: false,
+            operation: {
+              left: Math.round(operationRect.left),
+              top: Math.round(operationRect.top),
+              right: Math.round(operationRect.right),
+              bottom: Math.round(operationRect.bottom)
+            },
+            columns: {
+              left: Math.round(columnsRect.left),
+              top: Math.round(columnsRect.top),
+              right: Math.round(columnsRect.right),
+              bottom: Math.round(columnsRect.bottom)
+            }
+          });
+        }
+      } else if (columnsRect.left <= operationRect.right || columnsRect.right > builderRect.right + 2) {
+        problems.push({
+          type: 'advanced-builder-split',
+          split: true,
+          builderRight: Math.round(builderRect.right),
+          operationRight: Math.round(operationRect.right),
+          columnsLeft: Math.round(columnsRect.left),
+          columnsRight: Math.round(columnsRect.right)
         });
       }
     }
