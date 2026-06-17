@@ -3086,6 +3086,89 @@ window.createConsoleApp = function createConsoleApp() {
     setStatus('success', `Loaded ${state.objects.length} objects${state.procedureNote ? '' : ` and ${state.procedures.length} procedures`}.`);
   }
 
+  async function loadObjectDefinitionToEditor(objectName, objectType, scriptMode = 'alter') {
+    if (!ensureReadyConnection('loading the object script')) {
+      return;
+    }
+    if (!objectName) {
+      setStatus('error', 'Select an object or procedure first.');
+      return;
+    }
+
+    const normalizedType = objectType === 'procedure' ? 'procedure' : objectType === 'view' ? 'view' : 'table';
+    const requestedMode = scriptMode === 'create' ? 'create' : 'alter';
+    setStatus('loading', `Loading ${requestedMode.toUpperCase()} script for ${objectName}...`);
+
+    const payload = await api('/api/object-definition', {
+      method: 'POST',
+      data: requestConnection({
+        object: objectName,
+        objectType: normalizedType,
+        scriptMode: requestedMode
+      })
+    });
+
+    const effectiveMode = payload.scriptMode || requestedMode;
+    setQuery(payload.definition || '');
+    persistWorkspaceState('sql');
+    persistCatalogState();
+
+    const sourceLabel = payload.generated
+      ? 'generated from catalog metadata'
+      : payload.definitionSource
+        ? `from ${String(payload.definitionSource).replace(/_/g, ' ')}`
+        : 'from source metadata';
+    const message = `Loaded ${String(effectiveMode).toUpperCase()} script for ${payload.object || objectName} ${sourceLabel}. Review before executing.`;
+    if (normalizedType === 'procedure') {
+      state.activeObject = null;
+      state.activeObjectType = '';
+      state.activeColumns = [];
+      state.selectedColumns.clear();
+      if ($('columnsPanel')) $('columnsPanel').innerHTML = '<div class="empty-note">Load a table or view to see columns.</div>';
+      if ($('selectedColumnsSummary')) $('selectedColumnsSummary').textContent = 'All columns will be used.';
+      if ($('sortColumnSelect')) $('sortColumnSelect').innerHTML = '<option value="">None</option>';
+      state.activeProcedure = payload.object || objectName;
+      renderProcedures();
+      renderObjects();
+      refreshActiveSummary();
+      setExplorer('procedures');
+    } else {
+      state.activeProcedure = null;
+      state.procedureParameters = [];
+      state.procedureValues = {};
+      state.activeObject = payload.object || objectName;
+      state.activeObjectType = normalizedType;
+      state.activeColumns = [];
+      state.selectedColumns.clear();
+      if ($('columnsPanel')) $('columnsPanel').innerHTML = '<div class="empty-note">Select the object name to load columns for the query builder.</div>';
+      if ($('selectedColumnsSummary')) $('selectedColumnsSummary').textContent = 'No columns loaded for the script action.';
+      if ($('sortColumnSelect')) $('sortColumnSelect').innerHTML = '<option value="">None</option>';
+      renderObjects();
+      renderProcedures();
+      renderProcedureWorkspace();
+      refreshActiveSummary();
+      setExplorer('objects');
+    }
+
+    setWorkspace('sql');
+    setStatus('success', message);
+
+    if (currentPageMode() === 'procedures') {
+      persistWorkspaceState('sql');
+      window.location.href = '/';
+    }
+  }
+
+  async function scriptActiveDefinition(scriptMode = 'alter') {
+    if (state.activeObject) {
+      return loadObjectDefinitionToEditor(state.activeObject, state.activeObjectType || 'table', scriptMode);
+    }
+    if (state.activeProcedure) {
+      return loadObjectDefinitionToEditor(state.activeProcedure, 'procedure', scriptMode);
+    }
+    setStatus('error', 'Select a table, view, or stored procedure before scripting it.');
+  }
+
   async function selectObject(fullName, objectType) {
     if (!ensureReadyConnection('loading object metadata')) {
       setStatus('error', 'Enter a connection first.');
@@ -4274,6 +4357,8 @@ window.createConsoleApp = function createConsoleApp() {
     $('copyQueryBtn').onclick = () => copyText(getQuery(), 'SQL copied to clipboard.');
     $('clearQueryBtn').onclick = () => setQuery('');
     $('generateQueryBtn').onclick = generateQuery;
+    $('scriptCreateBtn').onclick = () => scriptActiveDefinition('create').catch((error) => setStatus('error', error.message));
+    $('scriptAlterBtn').onclick = () => scriptActiveDefinition('alter').catch((error) => setStatus('error', error.message));
     if ($('insertSqlHelperBtn')) {
       $('insertSqlHelperBtn').onclick = () => insertSqlHelper();
     }
@@ -4347,6 +4432,8 @@ window.createConsoleApp = function createConsoleApp() {
     $('insertOrderByBtn').onclick = () => insertAtCursor($('sortColumnSelect').value ? `\nORDER BY ${bid($('sortColumnSelect').value)} ${$('sortDirectionSelect').value || 'DESC'}` : '\nORDER BY ');
     $('insertJoinCommentBtn').onclick = () => insertAtCursor(`\n-- JOIN note: connect ${state.activeObject || 'dbo.YourTable'} to another object here\n-- Example: INNER JOIN dbo.OtherTable o ON o.Key = t.Key\n`);
     $('loadProcedureParamsBtn').onclick = () => refreshProcedureParameters().catch((error) => setStatus('error', error.message));
+    $('scriptProcedureCreateBtn').onclick = () => scriptActiveDefinition('create').catch((error) => setStatus('error', error.message));
+    $('scriptProcedureAlterBtn').onclick = () => scriptActiveDefinition('alter').catch((error) => setStatus('error', error.message));
     $('runProcedureBtn').onclick = () => runProcedure().catch((error) => setStatus('error', error.message));
     $('copyResultsBtn').onclick = copyResults;
     $('decreaseResultsTextBtn').onclick = () => changeResultsTextSize(-0.04);

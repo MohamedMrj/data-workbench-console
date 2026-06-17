@@ -186,6 +186,8 @@ function SqlWorkspace({ hidden = false }) {
           </div>
           <div className="button-row wrap builder-actions">
             <button id="generateQueryBtn" className="primary-btn">Generate SQL</button>
+            <button id="scriptCreateBtn" className="ghost-btn" type="button">Script CREATE</button>
+            <button id="scriptAlterBtn" className="ghost-btn" type="button">Script ALTER/Edit</button>
             <button id="insertWhereBtn" className="ghost-btn">Insert WHERE</button>
             <button id="insertOrderByBtn" className="ghost-btn">Insert ORDER BY</button>
             <button id="insertJoinCommentBtn" className="ghost-btn">Join note</button>
@@ -236,6 +238,8 @@ function ProcedureWorkspace({ hidden = false }) {
         </div>
         <div className="button-row wrap right">
           <button id="loadProcedureParamsBtn" className="ghost-btn small">Refresh params</button>
+          <button id="scriptProcedureCreateBtn" className="ghost-btn small" type="button">Script CREATE</button>
+          <button id="scriptProcedureAlterBtn" className="ghost-btn small" type="button">Script ALTER/Edit</button>
           <button id="runProcedureBtn" className="primary-btn">Run procedure</button>
         </div>
       </div>
