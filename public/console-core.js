@@ -3496,42 +3496,61 @@ window.createConsoleApp = function createConsoleApp() {
     return text.length > 160 || text.includes('\n') || text.includes('{') || text.includes('[');
   }
 
+  function parseJsonValue(value) {
+    if (value === null || value === undefined || value === '') {
+      return null;
+    }
+    if (typeof value === 'object') {
+      return value instanceof Date ? null : value;
+    }
+    const text = String(value).trim();
+    if (!((text.startsWith('{') && text.endsWith('}')) || (text.startsWith('[') && text.endsWith(']')))) {
+      return null;
+    }
+    try {
+      return JSON.parse(text);
+    } catch {
+      return null;
+    }
+  }
+
+  function formatJsonPlain(value) {
+    const parsed = parseJsonValue(value);
+    return parsed ? JSON.stringify(parsed, null, 2) : '';
+  }
+
+  function highlightJsonText(text) {
+    return esc(text).replace(/("(\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d*)?(?:[eE][+\-]?\d+)?)/g, (match) => {
+      let cls = 'json-number';
+      if (/^"/.test(match)) {
+        if (/:$/.test(match)) cls = 'json-key';
+        else cls = 'json-string';
+      } else if (/true|false/.test(match)) {
+        cls = 'json-boolean';
+      } else if (/null/.test(match)) {
+        cls = 'json-null';
+      }
+      return `<span class="${cls}">${match}</span>`;
+    });
+  }
+
   function formatResultValue(value, rowIndex, column) {
     if (value === null || value === undefined || value === '') return '<span class="result-null">NULL</span>';
     const text = String(value);
+    const formattedJson = formatJsonPlain(value);
+    const isJson = Boolean(formattedJson);
 
-    let isJson = false;
-    let formattedJson = text;
-    if ((text.startsWith('{') && text.endsWith('}')) || (text.startsWith('[') && text.endsWith(']'))) {
-      try {
-        const parsed = JSON.parse(text);
-        isJson = true;
-        formattedJson = JSON.stringify(parsed, null, 2)
-          .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-          .replace(/("(\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d*)?(?:[eE][+\-]?\d+)?)/g, (match) => {
-            let cls = 'json-number';
-            if (/^"/.test(match)) {
-              if (/:$/.test(match)) cls = 'json-key';
-              else cls = 'json-string';
-            } else if (/true|false/.test(match)) {
-              cls = 'json-boolean';
-            } else if (/null/.test(match)) {
-              cls = 'json-null';
-            }
-            return `<span class="${cls}">${match}</span>`;
-          });
-      } catch (e) {}
-    }
-
-    if (!isExpandableResultValue(text)) {
+    if (!isJson && !isExpandableResultValue(text)) {
       return esc(text);
     }
 
     const cellKey = resultCellKey(rowIndex, column);
     const expanded = Boolean(state.results.expandedCells[cellKey]);
-    const displayContent = isJson ? `<pre style="margin:0;font-family:inherit;">${formattedJson}</pre>` : esc(text);
+    const displayContent = isJson
+      ? `<pre class="json-cell-pre">${highlightJsonText(formattedJson)}</pre>`
+      : esc(text);
 
-    return `<div class="result-cell-wrap${expanded ? ' expanded' : ''}"><div class="result-cell-content">${displayContent}</div><button class="result-cell-toggle" data-result-cell-toggle="${esc(cellKey)}" type="button">${expanded ? 'Show less' : 'Show more'}</button></div>`;
+    return `<div class="result-cell-wrap${expanded ? ' expanded' : ''}${isJson ? ' json-cell' : ''}"><div class="result-cell-content">${displayContent}</div><button class="result-cell-toggle" data-result-cell-toggle="${esc(cellKey)}" type="button">${expanded ? 'Show less' : 'Show more'}</button></div>`;
   }
 
   function numericValue(value) {
@@ -3909,15 +3928,20 @@ window.createConsoleApp = function createConsoleApp() {
         state.results.contextRow = row;
         state.results.contextCell = column ? {
           column,
-          value: row?.[column]
+          value: row?.[column],
+          formattedJson: formatJsonPlain(row?.[column])
         } : null;
         const menu = $('resultsContextMenu');
         if (menu) {
           const copyCellBtn = $('contextCopyCellBtn');
+          const copyFormattedJsonBtn = $('contextCopyFormattedJsonBtn');
           const copyColumnBtn = $('contextCopyColumnBtn');
           if (copyCellBtn) {
             copyCellBtn.disabled = !column;
             copyCellBtn.textContent = column ? `Copy ${column} value` : 'Copy cell value';
+          }
+          if (copyFormattedJsonBtn) {
+            copyFormattedJsonBtn.disabled = !state.results.contextCell?.formattedJson;
           }
           if (copyColumnBtn) {
             copyColumnBtn.disabled = !column;
@@ -4596,6 +4620,15 @@ window.createConsoleApp = function createConsoleApp() {
       $('contextCopyCellBtn').onclick = () => {
         if (state.results.contextCell) {
           copyText(serializeCellValueForCopy(state.results.contextCell.value), 'Cell value copied.');
+          $('resultsContextMenu')?.classList.add('hidden');
+        }
+      };
+    }
+    if ($('contextCopyFormattedJsonBtn')) {
+      $('contextCopyFormattedJsonBtn').onclick = () => {
+        const formattedJson = state.results.contextCell?.formattedJson;
+        if (formattedJson) {
+          copyText(formattedJson, 'Formatted JSON copied.');
           $('resultsContextMenu')?.classList.add('hidden');
         }
       };
