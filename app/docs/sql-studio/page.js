@@ -43,7 +43,8 @@ export default function SqlStudioDocsPage() {
           items={[
             { title: 'Browse live metadata', text: 'Load tables and views from the active source, then select an object to load its columns.' },
             { title: 'Generate SQL', text: 'Use the builder to create SELECT, INSERT, UPDATE, and DELETE templates from the selected object.' },
-            { title: 'Inspect results', text: 'Run reads, filter visible rows, sort columns, copy rows, export CSV, and inspect null or long values.' },
+            { title: 'Inspect metadata', text: 'Script objects, profile columns, inspect dependencies, compare schemas, review result shape, row counts, top values, and estimated read-query plans.' },
+            { title: 'Inspect results', text: 'Use capped result tabs, filter visible rows, sort columns, copy rows, export CSV, and inspect null, JSON, or long values.' },
             { title: 'Stay controlled', text: 'Writes are previewed and confirmed. Stored procedures are intentionally handled in Procedure Runner.' }
           ]}
         />
@@ -79,8 +80,11 @@ export default function SqlStudioDocsPage() {
         <DocsMiniSection title="Selecting an object">
           <p>Click a table or view to load its columns. The active object appears in the top workspace header and is highlighted in the explorer.</p>
         </DocsMiniSection>
-        <DocsMiniSection title="Searching">
-          <p>Use the search box to filter long catalogs. The search does not change the active object until you click a result.</p>
+        <DocsMiniSection title="Searching and filtering">
+          <p>Use search, type, schema, pinned-only, and recent-only filters to narrow long catalogs. After an object has loaded columns, the search can also match loaded column names. Filtering does not change the active object until you click a result.</p>
+        </DocsMiniSection>
+        <DocsMiniSection title="Pins and recent objects">
+          <p>Pin important objects from the explorer. Pinned and recent objects are scoped to the current connection, so production and test databases do not share pin state.</p>
         </DocsMiniSection>
         <DocsMiniSection title="When an object has no columns">
           <p>Check metadata permissions, the database name, and whether the selected source exposes that object through the SQL endpoint.</p>
@@ -95,6 +99,8 @@ export default function SqlStudioDocsPage() {
           <div><strong>Delete</strong><span>Creates a DELETE template. A WHERE clause is required before execution.</span></div>
           <div><strong>Filters</strong><span>Add one or more conditions. Supported operators include comparisons, LIKE, IS NULL, and IS NOT NULL.</span></div>
           <div><strong>Sort and limit</strong><span>Choose sort column, direction, TOP rows, and DISTINCT for generated reads.</span></div>
+          <div><strong>Script CREATE</strong><span>Loads a CREATE script for the active table, view, or procedure into the SQL editor for review.</span></div>
+          <div><strong>Script ALTER/Edit</strong><span>Loads an editable ALTER-style script where the source supports it. The script is not executed automatically.</span></div>
         </div>
         <DocsExample title="Example generated read">
           <pre>{`SELECT TOP (100)
@@ -108,15 +114,19 @@ ORDER BY [CreatedUtc] DESC;`}</pre>
         <div className="docs-callout docs-callout-warning">
           Generated UPDATE and DELETE statements still go through server-side safety checks. The app blocks unrestricted UPDATE and DELETE operations.
         </div>
+        <div className="docs-callout docs-callout-info">
+          SQL Server and Fabric SQL table scripts are reconstructed from catalog metadata. They can include columns, identity, defaults, computed columns, keys, checks, indexes, and foreign keys, but they are not the exact original deployment text.
+        </div>
       </DocsSection>
 
       <DocsSection id="editor" title="SQL Editor" intro="The editor is where generated or manually written SQL is reviewed and executed. You can always edit generated SQL before running it.">
         <DocsCardGrid
           items={[
             { title: 'Run query', text: 'Runs SELECT queries directly or starts write preview for INSERT, UPDATE, and DELETE.' },
+            { title: 'Review scripts', text: 'Object CREATE and ALTER/Edit scripts load into the editor and still use the normal confirmation path if executed.' },
             { title: 'Format', text: 'Reflows common SQL clauses into a clearer layout.' },
             { title: 'Copy and Clear', text: 'Copy the current SQL or clear the editor when switching tasks.' },
-            { title: 'Text size', text: 'Use A- and A+ to tune editor readability for your screen.' }
+            { title: 'Text size', text: 'Use A- and A+ to tune editor readability. The editor adapter preserves textarea behavior and can use Monaco when available.' }
           ]}
         />
         <DocsMiniSection title="SQL helper">
@@ -133,7 +143,12 @@ ORDER BY [CreatedUtc] DESC;`}</pre>
           <div><strong>UPDATE JOIN</strong><span>Creates a review template for joining source and target objects by key.</span></div>
           <div><strong>MERGE preview</strong><span>Creates a MERGE review template only. MERGE execution is blocked by the app.</span></div>
           <div><strong>Sample profile</strong><span>Runs a read-only sample profile and shows completeness, nulls, and simple column characteristics.</span></div>
-          <div><strong>Dependency view</strong><span>Loads read-only dependency information where the source supports it.</span></div>
+          <div><strong>Dependency view</strong><span>Loads read-only dependency information plus graph metadata where the source supports it.</span></div>
+          <div><strong>Row count</strong><span>Loads metadata row counts where available without changing the object.</span></div>
+          <div><strong>Top values</strong><span>Groups selected columns and returns the most common values for quick inspection.</span></div>
+          <div><strong>Result shape</strong><span>Describes read-query output columns without executing the query where supported.</span></div>
+          <div><strong>Schema compare</strong><span>Compares the active object with the selected source object, or with itself when no source object is selected.</span></div>
+          <div><strong>Estimated plan</strong><span>Requests a non-executing estimated plan for read queries when the source and permissions allow it.</span></div>
         </div>
         <DocsExample title="Example UPDATE JOIN template">
           <pre>{`UPDATE tgt
@@ -147,22 +162,26 @@ WHERE <review scope before execution>;`}</pre>
 
       <DocsSection id="results" title="Results Panel" intro="Results are designed for inspection first: read the shape, filter locally, inspect long values, then copy or export what you need.">
         <ul className="docs-check-list">
+          <li><strong>Result tabs</strong> keep up to five query, procedure, and metadata results available for quick comparison.</li>
           <li><strong>Local filter</strong> filters rows already returned to the browser. It does not run a new database query.</li>
           <li><strong>Sorting</strong> sorts visible result rows by a column.</li>
           <li><strong>Pagination</strong> keeps large returned sets easier to scan.</li>
           <li><strong>Column resizing</strong> lets you widen important columns and reset by double-clicking handles.</li>
           <li><strong>NULL values</strong> appear as a visible pill so blanks are easier to distinguish from missing data.</li>
           <li><strong>Long JSON/text</strong> is collapsed with Show more / Show less, while copy/export still uses the full value.</li>
+          <li><strong>Cell context menu</strong> can copy the clicked cell value, column name, formatted JSON, or the whole row as JSON/CSV.</li>
           <li><strong>Copy rows</strong> and <strong>Export CSV</strong> use the current result data.</li>
-          <li><strong>Audit log</strong> loads recent audit entries into the same result grid when access is allowed.</li>
+          <li><strong>Audit log</strong> opens filters for event, outcome, action, source type, database, search text, and limit.</li>
         </ul>
       </DocsSection>
 
       <DocsSection id="history" title="History, State, And Themes" intro="The app keeps useful context locally so switching tasks does not erase your work.">
         <div className="docs-table">
           <div><strong>Recent SQL</strong><span>Stores recent SQL locally. Clicking an item restores the SQL and switches the active object when the object is found in the loaded catalog.</span></div>
+          <div><strong>Pinned objects</strong><span>Stores pinned objects and procedures locally, scoped to the current connection fingerprint.</span></div>
+          <div><strong>Result tabs</strong><span>Restores active result-tab state for the same browser session when the result payload is small enough for session storage.</span></div>
           <div><strong>Mode switching</strong><span>Use the top workspace tabs to move between SQL Studio and Procedure Runner, even when the left connection rail is hidden.</span></div>
-          <div><strong>Workspace restore</strong><span>Editor text, cursor position, filters, sort, results, pagination, and active object are restored for the same browser tab and connection.</span></div>
+          <div><strong>Workspace restore</strong><span>Editor text, cursor position, filters, sort, result tabs, pagination, and active object are restored for the same browser tab and connection.</span></div>
           <div><strong>Saved profiles</strong><span>Server/database profile details can be saved. Passwords and service principal secrets are not saved.</span></div>
           <div><strong>Themes</strong><span>Choose a theme in the activity panel. The selected theme is saved locally and also applies to documentation pages.</span></div>
           <div><strong>Panel layout</strong><span>Resize the connection rail, explorer, activity panel, and results height on wide layouts. Hide/show state and sizes are saved locally.</span></div>
@@ -177,7 +196,7 @@ WHERE <review scope before execution>;`}</pre>
           <div><strong>4. Execute</strong><span>The server executes only after the exact reviewed request is confirmed.</span></div>
         </div>
         <div className="docs-callout docs-callout-danger">
-          Blocked operations include <code>DROP</code>, <code>TRUNCATE</code>, <code>ALTER</code>, <code>CREATE</code>, <code>MERGE</code>, <code>EXEC</code>, unrestricted <code>UPDATE</code>, unrestricted <code>DELETE</code>, and multiple statements.
+          Blocked or heightened operations include <code>DROP</code>, <code>TRUNCATE</code>, <code>ALTER</code>, <code>CREATE</code>, <code>MERGE</code>, <code>EXEC</code>, unrestricted <code>UPDATE</code>, unrestricted <code>DELETE</code>, and multiple statements. CREATE and ALTER can only proceed through the existing direct confirmation flow.
         </div>
       </DocsSection>
 
@@ -187,6 +206,8 @@ WHERE <review scope before execution>;`}</pre>
           <div><strong>Certificate error</strong><span>Make sure the server field is a single host name, not a full connection string or comma-separated list.</span></div>
           <div><strong>No objects loaded</strong><span>The database may be wrong, metadata permissions may be missing, or the endpoint may not expose tables/views.</span></div>
           <div><strong>Query blocked</strong><span>Review the safety message. Writes usually need WHERE scope and confirmation. Dangerous commands are intentionally blocked.</span></div>
+          <div><strong>Estimated plan unavailable</strong><span>The source may not support estimated plans or the current account may lack SHOWPLAN-style permission.</span></div>
+          <div><strong>Generated table script differs from source file</strong><span>SQL Server does not store original CREATE TABLE text. The app reconstructs a practical script from catalog metadata.</span></div>
           <div><strong>History did not switch object</strong><span>Load the current catalog first. Older history items can only switch objects when the table name exists in the loaded catalog.</span></div>
           <div><strong>Confirmation expired</strong><span>Run the preview again. Confirmation tokens are time-limited by design.</span></div>
         </div>

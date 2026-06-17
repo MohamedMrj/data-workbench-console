@@ -28,7 +28,8 @@ export default function ProcedureRunnerDocsPage() {
       highlights={[
         { label: 'Approved procedure workflow', tone: 'success' },
         { label: 'Parameter review', tone: 'info' },
-        { label: 'Confirm before execution', tone: 'warning' }
+        { label: 'Confirm before execution', tone: 'warning' },
+        { label: 'Script procedure definitions', tone: 'info' }
       ]}
       steps={[
         'Choose a source and database.',
@@ -44,6 +45,7 @@ export default function ProcedureRunnerDocsPage() {
             { title: 'Run approved jobs', text: 'Use it for loading, validation, publishing, queue processing, maintenance, and other prepared database tasks.' },
             { title: 'Review parameters', text: 'See discovered parameters before execution, including data type, direction, and required values where metadata allows.' },
             { title: 'Confirm execution', text: 'Procedure calls are prepared first, then confirmed so the exact connection, procedure, and parameter set is visible.' },
+            { title: 'Script definitions', text: 'Load procedure CREATE or ALTER/Edit text into SQL Studio for review without auto-executing it.' },
             { title: 'Separate from SQL Studio', text: 'SQL history and procedure history stay separate, so table work and procedure work do not overwrite each other.' }
           ]}
         />
@@ -88,7 +90,10 @@ export default function ProcedureRunnerDocsPage() {
 
       <DocsSection id="explorer" title="Procedure Explorer" intro="Procedure Explorer is the left-side list for stored procedures in the active catalog. Selecting one procedure makes it the active procedure for the workspace.">
         <DocsMiniSection title="Find a procedure">
-          <p>Use the search box to narrow long catalogs by schema or procedure name. Filtering the list does not change the active procedure until you click a result.</p>
+          <p>Use search, schema, pinned-only, and recent-only filters to narrow long catalogs by schema or procedure name. Filtering the list does not change the active procedure until you click a result.</p>
+        </DocsMiniSection>
+        <DocsMiniSection title="Pins and recent procedures">
+          <p>Pin important procedures from the explorer. Pinned and recent procedures are scoped to the current connection, so different databases keep separate pin state.</p>
         </DocsMiniSection>
         <DocsMiniSection title="Select a procedure">
           <p>Click a procedure to load its parameters, update the active workspace summary, and prepare the runner for that procedure.</p>
@@ -130,28 +135,33 @@ export default function ProcedureRunnerDocsPage() {
         <div className="docs-callout docs-callout-warning">
           A prepared run can expire. If confirmation takes too long, click <strong>Run procedure</strong> again so the app can prepare a fresh request.
         </div>
+        <DocsMiniSection title="Script instead of run">
+          <p>Use <strong>Script CREATE</strong> or <strong>Script ALTER/Edit</strong> to load a procedure definition into SQL Studio. The app does not auto-execute the script; any execution still uses the SQL editor confirmation path.</p>
+        </DocsMiniSection>
       </DocsSection>
 
       <DocsSection id="results" title="Results And Audit" intro="Procedure results can include recordsets, rows affected, output parameters, return values, and messages. The exact shape depends on what the procedure returns.">
         <ul className="docs-check-list">
+          <li><strong>Result tabs</strong> keep up to five procedure, query, and metadata results available for comparison.</li>
           <li><strong>Recordsets</strong> appear in the results grid when the procedure returns tabular data.</li>
           <li><strong>Rows affected</strong> shows the count reported by the database driver when available.</li>
           <li><strong>Output parameters</strong> are displayed after the confirmed execution finishes.</li>
           <li><strong>Return value</strong> is shown when the procedure returns one through the database driver.</li>
           <li><strong>Local filtering</strong> filters rows already returned to the browser. It does not execute the procedure again.</li>
           <li><strong>Copy rows</strong> and <strong>Export CSV</strong> work on visible tabular results.</li>
-          <li><strong>Audit entries</strong> record prepare and execute activity with source, database, outcome, and details where audit access is available.</li>
+          <li><strong>Audit entries</strong> record prepare, execute, and definition-read activity with source, database, outcome, and details where audit access is available.</li>
         </ul>
       </DocsSection>
 
       <DocsSection id="history" title="Procedure History And Restore" intro="Procedure history is local to the browser and separate from SQL history. It is built to make repeat runs faster without losing context.">
         <div className="docs-table">
           <div><strong>Recent procedures</strong><span>Stores recent confirmed procedure runs with procedure name and parameter values.</span></div>
+          <div><strong>Pinned procedures</strong><span>Stores pinned procedures locally, scoped to the current connection fingerprint.</span></div>
           <div><strong>Restore from history</strong><span>Click a history item to restore the procedure, refill parameter values, and switch the active procedure when it exists in the loaded catalog.</span></div>
           <div><strong>Current catalog required</strong><span>If the procedure is not in the loaded catalog, the app can restore values but cannot select the active procedure until metadata is loaded.</span></div>
           <div><strong>Separate history</strong><span>Procedure Runner only shows procedure history. SQL Studio only shows SQL history.</span></div>
           <div><strong>Mode switching</strong><span>Use the top workspace tabs to switch between Procedure Runner and SQL Studio without reopening the connection panel.</span></div>
-          <div><strong>Session restore</strong><span>The selected procedure, parameters, result view, filters, pagination, and history are restored for the same browser tab where possible.</span></div>
+          <div><strong>Session restore</strong><span>The selected procedure, parameters, result tabs, filters, pagination, and history are restored for the same browser tab where possible.</span></div>
           <div><strong>Panel layout</strong><span>Resizable panels, hidden side panels, result height, and layout choices are saved locally and adapt on narrower screens.</span></div>
         </div>
         <div className="docs-callout docs-callout-info">
@@ -181,6 +191,7 @@ export default function ProcedureRunnerDocsPage() {
           <div><strong>Value rejected</strong><span>The value does not match the expected type or a procedure rule. Check number, date, GUID, boolean, and required-field formats.</span></div>
           <div><strong>Execute denied</strong><span>The login can see metadata but does not have execute permission for the selected procedure.</span></div>
           <div><strong>Confirmation expired</strong><span>Click <strong>Run procedure</strong> again and confirm the fresh request.</span></div>
+          <div><strong>Script load failed</strong><span>The login may not have permission to view the procedure definition, or the source may not expose module text.</span></div>
           <div><strong>History did not switch procedure</strong><span>Load the current catalog first. History can only switch active procedure when the procedure exists in the loaded metadata.</span></div>
         </div>
       </DocsSection>

@@ -34,11 +34,14 @@ the copyright owner.
 | --- | --- |
 | SQL Studio | Browse tables/views, generate SQL, run SELECT queries, preview writes, inspect results, export CSV. |
 | Procedure Runner | Browse stored procedures, inspect parameters, prepare execution, confirm, view output/return values. |
+| Object scripting | Load CREATE or ALTER/Edit scripts for tables, views, and procedures into the SQL editor for review. |
+| Metadata tools | Profile objects, inspect dependencies, compare schemas, estimate read-query plans, inspect result shape, row counts, and top values. |
 | Mode switching | Switch between SQL Studio and Procedure Runner from the top workspace header, even when the connection panel is hidden. |
-| Workspace restore | Return to each mode with the editor, filters, selected procedure, parameter values, results, pagination, and local result filters restored for the current browser tab. |
+| Workspace restore | Return to each mode with the editor, filters, selected procedure, parameter values, result tabs, pagination, and local result filters restored for the current browser tab. |
 | Mode-specific history | SQL Studio shows SQL history. Procedure Runner shows procedure run history and can restore saved parameter values. |
 | Connection profiles | Save reusable connection details without storing passwords or client secrets. |
-| Audit | Track connection tests, catalog loads, query execution, write previews, procedure execution, and saved profile changes. |
+| Explorer workflow | Pin and filter objects/procedures by type, schema, recent use, pinned state, object name, and loaded column names. |
+| Audit | Track and filter connection tests, catalog loads, metadata reads, query execution, write previews, procedure execution, and saved profile changes. |
 | Documentation | Built-in user docs at `/docs/sql-studio` and `/docs/procedure-runner`. |
 
 ## Screenshots
@@ -68,6 +71,7 @@ the copyright owner.
 6. Use `SQL Studio` for tables, views, SQL generation, query execution, and results.
 7. Use `Procedure Runner` for stored procedures where the selected source supports them.
 8. Switch modes from the top of the workspace. The app keeps each mode where you left it during the same browser tab session.
+9. Use Advanced Operations for read-only metadata tools such as profile, dependency view, row count, top values, result shape, schema compare, and estimated plans.
 
 History behavior:
 
@@ -173,7 +177,7 @@ npm run verify
 | `npm run start` | Run the production build locally. |
 | `npm run clean` | Remove `.next`. Useful if Next dev cache gets corrupted. |
 | `npm run responsive:audit` | Run the Playwright responsive layout audit across populated SQL and procedure states. |
-| `npm run verify` | Clean, build, run backend smoke test, and run UI smoke test. |
+| `npm run verify` | Clean, build, run SQL classifier tests, SQL metadata tests, backend smoke test, UI smoke test, and responsive audit. |
 
 ## Environment Setup
 
@@ -214,6 +218,8 @@ This app provides a browser-based operator console for:
 - running read queries directly
 - previewing and confirming write queries before execution
 - running stored procedures from a dedicated workflow with explicit confirmation
+- scripting tables, views, and procedures into the editor without auto-execution
+- comparing schemas and inspecting read-only metadata
 - reviewing a persistent audit trail of actions performed through the app
 
 It is intentionally stricter than a generic SQL editor.
@@ -262,10 +268,10 @@ Connection normalization behavior:
 The app has two primary workspaces:
 
 - `SQL Studio`
-  Query builder, SQL editor, object explorer, advanced object operations, results grid, audit access
+  Query builder, SQL editor, object explorer, advanced metadata tools, result tabs, audit access
 
 - `Procedure Runner`
-  Procedure explorer, parameter discovery, typed confirmation, procedure execution results and output values
+  Procedure explorer, parameter discovery, confirmation, procedure scripting, procedure execution results and output values
 
 ## Main UI Features
 
@@ -307,6 +313,11 @@ The SQL page object explorer supports:
 
 - loaded tables and views
 - search filtering
+- type filtering for tables/views
+- schema filtering
+- pinned-only and recent-only filters
+- loaded column-name search
+- pinned object ordering
 - active object highlighting
 - object type display
 
@@ -314,12 +325,16 @@ The procedure page explorer supports:
 
 - loaded stored procedures
 - search filtering
+- schema filtering
+- pinned-only and recent-only filters
+- pinned procedure ordering
 - active procedure highlighting
 
 Catalog behavior:
 
 - object and procedure catalogs are loaded together when possible
 - catalog state is restored across page switches for the current connection
+- pinned and recent items are scoped by connection fingerprint
 - selected object, loaded columns, selected procedure, procedure parameters, and typed procedure input values are restored during the same browser session
 
 ### Query Builder
@@ -353,6 +368,8 @@ The SQL builder supports:
   `Count rows`
   `Reset`
   `Generate SQL`
+  `Script CREATE`
+  `Script ALTER/Edit`
   `Insert WHERE`
   `Insert ORDER BY`
   `Join note`
@@ -383,8 +400,35 @@ Read-only object analysis actions:
 
 - sample profile
 - dependency view
+- row count
+- top values
+- result shape
+- schema compare
+- estimated plan
 
 These actions load results into the results grid without changing saved SQL history.
+
+Object scripting actions:
+
+- `Script CREATE` loads a CREATE script into the SQL editor.
+- `Script ALTER/Edit` loads an editable ALTER-style script where the source supports it.
+- SQL Server and Fabric SQL table scripts are reconstructed from catalog metadata and are labeled as generated catalog metadata.
+- View and stored procedure definitions use source module metadata where available.
+- Fabric Lakehouse table/view scripting first tries Spark/Fabric source metadata such as `SHOW CREATE TABLE`.
+- No script is auto-executed. Any CREATE/ALTER execution still goes through `/api/query` and the existing confirmation flow.
+
+Schema compare behavior:
+
+- `Schema compare` compares the active object with the selected advanced source object, or with itself when no source object is selected.
+- The backend API also supports comparing objects across two explicit connection payloads.
+- v1 focuses on table/view existence and column-level metadata, with richer table metadata where the source exposes it.
+
+Performance helper behavior:
+
+- `Row count` uses source metadata where available.
+- `Top values` reads grouped value counts for selected columns.
+- `Result shape` describes read-query output metadata without executing the query where supported.
+- `Estimated plan` is allowed only for read queries and uses non-executing plan metadata where the source and permissions allow it.
 
 ### SQL Editor
 
@@ -392,11 +436,13 @@ The editor supports:
 
 - manual SQL editing
 - generated SQL editing
+- generated object definition editing
 - format SQL
 - copy SQL
 - clear SQL
 - execute query
 - live line and character counts
+- a compatibility adapter that preserves textarea behavior and can use a client-side Monaco editor instance when one is available
 
 Keyboard shortcuts:
 
@@ -414,7 +460,8 @@ Stored procedure execution includes:
 - parameter discovery from metadata
 - parameter input rendering
 - output parameter awareness
-- typed confirmation before execution
+- confirmation before execution
+- procedure CREATE and ALTER/Edit scripting
 - result set rendering
 - output value rendering
 - return value rendering
@@ -428,6 +475,7 @@ Procedure-specific behavior:
 
 The results area supports:
 
+- up to five result tabs per workspace
 - row pagination
 - sortable columns
 - column resizing by dragging header handles
@@ -437,6 +485,7 @@ The results area supports:
 - result metadata summary
 - output artifact cards
 - audit log loading into the results grid
+- filtered audit loading into the results grid
 - `Copy rows`
 - `Export CSV`
 
@@ -454,6 +503,13 @@ Long-value handling:
 Null handling:
 
 - null and empty-like values are rendered with a structured `NULL` pill
+
+Result tab behavior:
+
+- query runs, procedure runs, and metadata actions create named tabs
+- metadata actions for the same object can reuse a named tab
+- tabs are capped at five to avoid unbounded browser memory growth
+- the active tab is restored during the same browser session when the saved result set is small enough for session storage
 
 ### Themes
 
@@ -548,8 +604,8 @@ The backend blocks:
 
 - `TRUNCATE`
 - `DROP`
-- `ALTER`
-- `CREATE`
+- `ALTER` without direct confirmation
+- `CREATE` without direct confirmation
 - `MERGE`
 - `GRANT`
 - `REVOKE`
@@ -564,7 +620,7 @@ Stored procedures:
 
 - are prepared first
 - get a confirmation token
-- always require typed confirmation
+- require confirmation before execution
 - are executed only from the procedure runner
 
 ### Default Safety Limits
@@ -586,8 +642,14 @@ The backend writes audit entries for:
 - object loads
 - procedure loads
 - column loads
+- object definition reads
 - object profiling
 - dependency inspection
+- row count inspection
+- top value inspection
+- result shape inspection
+- estimated plan requests
+- schema compare requests
 - query reads
 - write previews
 - write execution
@@ -604,6 +666,7 @@ Audit characteristics:
 - startup reload from disk
 - trimming when size or count limits are exceeded
 - audit endpoint supports recent-entry retrieval
+- audit endpoint supports filters for event, outcome, action, source type, database, search text, and limit
 
 Audit access:
 
@@ -623,6 +686,10 @@ Client-side persisted state:
 - active connection snapshot
 - loaded catalog snapshot for the current connection
 - query history
+- procedure history
+- pinned objects and procedures scoped by connection
+- recent objects and procedures scoped by connection
+- result tabs for the active workspace
 - theme
 - panel layout
 - advanced operations visibility
@@ -703,6 +770,9 @@ Main app code:
   `tables`
   `columns`
   `object-insights`
+  `object-definition`
+  `schema-compare`
+  `query-plan`
   `query`
   `procedures`
   `procedure-parameters`
@@ -771,8 +841,11 @@ Available scripts:
   run:
   clean
   build
+  SQL classifier tests
+  SQL metadata tests
   server smoke test
   UI smoke test
+  responsive audit
 
 - `npm run responsive:audit`
   validates populated SQL Studio and Procedure Runner layouts from `320px` through `1920px` and writes screenshots/report output to `responsive-audit/`
@@ -785,11 +858,20 @@ Verification helpers:
 - `scripts/ui-smoke.mjs`
   validates client UI wiring and behavior against the built app using JSDOM mocks
 
+- `scripts/sql-classifier.test.mjs`
+  validates server-side query classification, row limiting, and blocked batch behavior
+
+- `scripts/sql-metadata.test.mjs`
+  validates generated table DDL rendering for key catalog features
+
 ## Important Notes
 
 - SQL login passwords are never saved in connection profiles
 - service principal secrets are never persisted in saved profiles
 - saved connections restore connection details, not an already-open live connection
 - procedures must be executed from the dedicated procedure workflow
+- object scripts are loaded to the SQL editor only and are never auto-executed
+- SQL Server/Fabric SQL table scripts are generated from catalog metadata, not exact original source text
+- estimated query plans require source support and sufficient permissions
 - `MERGE` generation is supported only as a review template, not as an executable statement
 - this app is intentionally production-safe, so convenience features are secondary to execution control
