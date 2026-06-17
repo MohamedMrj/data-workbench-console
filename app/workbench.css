@@ -3076,3 +3076,14 @@ body {
   background: color-mix(in srgb, var(--accent) 15%, transparent);
   color: var(--accent);
 }
+
+.context-menu-item:disabled {
+  cursor: not-allowed;
+  color: var(--muted);
+  opacity: 0.55;
+}
+
+.context-menu-item:disabled:hover {
+  background: transparent;
+  color: var(--muted);
+}

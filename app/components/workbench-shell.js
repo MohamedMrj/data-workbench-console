@@ -626,6 +626,8 @@ export default function WorkbenchShell({ pageMode = 'sql' }) {
       </div>
 
       <div id="resultsContextMenu" className="context-menu hidden" role="menu">
+        <button id="contextCopyCellBtn" className="context-menu-item" role="menuitem">Copy cell value</button>
+        <button id="contextCopyColumnBtn" className="context-menu-item" role="menuitem">Copy column name</button>
         <button id="contextCopyJsonBtn" className="context-menu-item" role="menuitem">Copy row as JSON</button>
         <button id="contextCopyCsvBtn" className="context-menu-item" role="menuitem">Copy row as CSV</button>
       </div>

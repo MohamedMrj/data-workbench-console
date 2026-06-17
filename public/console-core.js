@@ -3902,9 +3902,26 @@ window.createConsoleApp = function createConsoleApp() {
     panel.querySelectorAll('tbody tr').forEach((tr, index) => {
       tr.addEventListener('contextmenu', (e) => {
         e.preventDefault();
-        state.results.contextRow = visibleRows[index];
+        const clickedCell = e.target?.closest?.('td');
+        const cellIndex = clickedCell ? clickedCell.cellIndex - 1 : -1;
+        const column = cellIndex >= 0 ? state.results.columns[cellIndex] : '';
+        const row = visibleRows[index];
+        state.results.contextRow = row;
+        state.results.contextCell = column ? {
+          column,
+          value: row?.[column]
+        } : null;
         const menu = $('resultsContextMenu');
         if (menu) {
+          const copyCellBtn = $('contextCopyCellBtn');
+          const copyColumnBtn = $('contextCopyColumnBtn');
+          if (copyCellBtn) {
+            copyCellBtn.disabled = !column;
+            copyCellBtn.textContent = column ? `Copy ${column} value` : 'Copy cell value';
+          }
+          if (copyColumnBtn) {
+            copyColumnBtn.disabled = !column;
+          }
           menu.classList.remove('hidden');
           const maxLeft = window.innerWidth - menu.offsetWidth - 10;
           const maxTop = window.innerHeight - menu.offsetHeight - 10;
@@ -3913,6 +3930,26 @@ window.createConsoleApp = function createConsoleApp() {
         }
       });
     });
+  }
+
+  function serializeCellValueForCopy(value) {
+    if (value === null) {
+      return 'NULL';
+    }
+    if (value === undefined) {
+      return '';
+    }
+    if (value instanceof Date) {
+      return value.toISOString();
+    }
+    if (typeof value === 'object') {
+      try {
+        return JSON.stringify(value, null, 2);
+      } catch {
+        return String(value);
+      }
+    }
+    return String(value);
   }
 
   function copyText(text, message) {
@@ -4555,6 +4592,22 @@ window.createConsoleApp = function createConsoleApp() {
       }
     });
 
+    if ($('contextCopyCellBtn')) {
+      $('contextCopyCellBtn').onclick = () => {
+        if (state.results.contextCell) {
+          copyText(serializeCellValueForCopy(state.results.contextCell.value), 'Cell value copied.');
+          $('resultsContextMenu')?.classList.add('hidden');
+        }
+      };
+    }
+    if ($('contextCopyColumnBtn')) {
+      $('contextCopyColumnBtn').onclick = () => {
+        if (state.results.contextCell?.column) {
+          copyText(state.results.contextCell.column, 'Column name copied.');
+          $('resultsContextMenu')?.classList.add('hidden');
+        }
+      };
+    }
     if ($('contextCopyJsonBtn')) {
       $('contextCopyJsonBtn').onclick = () => {
         if (state.results.contextRow) {
