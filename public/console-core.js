@@ -234,7 +234,7 @@ window.createConsoleApp = function createConsoleApp() {
       return;
     }
     container.innerHTML = state.resultTabs.map((tab) => (
-      `<button class="result-tab${tab.id === state.activeResultTabId ? ' active' : ''}" data-result-tab="${esc(tab.id)}" type="button" title="${esc(tab.title)}">${esc(tab.title)}<span>${esc(formatTimestamp(tab.createdAt).replace(/ UTC$/, ''))}</span><i data-close-result-tab="${esc(tab.id)}" title="Close tab">×</i></button>`
+      `<button class="result-tab${tab.id === state.activeResultTabId ? ' active' : ''}" data-result-tab="${esc(tab.id)}" type="button" title="${esc(tab.title)}"><strong>${esc(tab.title)}</strong><span>${esc(formatTimestamp(tab.createdAt).replace(/ UTC$/, ''))}</span><i data-close-result-tab="${esc(tab.id)}" title="Close tab">×</i></button>`
     )).join('');
     container.querySelectorAll('[data-result-tab]').forEach((button) => {
       button.onclick = (event) => {

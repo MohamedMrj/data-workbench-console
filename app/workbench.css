@@ -1595,6 +1595,7 @@
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 4px 8px;
   align-items: center;
+  flex: 0 0 clamp(150px, 18vw, 230px);
   min-width: 130px;
   max-width: 230px;
   padding: 7px 9px;
@@ -1605,10 +1606,25 @@
   text-align: left;
   font: inherit;
   cursor: pointer;
+  overflow: hidden;
+}
+
+.result-tab strong {
+  display: -webkit-box;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  line-height: 1.25;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
 }
 
 .result-tab span {
   grid-column: 1 / -1;
+  min-width: 0;
+  max-width: 100%;
   color: var(--muted);
   font-size: 0.72rem;
   overflow: hidden;
@@ -1617,8 +1633,10 @@
 }
 
 .result-tab i {
+  align-self: start;
   color: var(--muted);
   font-style: normal;
+  line-height: 1;
 }
 
 .result-tab.active {
