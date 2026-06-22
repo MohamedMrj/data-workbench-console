@@ -825,9 +825,16 @@
 
 .app-shell[data-studio-mode="stacked"] .studio-grid,
 .app-shell[data-studio-mode="stacked"] .editor-controls-grid,
-.app-shell[data-studio-mode="stacked"] .builder-grid,
+.app-shell[data-studio-mode="stacked"] .builder-grid {
+  grid-template-columns: 1fr !important;
+}
+
 .app-shell[data-studio-mode="stacked"] .advanced-operations-grid {
   grid-template-columns: 1fr !important;
+  grid-template-areas:
+    'template'
+    'safe'
+    'analysis';
 }
 
 .app-shell[data-procedure-layout-mode="stacked"] .procedure-studio-grid {
@@ -2493,11 +2500,9 @@
   .builder-grid {
     grid-template-columns: 1fr;
   }
-}
 
-@container (max-width: 720px) {
   .advanced-operations-grid {
-    grid-template-columns: 1fr;
+    grid-template-columns: 1fr !important;
     grid-template-areas:
       'template'
       'safe'

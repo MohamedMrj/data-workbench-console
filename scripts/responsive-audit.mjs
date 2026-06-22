@@ -325,12 +325,18 @@ async function inspectViewport(page) {
       const operationRect = operationPanel.getBoundingClientRect();
       const columnsRect = columnsPanel.getBoundingClientRect();
       const advancedRect = advancedContent.getBoundingClientRect();
+      const advancedPanels = [...advancedContent.querySelectorAll('.builder-panel')]
+        .map((panel) => ({ panel, rect: panel.getBoundingClientRect() }));
+      const collapsedAdvancedPanel = advancedPanels.find(({ rect }) =>
+        rect.width < Math.min(280, advancedRect.width - 2)
+      );
 
       if (
         Math.abs(operationRect.left - columnsRect.left) > 2 ||
         columnsRect.top < operationRect.bottom - 2 ||
         operationRect.width < Math.min(300, builderRect.width - 2) ||
-        advancedRect.width < Math.min(220, builderRect.width - 2)
+        advancedRect.width < Math.min(220, builderRect.width - 2) ||
+        collapsedAdvancedPanel
       ) {
         problems.push({
           type: 'advanced-builder-collapsed',
@@ -357,7 +363,13 @@ async function inspectViewport(page) {
             left: Math.round(advancedRect.left),
             right: Math.round(advancedRect.right),
             width: Math.round(advancedRect.width)
-          }
+          },
+          advancedPanels: advancedPanels.map(({ panel, rect }) => ({
+            className: String(panel.className || ''),
+            left: Math.round(rect.left),
+            right: Math.round(rect.right),
+            width: Math.round(rect.width)
+          }))
         });
       }
     }
