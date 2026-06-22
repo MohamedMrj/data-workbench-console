@@ -989,5 +989,44 @@ if (!narrowWindow.document.querySelector('.app-shell')?.classList.contains('pane
   }
 });
 
+const autoHideWindow = await createWindow(
+  'http://127.0.0.1:3100/',
+  [],
+  { width: 1680, height: 980 },
+  (window) => {
+    window.__dataWorkbenchTestConfig = {
+      sidePanelIdleMs: 500,
+      sidePanelFadeMs: 100
+    };
+  }
+);
+const autoHideShell = autoHideWindow.document.querySelector('.app-shell');
+await new Promise((resolve) => setTimeout(resolve, 510));
+if (!autoHideShell?.classList.contains('control-rail-auto-hiding') || !autoHideShell?.classList.contains('activity-panel-auto-hiding')) {
+  throw new Error('Visible side panels should begin fading after the idle timeout.');
+}
+autoHideWindow.document.querySelector('.control-rail')?.dispatchEvent(new autoHideWindow.Event('pointerdown', { bubbles: true }));
+if (autoHideShell.classList.contains('control-rail-auto-hiding')) {
+  throw new Error('Using the connection panel should cancel its in-progress fade.');
+}
+await new Promise((resolve) => setTimeout(resolve, 110));
+if (!autoHideShell.classList.contains('activity-panel-collapsed')) {
+  throw new Error('An unused themes panel should collapse after its fade completes.');
+}
+if (autoHideShell.classList.contains('control-rail-collapsed')) {
+  throw new Error('Panel activity should restart the connection panel idle timer.');
+}
+await new Promise((resolve) => setTimeout(resolve, 410));
+if (!autoHideShell.classList.contains('control-rail-auto-hiding')) {
+  throw new Error('The restarted connection panel idle timer should enter the fade state.');
+}
+await new Promise((resolve) => setTimeout(resolve, 110));
+if (!autoHideShell.classList.contains('control-rail-collapsed')) {
+  throw new Error('The connection panel should collapse after the restarted idle timer and fade complete.');
+}
+if (autoHideWindow.localStorage.getItem('dataWorkbenchSidePanelVisibilityV1')) {
+  throw new Error('Automatic side panel collapse should not overwrite the saved visibility preference.');
+}
+
 console.log('UI smoke test passed.');
 process.exit(0);

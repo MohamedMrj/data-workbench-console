@@ -17,6 +17,8 @@ window.createConsoleApp = function createConsoleApp() {
   const RECENT_OBJECTS_KEY = 'dataWorkbenchRecentObjectsV1';
   const RESULT_TABS_MAX = 5;
   const LIFECYCLE_HEARTBEAT_MS = 10_000;
+  const SIDE_PANEL_IDLE_MS = Math.max(0, Number(window.__dataWorkbenchTestConfig?.sidePanelIdleMs ?? 10_000));
+  const SIDE_PANEL_FADE_MS = Math.max(0, Number(window.__dataWorkbenchTestConfig?.sidePanelFadeMs ?? 800));
   const THEMES = ['midnight', 'harbor', 'forge', 'field', 'ink', 'paper'];
   const CONNECTION_HISTORY_MAX = 12;
   const QUERY_HISTORY_MAX = 20;
@@ -103,6 +105,14 @@ window.createConsoleApp = function createConsoleApp() {
     sidePanels: {
       controlRailCollapsed: false,
       activityPanelCollapsed: false
+    },
+    sidePanelIdleTimers: {
+      controlRail: null,
+      activity: null
+    },
+    sidePanelFadeTimers: {
+      controlRail: null,
+      activity: null
     },
     results: {
       columns: [],
@@ -622,11 +632,107 @@ window.createConsoleApp = function createConsoleApp() {
     }
   }
 
+  function sidePanelConfig(panelName) {
+    if (panelName === 'controlRail') {
+      return {
+        element: document.querySelector('.control-rail'),
+        stateKey: 'controlRailCollapsed',
+        fadingClass: 'control-rail-auto-hiding'
+      };
+    }
+    return {
+      element: document.querySelector('.activity-panel'),
+      stateKey: 'activityPanelCollapsed',
+      fadingClass: 'activity-panel-auto-hiding'
+    };
+  }
+
+  function clearSidePanelAutoHide(panelName, removeFade = true) {
+    if (state.sidePanelIdleTimers[panelName]) {
+      window.clearTimeout(state.sidePanelIdleTimers[panelName]);
+      state.sidePanelIdleTimers[panelName] = null;
+    }
+    if (state.sidePanelFadeTimers[panelName]) {
+      window.clearTimeout(state.sidePanelFadeTimers[panelName]);
+      state.sidePanelFadeTimers[panelName] = null;
+    }
+    if (removeFade) {
+      const shell = document.querySelector('.app-shell');
+      shell?.classList.remove(sidePanelConfig(panelName).fadingClass);
+    }
+  }
+
+  function sidePanelIsInUse(panel) {
+    if (!panel) {
+      return false;
+    }
+    const hasFocus = panel.contains(document.activeElement);
+    let hovered = false;
+    try {
+      hovered = panel.matches(':hover');
+    } catch {
+      hovered = false;
+    }
+    return hasFocus || hovered;
+  }
+
+  function scheduleSidePanelAutoHide(panelName) {
+    const config = sidePanelConfig(panelName);
+    clearSidePanelAutoHide(panelName);
+    if (!config.element || state.sidePanels[config.stateKey]) {
+      return;
+    }
+
+    state.sidePanelIdleTimers[panelName] = window.setTimeout(() => {
+      state.sidePanelIdleTimers[panelName] = null;
+      if (sidePanelIsInUse(config.element)) {
+        scheduleSidePanelAutoHide(panelName);
+        return;
+      }
+
+      const shell = document.querySelector('.app-shell');
+      shell?.classList.add(config.fadingClass);
+      const reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches;
+      const fadeMs = reducedMotion ? 0 : SIDE_PANEL_FADE_MS;
+      state.sidePanelFadeTimers[panelName] = window.setTimeout(() => {
+        state.sidePanelFadeTimers[panelName] = null;
+        shell?.classList.remove(config.fadingClass);
+        state.sidePanels[config.stateKey] = true;
+        syncResizablePanels();
+      }, fadeMs);
+    }, SIDE_PANEL_IDLE_MS);
+  }
+
+  function resetSidePanelAutoHide(panelName) {
+    scheduleSidePanelAutoHide(panelName);
+  }
+
+  function setupSidePanelAutoHide() {
+    ['controlRail', 'activity'].forEach((panelName) => {
+      const panel = sidePanelConfig(panelName).element;
+      if (!panel) {
+        return;
+      }
+      ['pointerenter', 'pointerdown', 'input', 'change', 'focusin'].forEach((eventName) => {
+        panel.addEventListener(eventName, () => resetSidePanelAutoHide(panelName));
+      });
+      panel.addEventListener('pointerleave', () => resetSidePanelAutoHide(panelName));
+      panel.addEventListener('focusout', () => {
+        window.setTimeout(() => resetSidePanelAutoHide(panelName), 0);
+      });
+      scheduleSidePanelAutoHide(panelName);
+    });
+  }
+
   function toggleSidePanel(panelName) {
+    clearSidePanelAutoHide(panelName);
     if (panelName === 'controlRail') {
       state.sidePanels.controlRailCollapsed = !state.sidePanels.controlRailCollapsed;
       saveSidePanelVisibility();
       syncResizablePanels();
+      if (!state.sidePanels.controlRailCollapsed) {
+        scheduleSidePanelAutoHide(panelName);
+      }
       setStatus('success', state.sidePanels.controlRailCollapsed ? 'Connection panel hidden.' : 'Connection panel restored.');
       return;
     }
@@ -635,6 +741,9 @@ window.createConsoleApp = function createConsoleApp() {
       state.sidePanels.activityPanelCollapsed = !state.sidePanels.activityPanelCollapsed;
       saveSidePanelVisibility();
       syncResizablePanels();
+      if (!state.sidePanels.activityPanelCollapsed) {
+        scheduleSidePanelAutoHide(panelName);
+      }
       setStatus('success', state.sidePanels.activityPanelCollapsed ? 'Themes and history panel hidden.' : 'Themes and history panel restored.');
     }
   }
@@ -5312,6 +5421,7 @@ window.createConsoleApp = function createConsoleApp() {
     state.explorer = pageMode === 'procedures' ? 'procedures' : 'objects';
     bind();
     setupResizablePanels();
+    setupSidePanelAutoHide();
     applyTextPreferences();
     loadTheme();
     await loadConnectionHistory();

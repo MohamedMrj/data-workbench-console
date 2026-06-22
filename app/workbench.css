@@ -81,7 +81,14 @@
 
 .control-rail,
 .activity-panel {
-  transition: opacity 0.24s ease, padding 0.24s ease, border-width 0.24s ease;
+  transition: opacity 0.8s ease, padding 0.24s ease, border-width 0.24s ease;
+}
+
+.app-shell.control-rail-auto-hiding .control-rail,
+.app-shell.control-rail-auto-hiding > [data-resize-handle="controlRail"],
+.app-shell.activity-panel-auto-hiding .activity-panel,
+.app-shell.activity-panel-auto-hiding .workspace-grid > [data-resize-handle="activity"] {
+  opacity: 0;
 }
 
 .app-shell[data-layout-mode="stacked"] > [data-resize-handle="controlRail"] {
