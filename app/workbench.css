@@ -1304,7 +1304,7 @@
 
 .advanced-operations-grid {
   margin-top: 0;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(320px, 1fr));
   grid-template-areas:
     'template template'
     'safe analysis';
@@ -1317,10 +1317,22 @@
 
 .advanced-panel-safe {
   grid-area: safe;
+  min-width: 0;
 }
 
 .advanced-panel-analysis {
   grid-area: analysis;
+  min-width: 0;
+}
+
+.advanced-panel-safe .button-row,
+.advanced-panel-analysis .button-row {
+  align-items: flex-start;
+}
+
+.advanced-panel-safe .summary-text,
+.advanced-panel-analysis .summary-text {
+  overflow-wrap: anywhere;
 }
 
 .advanced-operations-panel > .section-title-row {
@@ -2478,12 +2490,14 @@
 @container (max-width: 980px) {
   .studio-grid,
   .editor-controls-grid,
-  .builder-grid,
-  .advanced-operations-grid {
+  .builder-grid {
     grid-template-columns: 1fr;
   }
+}
 
+@container (max-width: 720px) {
   .advanced-operations-grid {
+    grid-template-columns: 1fr;
     grid-template-areas:
       'template'
       'safe'
