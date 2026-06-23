@@ -190,7 +190,7 @@ function SqlWorkspace({ hidden = false }) {
             </div>
           </div>
           <div className="button-row wrap builder-actions">
-            <button id="generateQueryBtn" className="primary-btn">Generate SQL</button>
+            <button id="generateQueryBtn" className="ghost-btn" type="button" title="Rebuild the editor SQL from the current builder selections.">Refresh SQL</button>
             <button id="scriptCreateBtn" className="ghost-btn" type="button">Script CREATE</button>
             <button id="scriptAlterBtn" className="ghost-btn" type="button">Script ALTER/Edit</button>
             <button id="insertWhereBtn" className="ghost-btn">Insert WHERE</button>

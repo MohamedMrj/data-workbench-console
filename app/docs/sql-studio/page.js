@@ -42,7 +42,7 @@ export default function SqlStudioDocsPage() {
         <DocsCardGrid
           items={[
             { title: 'Browse live metadata', text: 'Load tables and views from the active source, then select an object to load its columns.' },
-            { title: 'Generate SQL', text: 'Use the builder to create SELECT, INSERT, UPDATE, and DELETE templates from the selected object.' },
+            { title: 'Build SQL automatically', text: 'Selecting objects and changing builder controls updates editable SELECT, INSERT, UPDATE, and DELETE templates.' },
             { title: 'Inspect metadata', text: 'Script objects, profile columns, inspect dependencies, compare schemas, review result shape, row counts, top values, and estimated read-query plans.' },
             { title: 'Inspect results', text: 'Use capped result tabs, filter visible rows, sort columns, copy rows, export CSV, and inspect null, JSON, or long values.' },
             { title: 'Stay controlled', text: 'Writes are previewed and confirmed. Stored procedures are intentionally handled in Procedure Runner.' }
@@ -99,6 +99,7 @@ export default function SqlStudioDocsPage() {
           <div><strong>Delete</strong><span>Creates a DELETE template. A WHERE clause is required before execution.</span></div>
           <div><strong>Filters</strong><span>Add one or more conditions. Supported operators include comparisons, LIKE, IS NULL, and IS NOT NULL.</span></div>
           <div><strong>Sort and limit</strong><span>Choose sort column, direction, TOP rows, and DISTINCT for generated reads.</span></div>
+          <div><strong>Refresh SQL</strong><span>Rebuilds the editor text from the current builder selections when you want to discard manual edits and return to the generated template.</span></div>
           <div><strong>Script CREATE</strong><span>Loads a CREATE script for the active table, view, or procedure into the SQL editor for review.</span></div>
           <div><strong>Script ALTER/Edit</strong><span>Loads an editable ALTER-style script where the source supports it. The script is not executed automatically.</span></div>
         </div>

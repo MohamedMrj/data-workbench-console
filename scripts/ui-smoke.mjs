@@ -688,7 +688,7 @@ if (!editor.value.includes("WHERE [Status] LIKE '%FAIL%'")) {
 
 sqlWindow.document.getElementById('generateQueryBtn').click();
 if (!editor.value.includes("WHERE [Status] LIKE '%FAIL%'")) {
-  throw new Error(`Generate SQL did not build the LIKE filter correctly. SQL was: ${editor.value}`);
+  throw new Error(`Refresh SQL did not build the LIKE filter correctly. SQL was: ${editor.value}`);
 }
 
 sqlWindow.document.getElementById('sqlHelperSelect').value = 'replace';

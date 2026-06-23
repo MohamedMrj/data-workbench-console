@@ -367,14 +367,14 @@ The SQL builder supports:
   `Preview rows`
   `Count rows`
   `Reset`
-  `Generate SQL`
+  `Refresh SQL`
   `Script CREATE`
   `Script ALTER/Edit`
   `Insert WHERE`
   `Insert ORDER BY`
   `Join note`
 
-Generated SQL remains editable in the SQL editor after generation.
+Generated SQL refreshes automatically when builder controls change. `Refresh SQL` rebuilds the editor from the current builder selections if you want to discard manual edits.
 
 ### Advanced Operations
 
