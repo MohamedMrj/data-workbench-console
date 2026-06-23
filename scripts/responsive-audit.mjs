@@ -490,6 +490,41 @@ async function inspectFocusAffordance(page) {
   });
 }
 
+async function inspectHoverStability(page) {
+  const problems = [];
+  const controls = page.locator('.toggle-field.compact-toggle');
+  const count = await controls.count();
+  for (let index = 0; index < count; index += 1) {
+    const control = controls.nth(index);
+    if (!await control.isVisible().catch(() => false)) {
+      continue;
+    }
+    const before = await control.boundingBox();
+    const label = await control.textContent().catch(() => '');
+    await control.hover();
+    await page.waitForTimeout(80);
+    const during = await control.boundingBox();
+    await page.mouse.move(1, 1);
+    await page.waitForTimeout(80);
+    const after = await control.boundingBox();
+    if (!before || !during || !after) {
+      continue;
+    }
+    const maxWidthDelta = Math.max(Math.abs(before.width - during.width), Math.abs(before.width - after.width));
+    const maxHeightDelta = Math.max(Math.abs(before.height - during.height), Math.abs(before.height - after.height));
+    if (maxWidthDelta > 0.75 || maxHeightDelta > 0.75) {
+      problems.push({
+        type: 'hover-size-instability',
+        text: String(label || '').trim(),
+        before: { width: Math.round(before.width), height: Math.round(before.height) },
+        during: { width: Math.round(during.width), height: Math.round(during.height) },
+        after: { width: Math.round(after.width), height: Math.round(after.height) }
+      });
+    }
+  }
+  return problems;
+}
+
 async function runCase(browser, routePath, width, options = {}) {
   const page = await browser.newPage({ viewport: { width, height: 900 } });
   await page.addInitScript(() => {
@@ -519,6 +554,7 @@ async function runCase(browser, routePath, width, options = {}) {
 
   const result = await inspectViewport(page);
   result.problems.push(...await inspectFocusAffordance(page));
+  result.problems.push(...await inspectHoverStability(page));
   if (screenshotWidths.has(width) || options.screenshot) {
     const routeName = routePath === '/' ? 'sql' : routePath.replace(/^\/|\/$/g, '').replace(/\//g, '-');
     const suffix = [
