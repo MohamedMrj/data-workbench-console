@@ -13,6 +13,18 @@
   --accent: #22b8a8;
   --accent-2: #f97316;
   --accent-soft: rgba(34, 184, 168, 0.18);
+  --panel-bg: linear-gradient(180deg, color-mix(in srgb, var(--surface-raised) 72%, transparent) 0%, color-mix(in srgb, var(--surface) 90%, transparent) 100%);
+  --input-bg: color-mix(in srgb, var(--surface-soft) 82%, white 5%);
+  --input-border: color-mix(in srgb, var(--line-strong) 86%, var(--accent) 14%);
+  --input-hover-border: color-mix(in srgb, var(--accent) 46%, var(--line-strong));
+  --input-focus-ring: color-mix(in srgb, var(--accent) 28%, transparent);
+  --control-bg: linear-gradient(180deg, color-mix(in srgb, var(--surface-soft) 90%, white 4%), color-mix(in srgb, var(--surface-strong) 88%, transparent));
+  --control-bg-hover: linear-gradient(180deg, color-mix(in srgb, var(--accent) 13%, var(--surface-soft)), color-mix(in srgb, var(--surface-strong) 90%, transparent));
+  --control-border: color-mix(in srgb, var(--line-strong) 78%, transparent);
+  --control-border-hover: color-mix(in srgb, var(--accent) 44%, var(--line-strong));
+  --selected-bg: linear-gradient(180deg, color-mix(in srgb, var(--accent) 22%, var(--surface-soft)), color-mix(in srgb, var(--accent) 10%, var(--surface-strong)));
+  --selected-border: color-mix(in srgb, var(--accent) 82%, var(--line-strong));
+  --active-accent: linear-gradient(180deg, var(--accent), var(--accent-2));
   --panel-glow: 0 24px 60px rgba(0, 0, 0, 0.28);
   --danger: #ff6b57;
   --success: #23c16b;
@@ -65,6 +77,16 @@
   --accent: #0f766e;
   --accent-2: #ea580c;
   --accent-soft: rgba(15, 118, 110, 0.14);
+  --input-bg: #fffdf8;
+  --input-border: rgba(60, 73, 85, 0.32);
+  --input-hover-border: color-mix(in srgb, var(--accent) 52%, rgba(60, 73, 85, 0.28));
+  --input-focus-ring: rgba(15, 118, 110, 0.2);
+  --control-bg: linear-gradient(180deg, #fffdf8, color-mix(in srgb, var(--surface-soft) 92%, white 8%));
+  --control-bg-hover: linear-gradient(180deg, color-mix(in srgb, var(--accent) 10%, #fffdf8), color-mix(in srgb, var(--surface-soft) 84%, white 16%));
+  --control-border: rgba(60, 73, 85, 0.24);
+  --control-border-hover: color-mix(in srgb, var(--accent) 44%, rgba(60, 73, 85, 0.28));
+  --selected-bg: linear-gradient(180deg, color-mix(in srgb, var(--accent) 15%, #fffdf8), color-mix(in srgb, var(--accent) 8%, var(--surface-soft)));
+  --selected-border: color-mix(in srgb, var(--accent) 72%, rgba(60, 73, 85, 0.22));
   --panel-glow: 0 18px 44px rgba(60, 73, 85, 0.14);
   --shadow: 0 18px 44px rgba(60, 73, 85, 0.14);
 }
@@ -143,19 +165,32 @@ textarea {
   width: 100%;
   max-width: 100%;
   min-width: 0;
-  border: 1px solid var(--line);
+  border: 1px solid var(--input-border);
   border-radius: var(--radius-md);
-  background: var(--surface-soft);
+  background: var(--input-bg);
   color: var(--text);
   padding: 12px 14px;
   outline: none;
+  box-shadow: inset 0 1px 0 color-mix(in srgb, white 5%, transparent);
+  transition: border-color 0.18s ease, background 0.18s ease, box-shadow 0.18s ease, opacity 0.18s ease;
+}
+
+input:hover:not(:disabled),
+select:hover:not(:disabled),
+textarea:hover:not(:disabled) {
+  border-color: var(--input-hover-border);
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, white 7%, transparent),
+    0 0 0 1px color-mix(in srgb, var(--accent) 10%, transparent);
 }
 
 input:focus,
 select:focus,
 textarea:focus {
   border-color: var(--accent);
-  box-shadow: 0 0 0 3px var(--accent-soft);
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, white 8%, transparent),
+    0 0 0 3px var(--input-focus-ring);
 }
 
 textarea {
@@ -171,9 +206,18 @@ button:disabled {
   cursor: not-allowed;
 }
 
+input:disabled,
+select:disabled,
+textarea:disabled {
+  background: color-mix(in srgb, var(--surface-strong) 78%, transparent);
+  border-color: color-mix(in srgb, var(--line) 72%, transparent);
+  color: color-mix(in srgb, var(--muted) 72%, transparent);
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
 .surface {
-  background:
-    linear-gradient(180deg, color-mix(in srgb, var(--surface-raised) 76%, transparent) 0%, color-mix(in srgb, var(--surface) 90%, transparent) 100%);
+  background: var(--panel-bg);
   border: 1px solid var(--line);
   border-radius: var(--radius-xl);
   box-shadow: var(--panel-glow);
@@ -280,8 +324,8 @@ p {
 .procedure-item,
 .column-pill,
 .icon-btn {
-  background: linear-gradient(180deg, color-mix(in srgb, var(--surface-soft) 94%, transparent), color-mix(in srgb, var(--surface-strong) 90%, transparent));
-  border: 1px solid var(--line);
+  background: var(--control-bg);
+  border: 1px solid var(--control-border);
   color: var(--text);
 }
 
@@ -311,22 +355,44 @@ p {
   line-height: 1;
 }
 
-.primary-btn:hover,
-.secondary-btn:hover,
-.ghost-btn:hover,
-.segment-btn:hover,
-.theme-chip:hover,
-.saved-item-main:hover,
-.saved-item-delete:hover,
-.history-item:hover,
-.table-item:hover,
-.procedure-item:hover,
-.column-pill:hover,
-.icon-btn:hover,
+.primary-btn:hover:not(:disabled),
+.secondary-btn:hover:not(:disabled),
+.ghost-btn:hover:not(:disabled),
+.segment-btn:hover:not(:disabled),
+.theme-chip:hover:not(:disabled),
+.saved-item-main:hover:not(:disabled),
+.saved-item-delete:hover:not(:disabled),
+.history-item:hover:not(:disabled),
+.table-item:hover:not(:disabled),
+.procedure-item:hover:not(:disabled),
+.column-pill:hover:not(:disabled),
+.icon-btn:hover:not(:disabled),
 .page-link:hover {
   transform: translateY(-2px);
-  border-color: var(--line-strong);
+  border-color: var(--control-border-hover);
+  background: var(--control-bg-hover);
   box-shadow: 0 14px 28px color-mix(in srgb, black 24%, transparent);
+}
+
+.primary-btn:focus-visible,
+.secondary-btn:focus-visible,
+.ghost-btn:focus-visible,
+.text-btn:focus-visible,
+.segment-btn:focus-visible,
+.theme-chip:focus-visible,
+.saved-item-main:focus-visible,
+.saved-item-delete:focus-visible,
+.history-item:focus-visible,
+.table-item:focus-visible,
+.procedure-item:focus-visible,
+.column-pill:focus-visible,
+.icon-btn:focus-visible,
+.page-link:focus-visible {
+  outline: 0;
+  border-color: var(--accent);
+  box-shadow:
+    0 0 0 3px var(--input-focus-ring),
+    0 12px 26px color-mix(in srgb, black 18%, transparent);
 }
 
 .segment-btn.active,
@@ -334,9 +400,11 @@ p {
 .table-item.active,
 .procedure-item.active,
 .column-pill.active {
-  border-color: var(--accent);
-  background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 16%, var(--surface-soft)), color-mix(in srgb, var(--accent) 8%, var(--surface-strong)));
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 36%, transparent);
+  border-color: var(--selected-border);
+  background: var(--selected-bg);
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--accent) 34%, transparent),
+    0 10px 22px color-mix(in srgb, var(--accent) 12%, transparent);
 }
 
 .field,
@@ -488,8 +556,8 @@ select {
   padding: 0 14px;
   height: 42px;
   border-radius: var(--radius-md);
-  background: color-mix(in srgb, var(--surface-strong) 90%, transparent);
-  border: 1px solid var(--line);
+  background: var(--control-bg);
+  border: 1px solid var(--control-border);
   color: var(--text);
   font-weight: 600;
   white-space: nowrap;
@@ -498,10 +566,18 @@ select {
 }
 
 .save-conn-btn:hover {
-  border-color: var(--accent);
-  background: color-mix(in srgb, var(--accent) 12%, var(--surface-soft));
+  border-color: var(--control-border-hover);
+  background: var(--control-bg-hover);
   transform: translateY(-2px);
   box-shadow: 0 8px 20px color-mix(in srgb, black 16%, transparent);
+}
+
+.save-conn-btn:focus-visible {
+  outline: 0;
+  border-color: var(--accent);
+  box-shadow:
+    0 0 0 3px var(--input-focus-ring),
+    0 8px 20px color-mix(in srgb, black 16%, transparent);
 }
 
 .save-conn-icon {
@@ -513,9 +589,17 @@ select {
   align-items: center;
   gap: 10px;
   padding: 12px 14px;
-  border: 1px solid var(--line);
+  border: 1px solid var(--input-border);
   border-radius: var(--radius-md);
-  background: color-mix(in srgb, var(--surface-soft) 88%, transparent);
+  background: color-mix(in srgb, var(--input-bg) 86%, transparent);
+  transition: border-color 0.18s ease, background 0.18s ease, box-shadow 0.18s ease;
+}
+
+.toggle-field:hover,
+.toggle-field:focus-within {
+  border-color: var(--input-hover-border);
+  background: var(--input-bg);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 10%, transparent);
 }
 
 .toggle-field input {
@@ -613,8 +697,8 @@ select {
   min-height: 40px;
   padding: 9px 14px;
   border-radius: 14px;
-  border: 1px solid var(--line);
-  background: linear-gradient(180deg, color-mix(in srgb, var(--surface-soft) 94%, transparent), color-mix(in srgb, var(--surface-strong) 90%, transparent));
+  border: 1px solid var(--control-border);
+  background: var(--control-bg);
   color: var(--text);
   text-decoration: none;
   font-weight: 600;
@@ -622,9 +706,11 @@ select {
 }
 
 .page-link.active {
-  border-color: var(--accent);
-  background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 16%, var(--surface-soft)), color-mix(in srgb, var(--accent) 8%, var(--surface-strong)));
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 36%, transparent);
+  border-color: var(--selected-border);
+  background: var(--selected-bg);
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--accent) 34%, transparent),
+    0 8px 18px color-mix(in srgb, var(--accent) 12%, transparent);
 }
 
 .saved-connections,
