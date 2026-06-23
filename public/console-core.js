@@ -2573,7 +2573,7 @@ window.createConsoleApp = function createConsoleApp() {
       container.innerHTML = '<div class="empty-note">No objects loaded.</div>';
       return;
     }
-    container.innerHTML = state.filteredObjects.map((item) => `<button class="table-item ${state.activeObject === item.fullName ? 'active' : ''}" data-object="${esc(item.fullName)}" data-object-type="${esc(item.objectType)}" type="button" title="${esc(item.fullName)}"><strong>${isPinned('object', item.fullName) ? '★ ' : ''}${esc(item.fullName)}</strong><span>${esc(item.objectType)}${isRecent('object', item.fullName) ? ' • recent' : ''}</span><i class="pin-toggle" data-pin-object="${esc(item.fullName)}" title="${isPinned('object', item.fullName) ? 'Unpin object' : 'Pin object'}">★</i></button>`).join('');
+    container.innerHTML = state.filteredObjects.map((item) => `<button class="table-item ${state.activeObject === item.fullName ? 'active' : ''}" data-object="${esc(item.fullName)}" data-object-type="${esc(item.objectType)}" type="button" aria-label="${esc(`${item.objectType} ${item.fullName}`)}"><strong>${isPinned('object', item.fullName) ? '★ ' : ''}${esc(item.fullName)}</strong><span>${esc(item.objectType)}${isRecent('object', item.fullName) ? ' • recent' : ''}</span><i class="pin-toggle" data-pin-object="${esc(item.fullName)}" aria-label="${esc(isPinned('object', item.fullName) ? 'Unpin object' : 'Pin object')}">★</i></button>`).join('');
     container.querySelectorAll('[data-object]').forEach((button) => {
       button.onclick = () => selectObject(button.dataset.object, button.dataset.objectType).catch((error) => setStatus('error', error.message));
     });
@@ -2596,7 +2596,7 @@ window.createConsoleApp = function createConsoleApp() {
       container.innerHTML = '<div class="empty-note">No procedures loaded.</div>';
       return;
     }
-    container.innerHTML = state.filteredProcedures.map((item) => `<button class="procedure-item ${state.activeProcedure === item.fullName ? 'active' : ''}" data-procedure="${esc(item.fullName)}" type="button" title="${esc(item.fullName)}"><strong>${isPinned('procedure', item.fullName) ? '★ ' : ''}${esc(item.fullName)}</strong><span>Stored procedure${isRecent('procedure', item.fullName) ? ' • recent' : ''}</span><i class="pin-toggle" data-pin-procedure="${esc(item.fullName)}" title="${isPinned('procedure', item.fullName) ? 'Unpin procedure' : 'Pin procedure'}">★</i></button>`).join('');
+    container.innerHTML = state.filteredProcedures.map((item) => `<button class="procedure-item ${state.activeProcedure === item.fullName ? 'active' : ''}" data-procedure="${esc(item.fullName)}" type="button" aria-label="${esc(`procedure ${item.fullName}`)}"><strong>${isPinned('procedure', item.fullName) ? '★ ' : ''}${esc(item.fullName)}</strong><span>Stored procedure${isRecent('procedure', item.fullName) ? ' • recent' : ''}</span><i class="pin-toggle" data-pin-procedure="${esc(item.fullName)}" aria-label="${esc(isPinned('procedure', item.fullName) ? 'Unpin procedure' : 'Pin procedure')}">★</i></button>`).join('');
     container.querySelectorAll('[data-procedure]').forEach((button) => {
       button.onclick = () => selectProcedure(button.dataset.procedure).catch((error) => setStatus('error', error.message));
     });

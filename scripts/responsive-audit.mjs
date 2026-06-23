@@ -293,6 +293,16 @@ async function inspectViewport(page) {
         continue;
       }
 
+      if (element.matches('.table-item, .procedure-item, .pin-toggle') && element.hasAttribute('title')) {
+        problems.push({
+          type: 'native-tooltip-title',
+          tag: element.tagName,
+          id: element.id,
+          className: String(element.className || ''),
+          text: element.textContent.trim().slice(0, 80)
+        });
+      }
+
       const rect = element.getBoundingClientRect();
       const style = getComputedStyle(element);
       const insideManagedScroller = [...scrollContainerIds].some((id) => element.closest(`#${id}`));

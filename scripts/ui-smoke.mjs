@@ -580,6 +580,12 @@ if (!sqlWindow.document.getElementById('testConnectionResult').textContent.inclu
 }
 sqlWindow.document.getElementById('loadTablesBtn').click();
 await flush();
+if (sqlWindow.document.querySelector('[data-object="dbo.Alerts"]')?.hasAttribute('title')) {
+  throw new Error('Explorer object rows should not use native title tooltips.');
+}
+if (sqlWindow.document.querySelector('[data-pin-object="dbo.Alerts"]')?.hasAttribute('title')) {
+  throw new Error('Explorer object pin controls should not use native title tooltips.');
+}
 sqlWindow.document.querySelector('[data-object="dbo.Alerts"]').click();
 await flush();
 
@@ -951,6 +957,13 @@ if (procedureWindow.document.querySelector('.app-shell').style.getPropertyValue(
 
 procedureWindow.document.querySelector('[data-procedure="dbo.usp_ProcessAlert"]').click();
 await flush();
+
+if (procedureWindow.document.querySelector('[data-procedure="dbo.usp_ProcessAlert"]')?.hasAttribute('title')) {
+  throw new Error('Explorer procedure rows should not use native title tooltips.');
+}
+if (procedureWindow.document.querySelector('[data-pin-procedure="dbo.usp_ProcessAlert"]')?.hasAttribute('title')) {
+  throw new Error('Explorer procedure pin controls should not use native title tooltips.');
+}
 
 if (!procedureWindow.document.getElementById('procedureSummary').textContent.includes('dbo.usp_ProcessAlert')) {
   throw new Error('Selecting a procedure did not update the procedure summary.');
