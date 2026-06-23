@@ -279,6 +279,23 @@ function attachMocks(window) {
       });
     }
 
+    if (String(url).includes('/api/object-definition')) {
+      return new Response(JSON.stringify({
+        success: true,
+        object: body.object || 'dbo.Alerts',
+        objectType: body.objectType || 'table',
+        scriptMode: body.scriptMode || 'alter',
+        definition: `${String(body.scriptMode || 'alter').toUpperCase()} TABLE [dbo].[Alerts]\n(\n    [AlertId] INT NOT NULL,\n    [Status] VARCHAR(50) NULL\n);`,
+        generated: body.scriptMode === 'create',
+        editable: body.scriptMode !== 'create',
+        definitionSource: body.scriptMode === 'create' ? 'generated_catalog_metadata' : 'exact_source_metadata',
+        completeness: 'catalog metadata'
+      }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+
     if (String(url).includes('/api/schema-compare')) {
       return new Response(JSON.stringify({
         success: true,
@@ -314,8 +331,11 @@ function attachMocks(window) {
     if (String(url).includes('/api/query')) {
       return new Response(JSON.stringify({
         success: true,
-        columns: ['AlertId', 'Status'],
-        rows: [{ AlertId: 1, Status: null }, { AlertId: 2, Status: 'FAILED' }],
+        columns: ['AlertId', 'Status', 'JsonPayload'],
+        rows: [
+          { AlertId: 1, Status: null, JsonPayload: '{"severity":"low","nested":{"ok":true}}' },
+          { AlertId: 2, Status: 'FAILED', JsonPayload: '{"severity":"high","nested":{"ok":false}}' }
+        ],
         totalRows: 2,
         rowsAffected: 0,
         truncated: false
@@ -351,7 +371,12 @@ function attachMocks(window) {
     unobserve() {}
     disconnect() {}
   };
-  window.navigator.clipboard = { writeText: async () => {} };
+  window.__lastClipboardText = '';
+  window.navigator.clipboard = {
+    writeText: async (text) => {
+      window.__lastClipboardText = String(text ?? '');
+    }
+  };
   window.document.execCommand = () => true;
   window.Response = Response;
 }
@@ -467,6 +492,15 @@ const sqlWindow = await createWindow('http://127.0.0.1:3100/');
 if (sqlWindow.document.querySelectorAll('#themeList .theme-chip').length !== 6) {
   throw new Error('Theme chips did not render on the SQL page.');
 }
+['midnight', 'harbor', 'forge', 'field', 'ink', 'paper'].forEach((theme) => {
+  sqlWindow.document.querySelector(`[data-theme="${theme}"]`)?.click();
+  if (sqlWindow.document.documentElement.getAttribute('data-theme') !== theme) {
+    throw new Error(`Theme ${theme} did not apply to the document root.`);
+  }
+});
+assertVisibleAffordance(sqlWindow, '#serverInput', 'server input');
+assertVisibleAffordance(sqlWindow, '#testConnectionBtn', 'test connection button');
+assertVisibleAffordance(sqlWindow, '#queryEditor', 'SQL editor');
 if (sqlWindow.document.querySelector('.results-card')?.dataset.resultsState !== 'empty') {
   throw new Error('Empty results should mark the results card as empty for compact sizing.');
 }
@@ -590,6 +624,22 @@ if (!sqlWindow.document.querySelector('.results-table')?.textContent.includes('A
 }
 if (!sqlWindow.document.querySelector('.visual-helper-card')?.textContent.includes('Profile insights')) {
   throw new Error('Object profile action did not render visual helper cards.');
+}
+
+function assertVisibleAffordance(window, selector, label) {
+  const element = window.document.querySelector(selector);
+  if (!element) {
+    throw new Error(`Missing element for affordance check: ${label}`);
+  }
+  const style = window.getComputedStyle(element);
+  const borderWidth = Number.parseFloat(style.borderTopWidth || '0');
+  const background = style.backgroundColor || style.backgroundImage || '';
+  if (borderWidth < 1) {
+    throw new Error(`${label} should have a visible border.`);
+  }
+  if (!background || background === 'rgba(0, 0, 0, 0)' || background === 'transparent') {
+    throw new Error(`${label} should have a visible background.`);
+  }
 }
 
 sqlWindow.document.getElementById('dependencyViewBtn').click();
@@ -731,6 +781,54 @@ if (!sqlWindow.document.querySelector('.result-null')) {
 }
 if (!sqlWindow.document.querySelector('.row-index')) {
   throw new Error('Results table row indexes are missing.');
+}
+assertVisibleAffordance(sqlWindow, '.result-tab.active', 'active result tab');
+assertVisibleAffordance(sqlWindow, '.table-header-btn', 'result table header button');
+const firstDataCell = sqlWindow.document.querySelector('#resultsPanel tbody tr td:nth-child(2)');
+if (!firstDataCell) {
+  throw new Error('Results table did not render a data cell for context-menu checks.');
+}
+firstDataCell.dispatchEvent(new sqlWindow.MouseEvent('contextmenu', {
+  bubbles: true,
+  cancelable: true,
+  clientX: 120,
+  clientY: 120
+}));
+if (sqlWindow.document.getElementById('resultsContextMenu').classList.contains('hidden')) {
+  throw new Error('Results context menu did not open for a result row.');
+}
+sqlWindow.document.getElementById('contextCopyCellBtn').click();
+await flush();
+if (!sqlWindow.__lastClipboardText) {
+  throw new Error('Context menu did not copy the clicked cell value.');
+}
+const firstJsonCell = sqlWindow.document.querySelector('#resultsPanel tbody tr td:nth-child(4)');
+firstJsonCell?.dispatchEvent(new sqlWindow.MouseEvent('contextmenu', {
+  bubbles: true,
+  cancelable: true,
+  clientX: 140,
+  clientY: 140
+}));
+if (sqlWindow.document.getElementById('contextCopyFormattedJsonBtn').disabled) {
+  throw new Error('Formatted JSON copy should be enabled for JSON result cells.');
+}
+sqlWindow.document.getElementById('contextCopyFormattedJsonBtn').click();
+await flush();
+if (!sqlWindow.__lastClipboardText.includes('\n  "severity": "low"')) {
+  throw new Error(`Formatted JSON copy did not write pretty JSON. Clipboard: ${sqlWindow.__lastClipboardText}`);
+}
+sqlWindow.document.getElementById('scriptCreateBtn').click();
+await flush();
+if (!editor.value.includes('CREATE TABLE [dbo].[Alerts]')) {
+  throw new Error(`Script CREATE did not load the object definition into the editor. SQL was: ${editor.value}`);
+}
+if (!sqlWindow.document.getElementById('statusText').textContent.includes('Loaded CREATE script')) {
+  throw new Error('Script CREATE did not show the expected loaded-script status.');
+}
+sqlWindow.document.getElementById('scriptAlterBtn').click();
+await flush();
+if (!editor.value.includes('ALTER TABLE [dbo].[Alerts]')) {
+  throw new Error(`Script ALTER/Edit did not load the editable object definition into the editor. SQL was: ${editor.value}`);
 }
 if (!sqlWindow.document.querySelector('.page-link.active')?.textContent.includes('SQL Studio')) {
   throw new Error('SQL page navigation did not highlight the active page.');

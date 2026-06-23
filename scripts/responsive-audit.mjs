@@ -8,6 +8,7 @@ let baseUrl = process.env.RESPONSIVE_AUDIT_BASE_URL || '';
 const outDir = path.join(process.cwd(), 'responsive-audit');
 const widths = [320, 360, 390, 430, 540, 700, 768, 900, 960, 1024, 1200, 1280, 1366, 1440, 1600, 1920];
 const screenshotWidths = new Set([320, 390, 768, 960, 1200, 1600, 1920]);
+const themes = ['midnight', 'harbor', 'forge', 'field', 'ink', 'paper'];
 
 const healthPayload = {
   ok: true,
@@ -285,8 +286,15 @@ async function inspectViewport(page) {
       if (element.closest('.hidden')) {
         continue;
       }
+      if (element.closest('.control-rail') && shell?.classList.contains('control-rail-collapsed')) {
+        continue;
+      }
+      if (element.closest('.activity-panel') && shell?.classList.contains('activity-panel-collapsed')) {
+        continue;
+      }
 
       const rect = element.getBoundingClientRect();
+      const style = getComputedStyle(element);
       const insideManagedScroller = [...scrollContainerIds].some((id) => element.closest(`#${id}`));
       if (!insideManagedScroller && (rect.left < -1 || rect.right > viewportWidth + 1)) {
         problems.push({
@@ -313,6 +321,58 @@ async function inspectViewport(page) {
           clientWidth: element.clientWidth,
           text: element.textContent.trim().slice(0, 80)
         });
+      }
+
+      const nativeSmallControl = element.matches('input[type="checkbox"], input[type="radio"]');
+      const implementationBackedControl = element.id === 'queryEditor';
+      const interactive = element.closest('.app-shell') &&
+        element.matches('button, a, input, select, textarea') &&
+        !nativeSmallControl &&
+        !implementationBackedControl;
+      const exemptTextControl = element.classList.contains('text-btn');
+      if (interactive && !insideManagedScroller && !exemptTextControl) {
+        const borderWidth = Number.parseFloat(style.borderTopWidth || '0') || 0;
+        const visualHeight = Math.max(
+          rect.height,
+          Number.parseFloat(style.minHeight || '0') || 0,
+          (Number.parseFloat(style.paddingTop || '0') || 0) +
+            (Number.parseFloat(style.paddingBottom || '0') || 0) +
+            (Number.parseFloat(style.fontSize || '16') || 16)
+        );
+        const disabled = element.matches(':disabled') || element.getAttribute('aria-disabled') === 'true';
+        if (!disabled && borderWidth < 1) {
+          problems.push({
+            type: 'weak-affordance-border',
+            tag: element.tagName,
+            id: element.id,
+            className: String(element.className || ''),
+            text: element.textContent.trim().slice(0, 80)
+          });
+        }
+        if (!disabled && visualHeight < 30) {
+          problems.push({
+            type: 'weak-affordance-size',
+            tag: element.tagName,
+            id: element.id,
+            className: String(element.className || ''),
+            height: Math.round(visualHeight),
+            text: element.textContent.trim().slice(0, 80)
+          });
+        }
+      }
+
+      if (element.classList.contains('active') && interactive) {
+        const borderColor = style.borderTopColor || '';
+        const background = style.backgroundColor || style.backgroundImage || '';
+        if ((!borderColor || borderColor === 'rgba(0, 0, 0, 0)') && (!background || background === 'rgba(0, 0, 0, 0)' || background === 'none')) {
+          problems.push({
+            type: 'weak-active-state',
+            tag: element.tagName,
+            id: element.id,
+            className: String(element.className || ''),
+            text: element.textContent.trim().slice(0, 80)
+          });
+        }
       }
     }
 
@@ -387,7 +447,40 @@ async function inspectViewport(page) {
   });
 }
 
-async function runCase(browser, routePath, width) {
+async function inspectFocusAffordance(page) {
+  return page.evaluate(() => {
+    const problems = [];
+    const visible = (element) => {
+      if (!element) return false;
+      const style = getComputedStyle(element);
+      const rect = element.getBoundingClientRect();
+      return style.display !== 'none' && style.visibility !== 'hidden' && rect.width > 1 && rect.height > 1;
+    };
+
+    const serverInput = document.querySelector('#serverInput');
+    if (visible(serverInput)) {
+      serverInput.focus();
+      const style = getComputedStyle(serverInput);
+      if (!style.boxShadow || style.boxShadow === 'none') {
+        problems.push({ type: 'missing-focus-affordance', id: 'serverInput' });
+      }
+    }
+
+    const queryEditor = document.querySelector('#queryEditor');
+    const editorContainer = document.querySelector('#editorContainer');
+    if (visible(queryEditor) && visible(editorContainer)) {
+      queryEditor.focus();
+      const style = getComputedStyle(editorContainer);
+      if (!style.boxShadow || style.boxShadow === 'none') {
+        problems.push({ type: 'missing-focus-affordance', id: 'editorContainer' });
+      }
+    }
+
+    return problems;
+  });
+}
+
+async function runCase(browser, routePath, width, options = {}) {
   const page = await browser.newPage({ viewport: { width, height: 900 } });
   await page.addInitScript(() => {
     localStorage.clear();
@@ -396,16 +489,35 @@ async function runCase(browser, routePath, width) {
   await attachApiMocks(page);
   await page.goto(`${baseUrl}${routePath}`, { waitUntil: 'networkidle' });
 
+  if (options.theme) {
+    await page.locator(`[data-theme="${options.theme}"]`).click().catch(async () => {
+      await page.evaluate((theme) => document.documentElement.setAttribute('data-theme', theme), options.theme);
+    });
+  }
+
   if (routePath === '/') {
     await populateSqlPage(page);
-  } else {
+  } else if (routePath === '/procedures') {
     await populateProcedurePage(page);
   }
 
+  if (options.hidePanels) {
+    await page.locator('#toggleControlRailBtn').click().catch(() => {});
+    await page.locator('#toggleActivityPanelBtn').click().catch(() => {});
+    await page.waitForTimeout(150);
+  }
+
   const result = await inspectViewport(page);
-  if (screenshotWidths.has(width)) {
-    const name = routePath === '/' ? 'sql' : 'procedures';
-    await page.screenshot({ path: path.join(outDir, `${name}-${width}.png`), fullPage: false });
+  result.problems.push(...await inspectFocusAffordance(page));
+  if (screenshotWidths.has(width) || options.screenshot) {
+    const routeName = routePath === '/' ? 'sql' : routePath.replace(/^\/|\/$/g, '').replace(/\//g, '-');
+    const suffix = [
+      routeName,
+      options.theme || '',
+      options.hidePanels ? 'panels-hidden' : '',
+      width
+    ].filter(Boolean).join('-');
+    await page.screenshot({ path: path.join(outDir, `${suffix}.png`), fullPage: false });
   }
   await page.close();
   return result;
@@ -420,6 +532,20 @@ try {
   for (const width of widths) {
     results.push(await runCase(browser, '/', width));
     results.push(await runCase(browser, '/procedures', width));
+  }
+
+  for (const theme of themes) {
+    results.push(await runCase(browser, '/', 1200, { theme, screenshot: true }));
+  }
+
+  for (const routePath of ['/', '/procedures']) {
+    results.push(await runCase(browser, routePath, 1200, { hidePanels: true, screenshot: true }));
+  }
+
+  for (const routePath of ['/docs/sql-studio', '/docs/procedure-runner']) {
+    for (const width of [390, 1200]) {
+      results.push(await runCase(browser, routePath, width, { screenshot: true }));
+    }
   }
 } finally {
   await browser.close();
