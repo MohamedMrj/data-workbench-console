@@ -2123,7 +2123,7 @@ window.createConsoleApp = function createConsoleApp() {
       `<div class="saved-item"><button class="saved-item-main" data-connection-index="${index}" type="button"><strong>${esc(item.profileName || item.database)}</strong><span>${esc((sourceOptions().find((source) => source.id === item.sourceType)?.label) || item.sourceType)} • ${esc(item.server)} • ${esc(item.database)}</span></button><button class="saved-item-delete" data-delete-index="${index}" type="button">×</button></div>`
     )).join('');
     container.querySelectorAll('[data-connection-index]').forEach((button) => {
-      button.onclick = () => applySavedConnection(state.connectionHistory[Number(button.dataset.connectionIndex)]);
+      button.onclick = () => applySavedConnectionAndLoadCatalog(state.connectionHistory[Number(button.dataset.connectionIndex)]);
     });
     container.querySelectorAll('[data-delete-index]').forEach((button) => {
       button.onclick = async (event) => {
@@ -2148,6 +2148,8 @@ window.createConsoleApp = function createConsoleApp() {
   }
 
   function applySavedConnection(item) {
+    const previousSignature = connectionSignature();
+    const previousSessionPassword = window.__dataWorkbenchSessionPassword || $('passwordInput')?.value || '';
     const sourceType = sourceOptions().some((source) => source.id === item.sourceType) ? item.sourceType : 'fabric-sql';
     $('sourceTypeSelect').value = sourceType;
     renderAuthOptions();
@@ -2158,12 +2160,38 @@ window.createConsoleApp = function createConsoleApp() {
     $('portInput').value = item.port || '';
     $('databaseInput').value = item.database || '';
     $('usernameInput').value = item.username || '';
-    $('passwordInput').value = '';
     $('trustServerCertificateInput').checked = item.trustServerCertificate !== false;
-    window.__dataWorkbenchSessionPassword = '';
+    const nextSignature = connectionSignature();
+    $('passwordInput').value = authMode === 'sqlLogin' && previousSignature === nextSignature
+      ? previousSessionPassword
+      : '';
+    window.__dataWorkbenchSessionPassword = $('passwordInput').value;
     persistActiveConnection();
     renderConnectionSummary();
     setStatus('success', `Loaded saved connection for ${item.profileName || item.database}.`);
+  }
+
+  async function applySavedConnectionAndLoadCatalog(item) {
+    if (!item) {
+      setStatus('error', 'Saved connection could not be loaded.');
+      return;
+    }
+
+    applySavedConnection(item);
+    const profileName = item.profileName || item.database || 'saved profile';
+    if (selectedAuthMode() === 'sqlLogin' && !$('passwordInput')?.value) {
+      setStatus('neutral', `Loaded ${profileName}. Enter the SQL password, then load the catalog.`);
+      return;
+    }
+
+    try {
+      await loadCatalog();
+    } catch (error) {
+      renderResultError(error, {
+        title: 'Catalog load failed',
+        operation: 'catalog'
+      });
+    }
   }
 
   async function saveCurrentConnection() {

@@ -488,6 +488,13 @@ if (!legacyWindow.document.getElementById('savedConnections').textContent.includ
   throw new Error('Saving a connection failed after loading a legacy saved-connections payload.');
 }
 
+legacyWindow.document.querySelector('[data-connection-index="0"]').click();
+await flush();
+await flush();
+if (!legacyWindow.document.getElementById('tableList').textContent.includes('dbo.Alerts')) {
+  throw new Error('Clicking a saved profile should automatically load the catalog.');
+}
+
 const sqlWindow = await createWindow('http://127.0.0.1:3100/');
 if (sqlWindow.document.querySelectorAll('#themeList .theme-chip').length !== 6) {
   throw new Error('Theme chips did not render on the SQL page.');
