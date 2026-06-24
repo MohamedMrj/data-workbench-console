@@ -154,7 +154,10 @@ function Open-BrowserUrl {
 }
 
 function Open-LauncherLoadingPage {
-    param([int]$ExpectedSeconds = 60)
+    param(
+        [int]$ExpectedSeconds = 60,
+        [string]$Mode = 'start'
+    )
 
     if (-not (Test-Path -LiteralPath $launcherPagePath)) {
         return $false
@@ -164,7 +167,8 @@ function Open-LauncherLoadingPage {
     $ready = [System.Uri]::EscapeDataString('http://localhost:3000/launcher-ready.svg')
     $timeout = [Math]::Max($ExpectedSeconds + 180, 300)
     $expectedChecks = [Math]::Max(8, [Math]::Ceiling($ExpectedSeconds / 0.9))
-    $launcherUrl = "$(ConvertTo-FileUri $launcherPagePath)?target=$target&ready=$ready&eta=$ExpectedSeconds&timeout=$timeout&checks=$expectedChecks"
+    $modeParam = [System.Uri]::EscapeDataString($Mode)
+    $launcherUrl = "$(ConvertTo-FileUri $launcherPagePath)?target=$target&ready=$ready&eta=$ExpectedSeconds&timeout=$timeout&checks=$expectedChecks&mode=$modeParam"
     Open-BrowserUrl -Url $launcherUrl
     return $true
 }
@@ -360,7 +364,14 @@ try {
     } else {
         12
     }
-    $openedLaunchPage = Open-LauncherLoadingPage -ExpectedSeconds $expectedLaunchSeconds
+    $launchMode = if ($needsInstall) {
+        'first-run'
+    } elseif ($needsBuild) {
+        'build'
+    } else {
+        'start'
+    }
+    $openedLaunchPage = Open-LauncherLoadingPage -ExpectedSeconds $expectedLaunchSeconds -Mode $launchMode
     if ($openedLaunchPage) {
         Update-Progress -Status 'Browser opened' -Value 9 -Detail 'The browser will redirect when the app is ready.'
     }

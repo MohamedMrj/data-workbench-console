@@ -337,9 +337,10 @@
 
     <div class="steps" aria-label="Startup stages">
       <div class="step active" data-step="0">Prepare</div>
-      <div class="step" data-step="1">Build</div>
-      <div class="step" data-step="2">Server</div>
-      <div class="step" data-step="3">SQL Studio</div>
+      <div class="step" data-step="1" id="stepInstall">Dependencies</div>
+      <div class="step" data-step="2">Build</div>
+      <div class="step" data-step="3">Server</div>
+      <div class="step" data-step="4">SQL Studio</div>
     </div>
 
     <div class="metrics">
@@ -365,6 +366,7 @@
       const params = new URLSearchParams(window.location.search);
       const target = params.get('target') || 'http://localhost:3000/';
       const readyUrl = params.get('ready') || 'http://localhost:3000/launcher-ready.svg';
+      const mode = ['first-run', 'build', 'start'].includes(params.get('mode')) ? params.get('mode') : 'start';
       const etaSeconds = Math.max(10, Number(params.get('eta') || 60));
       const timeoutParam = Number(params.get('timeout'));
       const warningSeconds = Number.isFinite(timeoutParam) && timeoutParam > 0
@@ -393,40 +395,120 @@
       const phase = document.getElementById('phase');
       const phaseDetail = document.getElementById('phaseDetail');
       const steps = Array.from(document.querySelectorAll('.step'));
+      if (mode === 'first-run') {
+        hint.textContent = 'First launch can take longer while dependencies are installed and the production bundle is built. This page will redirect automatically.';
+      } else if (mode === 'build') {
+        hint.textContent = 'The local production bundle is being refreshed. This page will switch to SQL Studio automatically when ready.';
+      }
 
-      const phases = [
-        {
-          at: 0,
-          title: 'Preparing workspace',
-          detail: 'Checking local files and opening the production console.'
-        },
-        {
-          at: 18,
-          title: 'Refreshing production bundle',
-          detail: 'Making sure the app files are current before the server opens.'
-        },
-        {
-          at: 52,
-          title: 'Starting local server',
-          detail: 'Launching the hidden Node.js process on localhost.'
-        },
-        {
-          at: 84,
-          title: 'Waiting for readiness',
-          detail: 'Polling the local console until SQL Studio can take over.'
-        },
-        {
-          at: 98,
-          title: 'Final health check',
-          detail: 'The app is almost ready. Holding here until the server confirms.'
-        }
-      ];
+      const phaseSets = {
+        'first-run': [
+          {
+            at: 0,
+            step: 0,
+            title: 'Preparing first launch',
+            detail: 'Checking the app folder and opening the local startup flow.'
+          },
+          {
+            at: 10,
+            step: 1,
+            title: 'Installing dependencies',
+            detail: 'This can take a while on a new machine because Node packages are being downloaded into node_modules.'
+          },
+          {
+            at: 36,
+            step: 2,
+            title: 'Building production bundle',
+            detail: 'Compiling the local Next.js app so future launches can start faster.'
+          },
+          {
+            at: 72,
+            step: 3,
+            title: 'Starting local server',
+            detail: 'Launching the hidden Node.js process on localhost.'
+          },
+          {
+            at: 90,
+            step: 3,
+            title: 'Waiting for readiness',
+            detail: 'Polling the local console until SQL Studio can take over.'
+          },
+          {
+            at: 98,
+            step: 4,
+            title: 'Final health check',
+            detail: 'The app is almost ready. Holding here until the server confirms.'
+          }
+        ],
+        build: [
+          {
+            at: 0,
+            step: 0,
+            title: 'Preparing workspace',
+            detail: 'Checking local files and opening the production console.'
+          },
+          {
+            at: 18,
+            step: 2,
+            title: 'Refreshing production bundle',
+            detail: 'Making sure the app files are current before the server opens.'
+          },
+          {
+            at: 62,
+            step: 3,
+            title: 'Starting local server',
+            detail: 'Launching the hidden Node.js process on localhost.'
+          },
+          {
+            at: 86,
+            step: 3,
+            title: 'Waiting for readiness',
+            detail: 'Polling the local console until SQL Studio can take over.'
+          },
+          {
+            at: 98,
+            step: 4,
+            title: 'Final health check',
+            detail: 'The app is almost ready. Holding here until the server confirms.'
+          }
+        ],
+        start: [
+          {
+            at: 0,
+            step: 0,
+            title: 'Preparing workspace',
+            detail: 'Checking the existing production bundle.'
+          },
+          {
+            at: 38,
+            step: 3,
+            title: 'Starting local server',
+            detail: 'Launching the hidden Node.js process on localhost.'
+          },
+          {
+            at: 78,
+            step: 3,
+            title: 'Waiting for readiness',
+            detail: 'Polling the local console until SQL Studio can take over.'
+          },
+          {
+            at: 98,
+            step: 4,
+            title: 'Final health check',
+            detail: 'The app is almost ready. Holding here until the server confirms.'
+          }
+        ]
+      };
+      const phases = phaseSets[mode] || phaseSets.start;
+      if (mode !== 'first-run') {
+        document.getElementById('stepInstall').textContent = 'Dependencies OK';
+      }
 
       function setPhase(progress) {
         const current = phases.reduce((active, item) => progress >= item.at ? item : active, phases[0]);
         phase.textContent = current.title;
         phaseDetail.textContent = current.detail;
-        const activeStep = progress >= 98 ? 3 : progress >= 52 ? 2 : progress >= 18 ? 1 : 0;
+        const activeStep = Number(current.step || 0);
         steps.forEach(function (step, index) {
           step.classList.toggle('active', index <= activeStep);
         });
