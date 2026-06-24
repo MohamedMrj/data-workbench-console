@@ -462,27 +462,33 @@ export default function WorkbenchShell({ pageMode = 'sql' }) {
                   : 'Connect to a source and load a catalog to build, inspect, and run SQL with stronger guardrails.'}
               </div>
             </div>
-              <div className="hero-actions">
-                <Link
-                  href={isProceduresPage ? '/docs/procedure-runner' : '/docs/sql-studio'}
-                  className="ghost-btn small docs-link-button"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                >
-                  Documentation
-                </Link>
-                <button id="openWorkbenchToolsBtn" className="ghost-btn small" type="button">
-                  Tools
-                </button>
-                <button id="toggleControlRailBtn" className="ghost-btn small" type="button" aria-pressed="false">
-                  Hide connection panel
-                </button>
-                <button id="toggleActivityPanelBtn" className="ghost-btn small" type="button" aria-pressed="false">
-                  Hide themes & history
-                </button>
-                <button id="exitWorkbenchBtn" className="ghost-btn small exit-workbench-btn" type="button">
-                  Exit Data Workbench
-                </button>
+              <div className="hero-actions" aria-label="Workbench actions">
+                <div className="hero-action-group">
+                  <Link
+                    href={isProceduresPage ? '/docs/procedure-runner' : '/docs/sql-studio'}
+                    className="ghost-btn small docs-link-button"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    Documentation
+                  </Link>
+                  <button id="openWorkbenchToolsBtn" className="ghost-btn small" type="button">
+                    Tools
+                  </button>
+                </div>
+                <div className="hero-action-group panel-toggle-group" aria-label="Panel visibility">
+                  <button id="toggleControlRailBtn" className="ghost-btn small" type="button" aria-pressed="false">
+                    Hide connection panel
+                  </button>
+                  <button id="toggleActivityPanelBtn" className="ghost-btn small" type="button" aria-pressed="false">
+                    Hide themes & history
+                  </button>
+                </div>
+                <div className="hero-action-group">
+                  <button id="exitWorkbenchBtn" className="ghost-btn small exit-workbench-btn" type="button">
+                    Exit Data Workbench
+                  </button>
+                </div>
               </div>
           </header>
 

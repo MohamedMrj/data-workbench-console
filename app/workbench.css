@@ -416,16 +416,39 @@
 
 .hero-actions {
   display: flex;
-  gap: 10px;
+  gap: 8px;
   flex-wrap: wrap;
   justify-content: flex-end;
   align-content: flex-start;
   justify-self: end;
-  max-width: 420px;
+  max-width: 520px;
 }
 
 .hero-actions .ghost-btn {
   min-height: 40px;
+}
+
+.hero-action-group {
+  display: inline-flex;
+  flex-wrap: nowrap;
+  justify-content: flex-end;
+  gap: 8px;
+  min-width: 0;
+}
+
+.hero-action-group > * {
+  flex: 0 1 auto;
+}
+
+.panel-toggle-group {
+  padding: 4px;
+  border: 1px solid color-mix(in srgb, var(--line) 78%, transparent);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--surface-strong) 54%, transparent);
+}
+
+.panel-toggle-group > * {
+  flex: 0 1 auto;
 }
 
 .active-target {
@@ -1716,8 +1739,8 @@
   max-width: 760px;
 }
 
-.workbench-tools-card {
-  width: min(1120px, calc(100vw - 40px));
+.modal-card.workbench-tools-card {
+  width: min(1280px, calc(100vw - 24px));
   max-height: min(88vh, 860px);
   overflow: hidden;
   display: flex;
@@ -1732,7 +1755,8 @@
     'scratch diagnostics';
   gap: 14px;
   margin-top: 14px;
-  overflow: auto;
+  overflow-y: auto;
+  overflow-x: hidden;
   padding: 1px 2px 4px 1px;
   min-height: 0;
 }
@@ -2828,6 +2852,14 @@
     width: 100%;
   }
 
+  .hero-action-group {
+    justify-content: flex-start;
+  }
+
+  .hero-action-group > * {
+    flex: 1 1 180px;
+  }
+
   .results-table th,
   .results-table td {
     max-width: 180px;
@@ -3069,6 +3101,22 @@
   flex: 1 1 calc(50% - 8px);
 }
 
+.app-shell[data-workspace-mode="compressed"] .hero-action-group,
+.app-shell[data-studio-mode="stacked"] .hero-action-group {
+  justify-content: flex-start;
+}
+
+.app-shell[data-workspace-mode="compressed"] .hero-action-group > *,
+.app-shell[data-studio-mode="stacked"] .hero-action-group > * {
+  flex: 0 1 auto;
+}
+
+.app-shell[data-workspace-mode="compressed"] .hero-actions > .hero-action-group,
+.app-shell[data-studio-mode="stacked"] .hero-actions > .hero-action-group {
+  flex: 0 1 auto;
+  width: auto;
+}
+
 .app-shell[data-studio-mode="stacked"] .builder-actions > * {
   flex: 1 1 calc(50% - 8px);
 }
@@ -3108,6 +3156,19 @@
   flex: 1 1 calc(50% - 8px);
 }
 
+.app-shell[data-layout-mode="stacked"] .hero-action-group {
+  justify-content: flex-start;
+}
+
+.app-shell[data-layout-mode="stacked"] .hero-action-group > * {
+  flex: 0 1 auto;
+}
+
+.app-shell[data-layout-mode="stacked"] .hero-actions > .hero-action-group {
+  flex: 0 1 auto;
+  width: auto;
+}
+
 .app-shell[data-layout-mode="stacked"] .explorer-list,
 .app-shell[data-layout-mode="stacked"] .query-history {
   max-height: 420px;
@@ -3145,6 +3206,10 @@
   .app-shell[data-layout-mode="stacked"] .section-title-row .button-row.wrap > * {
     flex-basis: 100%;
     width: 100%;
+  }
+
+  .app-shell[data-layout-mode="stacked"] .hero-action-group > * {
+    flex-basis: 100%;
   }
 }
 
@@ -3248,7 +3313,7 @@
 }
 
 @media (max-width: 700px) {
-  .workbench-tools-card {
+  .modal-card.workbench-tools-card {
     width: calc(100vw - 24px);
     max-height: calc(100vh - 24px);
   }
@@ -3339,6 +3404,16 @@
 }
 
 @media (max-width: 380px) {
+  .hero-action-group {
+    flex-wrap: wrap;
+    width: 100%;
+  }
+
+  .hero-action-group > * {
+    flex-basis: 100%;
+    width: 100%;
+  }
+
   .tools-command {
     grid-template-columns: 1fr;
   }
