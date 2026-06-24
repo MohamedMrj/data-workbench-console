@@ -351,12 +351,14 @@ try {
         Stop-ProjectServer
     }
 
-    $expectedLaunchSeconds = if (-not (Test-Path -LiteralPath (Join-Path $projectDir 'node_modules'))) {
-        110
-    } elseif (-not $buildCurrent) {
-        90
+    $needsInstall = -not (Test-Path -LiteralPath (Join-Path $projectDir 'node_modules'))
+    $needsBuild = -not $buildCurrent
+    $expectedLaunchSeconds = if ($needsInstall) {
+        140
+    } elseif ($needsBuild) {
+        50
     } else {
-        45
+        12
     }
     $openedLaunchPage = Open-LauncherLoadingPage -ExpectedSeconds $expectedLaunchSeconds
     if ($openedLaunchPage) {
@@ -367,13 +369,17 @@ try {
 
     Push-Location $projectDir
 
-    if (-not (Test-Path -LiteralPath (Join-Path $projectDir 'node_modules'))) {
+    if ($needsInstall) {
         Invoke-LoggedCommand -FilePath $npm -Arguments 'install' -Status 'Installing dependencies' -StartPercent 10 -EndPercent 35 -FailureMessage 'Dependency installation failed.'
     } else {
         Update-Progress -Status 'Dependencies found' -Value 35 -Detail 'Skipping npm install.'
     }
 
-    Invoke-LoggedCommand -FilePath $npm -Arguments 'run build' -Status 'Building production version' -StartPercent 40 -EndPercent 75 -FailureMessage 'Production build failed.'
+    if ($needsBuild) {
+        Invoke-LoggedCommand -FilePath $npm -Arguments 'run build' -Status 'Building production version' -StartPercent 40 -EndPercent 75 -FailureMessage 'Production build failed.'
+    } else {
+        Update-Progress -Status 'Production build current' -Value 75 -Detail 'Skipping npm build.'
+    }
 
     Update-Progress -Status 'Starting production server' -Value 82 -Detail 'Launching hidden Node.js process.'
     Add-Content -LiteralPath $launchLog -Value 'Starting hidden production server...'
