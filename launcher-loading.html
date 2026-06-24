@@ -143,6 +143,94 @@
       transition: width 0.35s ease;
     }
 
+    .activity {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 16px;
+      align-items: center;
+      margin-top: 18px;
+      padding: 14px;
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      background: rgba(255, 255, 255, 0.04);
+    }
+
+    .activity-text {
+      min-width: 0;
+    }
+
+    #phase {
+      margin: 0;
+      font-weight: 800;
+      color: var(--text);
+    }
+
+    #phaseDetail {
+      margin: 4px 0 0;
+      color: var(--muted);
+      line-height: 1.45;
+      font-size: 0.9rem;
+    }
+
+    .pulse-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 10px);
+      gap: 5px;
+      align-items: end;
+      height: 34px;
+      padding: 6px 8px;
+      border-radius: 12px;
+      background: rgba(0, 0, 0, 0.16);
+    }
+
+    .pulse-grid span {
+      display: block;
+      width: 10px;
+      min-height: 8px;
+      border-radius: 999px;
+      background: linear-gradient(180deg, var(--accent), var(--accent-2));
+      animation: pulseBlock 1.05s ease-in-out infinite;
+    }
+
+    .pulse-grid span:nth-child(2) {
+      animation-delay: 0.14s;
+    }
+
+    .pulse-grid span:nth-child(3) {
+      animation-delay: 0.28s;
+    }
+
+    .pulse-grid span:nth-child(4) {
+      animation-delay: 0.42s;
+    }
+
+    .steps {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 8px;
+      margin-top: 12px;
+    }
+
+    .step {
+      min-width: 0;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      color: var(--muted);
+      padding: 8px 10px;
+      text-align: center;
+      font-size: 0.78rem;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      background: rgba(255, 255, 255, 0.025);
+    }
+
+    .step.active {
+      color: var(--text);
+      border-color: color-mix(in srgb, var(--accent) 58%, var(--line));
+      background: color-mix(in srgb, var(--accent) 12%, transparent);
+    }
+
     .metrics {
       display: grid;
       grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -186,6 +274,18 @@
       background: var(--danger);
     }
 
+    @keyframes pulseBlock {
+      0%,
+      100% {
+        height: 8px;
+        opacity: 0.45;
+      }
+      50% {
+        height: 28px;
+        opacity: 1;
+      }
+    }
+
     @media (max-width: 560px) {
       main {
         padding: 22px;
@@ -197,6 +297,14 @@
 
       .metrics {
         grid-template-columns: 1fr;
+      }
+
+      .activity {
+        grid-template-columns: 1fr;
+      }
+
+      .steps {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
       }
     }
   </style>
@@ -217,6 +325,21 @@
     </div>
     <div class="bar" role="progressbar" aria-label="Startup progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
       <div id="barFill"></div>
+    </div>
+
+    <div class="activity">
+      <div class="activity-text">
+        <p id="phase">Preparing workspace</p>
+        <p id="phaseDetail">Checking local files and opening the production console.</p>
+      </div>
+      <div class="pulse-grid" aria-hidden="true"><span></span><span></span><span></span><span></span></div>
+    </div>
+
+    <div class="steps" aria-label="Startup stages">
+      <div class="step active" data-step="0">Prepare</div>
+      <div class="step" data-step="1">Build</div>
+      <div class="step" data-step="2">Server</div>
+      <div class="step" data-step="3">SQL Studio</div>
     </div>
 
     <div class="metrics">
@@ -257,6 +380,47 @@
       const remaining = document.getElementById('remaining');
       const checksNode = document.getElementById('checks');
       const hint = document.getElementById('hint');
+      const phase = document.getElementById('phase');
+      const phaseDetail = document.getElementById('phaseDetail');
+      const steps = Array.from(document.querySelectorAll('.step'));
+
+      const phases = [
+        {
+          at: 0,
+          title: 'Preparing workspace',
+          detail: 'Checking local files and opening the production console.'
+        },
+        {
+          at: 18,
+          title: 'Refreshing production bundle',
+          detail: 'Making sure the app files are current before the server opens.'
+        },
+        {
+          at: 52,
+          title: 'Starting local server',
+          detail: 'Launching the hidden Node.js process on localhost.'
+        },
+        {
+          at: 84,
+          title: 'Waiting for readiness',
+          detail: 'Polling the local console until SQL Studio can take over.'
+        },
+        {
+          at: 98,
+          title: 'Final health check',
+          detail: 'The app is almost ready. Holding here until the server confirms.'
+        }
+      ];
+
+      function setPhase(progress) {
+        const current = phases.reduce((active, item) => progress >= item.at ? item : active, phases[0]);
+        phase.textContent = current.title;
+        phaseDetail.textContent = current.detail;
+        const activeStep = progress >= 98 ? 3 : progress >= 52 ? 2 : progress >= 18 ? 1 : 0;
+        steps.forEach(function (step, index) {
+          step.classList.toggle('active', index <= activeStep);
+        });
+      }
 
       function setProgress(value, message) {
         const safe = Math.max(0, Math.min(100, Math.round(value)));
@@ -267,6 +431,7 @@
         if (message) {
           status.textContent = message;
         }
+        setPhase(safe);
       }
 
       function updateEstimate() {
@@ -283,6 +448,8 @@
         if (elapsedSeconds > timeoutSeconds) {
           card.classList.add('failed');
           setProgress(100, 'Startup is taking longer than expected.');
+          phase.textContent = 'Manual check needed';
+          phaseDetail.textContent = 'The startup process did not finish inside the expected window.';
           timeLeft.textContent = 'Timed out';
           remaining.textContent = '0%';
           hint.textContent = 'Check the launcher window or .data/logs/data-workbench-launcher.log for details, then launch Data Workbench again.';

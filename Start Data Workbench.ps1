@@ -111,6 +111,48 @@ function ConvertTo-FileUri {
     return ([System.Uri]::new((Resolve-Path -LiteralPath $Path).Path)).AbsoluteUri
 }
 
+function Get-BrowserCommand {
+    $paths = @(
+        (Join-Path ${env:ProgramFiles(x86)} 'Microsoft\Edge\Application\msedge.exe'),
+        (Join-Path $env:ProgramFiles 'Microsoft\Edge\Application\msedge.exe'),
+        (Join-Path $env:LOCALAPPDATA 'Microsoft\Edge\Application\msedge.exe'),
+        (Join-Path $env:ProgramFiles 'Google\Chrome\Application\chrome.exe'),
+        (Join-Path ${env:ProgramFiles(x86)} 'Google\Chrome\Application\chrome.exe'),
+        (Join-Path $env:LOCALAPPDATA 'Google\Chrome\Application\chrome.exe'),
+        (Join-Path $env:ProgramFiles 'BraveSoftware\Brave-Browser\Application\brave.exe'),
+        (Join-Path ${env:ProgramFiles(x86)} 'BraveSoftware\Brave-Browser\Application\brave.exe'),
+        (Join-Path $env:ProgramFiles 'Mozilla Firefox\firefox.exe'),
+        (Join-Path ${env:ProgramFiles(x86)} 'Mozilla Firefox\firefox.exe')
+    ) | Where-Object { $_ }
+
+    foreach ($commandName in @('msedge.exe', 'chrome.exe', 'brave.exe', 'firefox.exe')) {
+        $command = Get-Command $commandName -ErrorAction SilentlyContinue
+        if ($command) {
+            return $command.Source
+        }
+    }
+
+    foreach ($path in $paths) {
+        if (Test-Path -LiteralPath $path) {
+            return $path
+        }
+    }
+
+    return $null
+}
+
+function Open-BrowserUrl {
+    param([string]$Url)
+
+    $browser = Get-BrowserCommand
+    if ($browser) {
+        Start-Process -FilePath $browser -ArgumentList @($Url)
+        return
+    }
+
+    Start-Process $Url
+}
+
 function Open-LauncherLoadingPage {
     param([int]$ExpectedSeconds = 60)
 
@@ -122,7 +164,7 @@ function Open-LauncherLoadingPage {
     $ready = [System.Uri]::EscapeDataString('http://localhost:3000/launcher-ready.svg')
     $timeout = [Math]::Max($ExpectedSeconds + 30, 120)
     $launcherUrl = "$(ConvertTo-FileUri $launcherPagePath)?target=$target&ready=$ready&eta=$ExpectedSeconds&timeout=$timeout"
-    Start-Process $launcherUrl
+    Open-BrowserUrl -Url $launcherUrl
     return $true
 }
 
@@ -297,7 +339,7 @@ try {
     Update-Progress -Status 'Checking existing server' -Value 5 -Detail 'Looking for an already running app.'
     if ((Test-AppHealth) -and $buildCurrent) {
         Update-Progress -Status 'App is already running' -Value 100 -Detail 'Opening browser.'
-        Start-Process 'http://localhost:3000'
+        Open-BrowserUrl -Url 'http://localhost:3000'
         Start-Sleep -Milliseconds 500
         exit 0
     }
@@ -345,7 +387,7 @@ try {
             $readyDetail = if ($openedLaunchPage) { 'Browser is redirecting to SQL Studio.' } else { 'Opening browser.' }
             Update-Progress -Status 'Ready' -Value 100 -Detail $readyDetail
             if (-not $openedLaunchPage) {
-                Start-Process 'http://localhost:3000'
+                Open-BrowserUrl -Url 'http://localhost:3000'
             }
             Start-Sleep -Milliseconds 500
             exit 0
