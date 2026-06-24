@@ -266,12 +266,12 @@
       font-size: 0.92rem;
     }
 
-    .failed #percent {
-      color: var(--danger);
+    .slow #percent {
+      color: var(--accent-2);
     }
 
-    .failed #barFill {
-      background: var(--danger);
+    .slow #barFill {
+      background: linear-gradient(90deg, var(--accent), var(--accent-2));
     }
 
     @keyframes pulseBlock {
@@ -348,8 +348,8 @@
         <strong id="timeLeft">Calculating</strong>
       </div>
       <div class="metric">
-        <span>Remaining</span>
-        <strong id="remaining">100%</strong>
+        <span>Checks left</span>
+        <strong id="remaining">Calculating</strong>
       </div>
       <div class="metric">
         <span>Server check</span>
@@ -366,10 +366,20 @@
       const target = params.get('target') || 'http://localhost:3000/';
       const readyUrl = params.get('ready') || 'http://localhost:3000/launcher-ready.svg';
       const etaSeconds = Math.max(10, Number(params.get('eta') || 60));
-      const timeoutSeconds = Math.max(etaSeconds + 15, Number(params.get('timeout') || 120));
+      const timeoutParam = Number(params.get('timeout'));
+      const warningSeconds = Number.isFinite(timeoutParam) && timeoutParam > 0
+        ? timeoutParam
+        : Math.max(etaSeconds + 15, 120);
+      const pollDelayMs = 900;
+      const expectedChecksParam = Number(params.get('checks'));
+      const expectedChecks = Number.isFinite(expectedChecksParam) && expectedChecksParam > 0
+        ? Math.ceil(expectedChecksParam)
+        : Math.max(8, Math.ceil(etaSeconds / (pollDelayMs / 1000)));
+      const warningChecks = Math.max(expectedChecks + 6, Math.ceil(warningSeconds / (pollDelayMs / 1000)));
       const startedAt = Date.now();
       let checks = 0;
       let redirecting = false;
+      let slowNoticeShown = false;
 
       const card = document.getElementById('card');
       const status = document.getElementById('status');
@@ -434,30 +444,57 @@
         setPhase(safe);
       }
 
+      function progressFromChecks() {
+        if (!checks) {
+          return 0;
+        }
+        return Math.min(98, (checks / expectedChecks) * 98);
+      }
+
+      function checksLeft() {
+        return Math.max(0, expectedChecks - checks);
+      }
+
+      function renderCheckMetrics() {
+        const left = checksLeft();
+        const estimatedSecondsLeft = Math.ceil((left * pollDelayMs) / 1000);
+        timeLeft.textContent = left
+          ? estimatedSecondsLeft + 's'
+          : 'Final checks';
+        remaining.textContent = left
+          ? left + ' check' + (left === 1 ? '' : 's')
+          : 'Still polling';
+        checksNode.textContent = checks
+          ? checks + ' of ' + expectedChecks
+          : 'Waiting';
+      }
+
       function updateEstimate() {
         if (redirecting) {
           return;
         }
         const elapsedSeconds = (Date.now() - startedAt) / 1000;
-        const estimated = Math.min(98, (elapsedSeconds / etaSeconds) * 96);
-        const secondsLeft = Math.max(0, Math.ceil(etaSeconds - elapsedSeconds));
-        setProgress(estimated, checks ? 'Starting local server...' : 'Opening the local app...');
-        timeLeft.textContent = secondsLeft ? secondsLeft + 's' : 'Almost ready';
-        checksNode.textContent = checks ? checks + ' check' + (checks === 1 ? '' : 's') : 'Waiting';
+        const estimated = progressFromChecks();
+        setProgress(estimated, checks ? 'Checking local server readiness...' : 'Opening the local app...');
+        renderCheckMetrics();
 
-        if (elapsedSeconds > timeoutSeconds) {
-          card.classList.add('failed');
-          setProgress(100, 'Startup is taking longer than expected.');
-          phase.textContent = 'Manual check needed';
-          phaseDetail.textContent = 'The startup process did not finish inside the expected window.';
-          timeLeft.textContent = 'Timed out';
-          remaining.textContent = '0%';
-          hint.textContent = 'Check the launcher window or .data/logs/data-workbench-launcher.log for details, then launch Data Workbench again.';
+        if (checks > warningChecks || elapsedSeconds > warningSeconds) {
+          card.classList.add('slow');
+          slowNoticeShown = true;
+          setProgress(98, 'Startup is taking longer than expected, but still checking...');
+          phase.textContent = 'Still waiting for readiness';
+          phaseDetail.textContent = 'The build or server startup passed the estimate. This page will keep polling and redirect automatically.';
+          timeLeft.textContent = 'Still checking';
+          remaining.textContent = 'Still polling';
+          hint.textContent = 'No action is needed yet. If the launcher window shows an error, use the log details there.';
+        } else if (slowNoticeShown) {
+          card.classList.remove('slow');
+          slowNoticeShown = false;
         }
       }
 
       function checkReady() {
-        if (redirecting || card.classList.contains('failed')) {
+        if (redirecting) {
           return;
         }
 
@@ -474,7 +511,7 @@
           }, 500);
         };
         image.onerror = function () {
-          window.setTimeout(checkReady, 900);
+          window.setTimeout(checkReady, pollDelayMs);
         };
         image.src = readyUrl + (readyUrl.indexOf('?') === -1 ? '?' : '&') + 't=' + Date.now();
         updateEstimate();

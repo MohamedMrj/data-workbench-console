@@ -162,8 +162,9 @@ function Open-LauncherLoadingPage {
 
     $target = [System.Uri]::EscapeDataString('http://localhost:3000/')
     $ready = [System.Uri]::EscapeDataString('http://localhost:3000/launcher-ready.svg')
-    $timeout = [Math]::Max($ExpectedSeconds + 30, 120)
-    $launcherUrl = "$(ConvertTo-FileUri $launcherPagePath)?target=$target&ready=$ready&eta=$ExpectedSeconds&timeout=$timeout"
+    $timeout = [Math]::Max($ExpectedSeconds + 180, 300)
+    $expectedChecks = [Math]::Max(8, [Math]::Ceiling($ExpectedSeconds / 0.9))
+    $launcherUrl = "$(ConvertTo-FileUri $launcherPagePath)?target=$target&ready=$ready&eta=$ExpectedSeconds&timeout=$timeout&checks=$expectedChecks"
     Open-BrowserUrl -Url $launcherUrl
     return $true
 }
