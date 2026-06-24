@@ -1739,6 +1739,35 @@
   max-width: 760px;
 }
 
+.support-card {
+  width: min(820px, calc(100vw - 32px));
+}
+
+.support-intro {
+  color: var(--muted);
+}
+
+.support-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.support-wide {
+  grid-column: 1 / -1;
+}
+
+.support-form-grid textarea {
+  min-height: 110px;
+  resize: vertical;
+}
+
+.support-form-grid input[type="file"] {
+  padding: 10px;
+  cursor: pointer;
+}
+
 .modal-card.workbench-tools-card {
   width: min(1280px, calc(100vw - 24px));
   max-height: min(88vh, 860px);
@@ -3316,6 +3345,14 @@
   .modal-card.workbench-tools-card {
     width: calc(100vw - 24px);
     max-height: calc(100vh - 24px);
+  }
+
+  .support-card {
+    width: calc(100vw - 24px);
+  }
+
+  .support-form-grid {
+    grid-template-columns: 1fr;
   }
 
   .modal-review-grid {

@@ -16,6 +16,7 @@ window.createConsoleApp = function createConsoleApp() {
   const PINNED_OBJECTS_KEY = 'dataWorkbenchPinnedObjectsV1';
   const RECENT_OBJECTS_KEY = 'dataWorkbenchRecentObjectsV1';
   const SCRATCHPADS_KEY = 'dataWorkbenchScratchpadsV1';
+  const SUPPORT_EMAIL = 'mohamed.al-mefrej@hotmail.com';
   const RESULT_TABS_MAX = 5;
   const LIFECYCLE_HEARTBEAT_MS = 10_000;
   const SIDE_PANEL_IDLE_MS = Math.max(0, Number(window.__dataWorkbenchTestConfig?.sidePanelIdleMs ?? 10_000));

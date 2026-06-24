@@ -475,6 +475,9 @@ export default function WorkbenchShell({ pageMode = 'sql' }) {
                   <button id="openWorkbenchToolsBtn" className="ghost-btn small" type="button">
                     Tools
                   </button>
+                  <button id="openSupportBtn" className="ghost-btn small" type="button">
+                    Support
+                  </button>
                 </div>
                 <div className="hero-action-group panel-toggle-group" aria-label="Panel visibility">
                   <button id="toggleControlRailBtn" className="ghost-btn small" type="button" aria-pressed="false">
@@ -707,6 +710,50 @@ export default function WorkbenchShell({ pageMode = 'sql' }) {
           <div className="button-row wrap right modal-actions">
             <button id="clearAuditFiltersBtn" className="ghost-btn" type="button">Clear</button>
             <button id="applyAuditFiltersBtn" className="primary-btn" type="button">Load audit</button>
+          </div>
+        </div>
+      </div>
+
+      <div id="supportDialog" className="modal-backdrop hidden" aria-hidden="true">
+        <div className="modal-card support-card">
+          <div className="modal-header">
+            <h2>Contact support</h2>
+            <button id="closeSupportBtn" className="icon-btn" type="button" aria-label="Close">×</button>
+          </div>
+          <p className="modal-message support-intro">
+            Send a bug report to Mohamed. The app prepares an email draft and copies the report text so you can review it before sending.
+          </p>
+          <div className="support-form-grid">
+            <label className="field compact-field"><span>Your name</span><input id="supportNameInput" type="text" placeholder="optional" autoComplete="name" /></label>
+            <label className="field compact-field"><span>Your email</span><input id="supportEmailInput" type="email" placeholder="optional" autoComplete="email" /></label>
+            <label className="field compact-field support-wide"><span>Short title</span><input id="supportTitleInput" type="text" placeholder="What went wrong?" maxLength="120" /></label>
+            <label className="field compact-field"><span>Area</span><select id="supportAreaSelect">
+              <option value="SQL Studio">SQL Studio</option>
+              <option value="Procedure Runner">Procedure Runner</option>
+              <option value="Connections">Connections</option>
+              <option value="Object Explorer">Object Explorer</option>
+              <option value="Results">Results</option>
+              <option value="Launcher">Launcher</option>
+              <option value="Other">Other</option>
+            </select></label>
+            <label className="field compact-field"><span>Severity</span><select id="supportSeveritySelect">
+              <option value="Bug">Bug</option>
+              <option value="Blocking">Blocking</option>
+              <option value="Confusing UX">Confusing UX</option>
+              <option value="Feature request">Feature request</option>
+              <option value="Question">Question</option>
+            </select></label>
+            <label className="field compact-field support-wide"><span>What happened?</span><textarea id="supportDescriptionInput" rows="5" placeholder="Describe the bug or problem..." /></label>
+            <label className="field compact-field support-wide"><span>Steps to reproduce</span><textarea id="supportStepsInput" rows="4" placeholder="1. Open...&#10;2. Click...&#10;3. Expected... but got..." /></label>
+            <label className="field compact-field support-wide"><span>Screenshot</span><input id="supportScreenshotInput" type="file" accept="image/*" /><small id="supportScreenshotNote" className="tiny-note">Optional. The email draft will remind you to attach the selected screenshot.</small></label>
+            <label className="toggle-field compact-toggle support-wide">
+              <input id="supportDiagnosticsInput" type="checkbox" defaultChecked />
+              <span>Include safe app diagnostics</span>
+            </label>
+          </div>
+          <div className="button-row wrap right modal-actions">
+            <button id="copySupportReportBtn" className="ghost-btn" type="button">Copy report</button>
+            <button id="sendSupportReportBtn" className="primary-btn" type="button">Open email draft</button>
           </div>
         </div>
       </div>
