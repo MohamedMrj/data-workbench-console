@@ -1717,16 +1717,24 @@
 }
 
 .workbench-tools-card {
-  width: min(980px, calc(100vw - 32px));
-  max-height: min(86vh, 820px);
-  overflow: auto;
+  width: min(1120px, calc(100vw - 40px));
+  max-height: min(88vh, 860px);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
 }
 
 .tools-layout {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
+  grid-template-columns: minmax(260px, 0.95fr) minmax(360px, 1.35fr);
+  grid-template-areas:
+    'actions sql'
+    'scratch diagnostics';
+  gap: 14px;
   margin-top: 14px;
+  overflow: auto;
+  padding: 1px 2px 4px 1px;
+  min-height: 0;
 }
 
 .tools-panel {
@@ -1735,6 +1743,22 @@
   border-radius: var(--radius-md);
   background: color-mix(in srgb, var(--surface-strong) 64%, transparent);
   padding: 14px;
+}
+
+.tools-panel:nth-child(1) {
+  grid-area: actions;
+}
+
+.tools-panel:nth-child(2) {
+  grid-area: sql;
+}
+
+.tools-panel:nth-child(3) {
+  grid-area: scratch;
+}
+
+.tools-panel:nth-child(4) {
+  grid-area: diagnostics;
 }
 
 .tools-search {
@@ -1751,7 +1775,7 @@
 
 .tools-command {
   width: 100%;
-  min-height: 42px;
+  min-height: 48px;
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 10px;
@@ -1762,6 +1786,11 @@
   background: var(--control-bg);
   color: var(--text);
   padding: 10px 12px;
+}
+
+.tools-command > span,
+.tools-item > div {
+  min-width: 0;
 }
 
 .tools-command:hover {
@@ -1783,12 +1812,15 @@
 }
 
 .tools-command kbd {
+  justify-self: end;
+  align-self: start;
   color: var(--muted);
   border: 1px solid var(--line);
   border-radius: 6px;
   padding: 3px 6px;
   font-size: 0.72rem;
   font-family: 'IBM Plex Mono', monospace;
+  white-space: nowrap;
 }
 
 .tools-item,
@@ -1798,6 +1830,23 @@
   border-radius: var(--radius-md);
   background: color-mix(in srgb, var(--input-bg) 70%, transparent);
   padding: 10px 12px;
+}
+
+.tools-info {
+  display: grid;
+  grid-template-columns: minmax(112px, 0.35fr) minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+}
+
+.tools-info strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.tools-info span {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .tools-item {
@@ -1810,6 +1859,37 @@
 .tools-item .ghost-btn {
   min-height: 32px;
   padding: 5px 9px;
+}
+
+.tools-panel .visual-chip-row {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.tools-panel .visual-chip {
+  display: grid;
+  grid-template-columns: minmax(112px, 0.35fr) minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+  width: 100%;
+  min-height: 0;
+  border-radius: var(--radius-md);
+  padding: 10px 12px;
+  text-align: left;
+  white-space: normal;
+  line-height: 1.35;
+}
+
+.tools-panel .visual-chip strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.tools-panel .visual-chip span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: var(--muted);
 }
 
 .modal-review {
@@ -3146,10 +3226,67 @@
   }
 }
 
+@media (max-width: 980px) {
+  .tools-layout {
+    grid-template-columns: 1fr;
+    grid-template-areas:
+      'actions'
+      'sql'
+      'scratch'
+      'diagnostics';
+    overflow-x: hidden;
+  }
+
+  .tools-command {
+    align-items: start;
+  }
+
+  .tools-info,
+  .tools-panel .visual-chip {
+    grid-template-columns: minmax(96px, 0.35fr) minmax(0, 1fr);
+  }
+}
+
 @media (max-width: 700px) {
-  .tools-layout,
+  .workbench-tools-card {
+    width: calc(100vw - 24px);
+    max-height: calc(100vh - 24px);
+  }
+
   .modal-review-grid {
     grid-template-columns: 1fr;
+  }
+
+  .tools-layout {
+    gap: 10px;
+  }
+
+  .tools-panel {
+    padding: 12px;
+  }
+
+  .tools-command {
+    grid-template-columns: minmax(0, 1fr) auto;
+    min-height: 62px;
+  }
+
+  .tools-command kbd {
+    justify-self: end;
+  }
+
+  .tools-info,
+  .tools-panel .visual-chip,
+  .tools-item {
+    grid-template-columns: 1fr;
+  }
+
+  .tools-item .ghost-btn {
+    width: 100%;
+  }
+
+  .tools-info strong,
+  .tools-panel .visual-chip strong {
+    font-size: 0.82rem;
   }
 
   .filter-row {
@@ -3198,6 +3335,16 @@
   .results-table th {
     padding: 11px 12px;
     max-width: 180px;
+  }
+}
+
+@media (max-width: 380px) {
+  .tools-command {
+    grid-template-columns: 1fr;
+  }
+
+  .tools-command kbd {
+    justify-self: start;
   }
 }
 

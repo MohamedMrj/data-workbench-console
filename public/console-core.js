@@ -3241,7 +3241,7 @@ window.createConsoleApp = function createConsoleApp() {
       return;
     }
     panel.innerHTML = capabilityRows().map(([label, value]) => (
-      `<span class="visual-chip"><strong>${esc(label)}</strong> ${esc(value)}</span>`
+      `<span class="visual-chip"><strong>${esc(label)}</strong><span>${esc(value)}</span></span>`
     )).join('');
   }
 
