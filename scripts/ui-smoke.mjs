@@ -7,6 +7,16 @@ const coreScript = await fs.readFile(path.join(process.cwd(), 'public', 'console
 const appScript = await fs.readFile(path.join(process.cwd(), 'public', 'console-app.js'), 'utf8');
 
 const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
+async function waitForCondition(predicate, message, timeoutMs = 2500, intervalMs = 25) {
+  const started = Date.now();
+  while (Date.now() - started < timeoutMs) {
+    if (predicate()) {
+      return;
+    }
+    await new Promise((resolve) => setTimeout(resolve, intervalMs));
+  }
+  throw new Error(message);
+}
 
 async function readBuiltHtml(routeSegments = []) {
   const candidates = routeSegments.length === 0
@@ -378,6 +388,7 @@ function attachMocks(window) {
     }
   };
   window.document.execCommand = () => true;
+  window.prompt = () => 'Smoke scratchpad';
   window.Response = Response;
 }
 
@@ -511,12 +522,40 @@ assertVisibleAffordance(sqlWindow, '#queryEditor', 'SQL editor');
 if (sqlWindow.document.querySelector('.results-card')?.dataset.resultsState !== 'empty') {
   throw new Error('Empty results should mark the results card as empty for compact sizing.');
 }
-['saveConnectionBtn', 'testConnectionBtn', 'loadTablesBtn', 'runQueryBtn', 'clearHistoryBtn', 'toggleAdvancedOperationsBtn', 'insertSelectTemplateBtn', 'updateJoinTemplateBtn', 'mergePreviewBtn', 'profileObjectBtn', 'dependencyViewBtn', 'insertSqlHelperBtn', 'wrapSqlHelperBtn', 'scrollResultsLeftBtn', 'scrollResultsRightBtn', 'scrollResultsDockLeftBtn', 'scrollResultsDockRightBtn'].forEach((id) => {
+['saveConnectionBtn', 'testConnectionBtn', 'loadTablesBtn', 'runQueryBtn', 'clearHistoryBtn', 'toggleAdvancedOperationsBtn', 'insertSelectTemplateBtn', 'updateJoinTemplateBtn', 'mergePreviewBtn', 'profileObjectBtn', 'dependencyViewBtn', 'insertSqlHelperBtn', 'wrapSqlHelperBtn', 'openWorkbenchToolsBtn', 'scrollResultsLeftBtn', 'scrollResultsRightBtn', 'scrollResultsDockLeftBtn', 'scrollResultsDockRightBtn'].forEach((id) => {
   const element = sqlWindow.document.getElementById(id);
   if (!element || typeof element.onclick !== 'function') {
     throw new Error(`Expected ${id} to be wired on the SQL page.`);
   }
 });
+sqlWindow.document.getElementById('openWorkbenchToolsBtn').click();
+await flush();
+if (sqlWindow.document.getElementById('workbenchToolsDialog').classList.contains('hidden')) {
+  throw new Error('Workbench tools dialog did not open.');
+}
+if (!sqlWindow.document.getElementById('commandPaletteList').textContent.includes('Load catalog')) {
+  throw new Error('Workbench tools did not render command palette actions.');
+}
+if (!sqlWindow.document.getElementById('diagnosticsPanel').textContent.includes('Version')) {
+  throw new Error('Workbench tools did not render diagnostics.');
+}
+sqlWindow.document.getElementById('copyDiagnosticsBtn').click();
+await flush();
+if (!sqlWindow.__lastClipboardText.includes('"catalog"')) {
+  throw new Error('Copy diagnostics did not write diagnostics JSON to the clipboard.');
+}
+sqlWindow.document.getElementById('queryEditor').value = 'SELECT 1 AS SmokeValue;';
+sqlWindow.document.getElementById('queryEditor').dispatchEvent(new sqlWindow.Event('input', { bubbles: true }));
+sqlWindow.document.getElementById('saveScratchpadBtn').click();
+await flush();
+if (!sqlWindow.document.getElementById('scratchpadList').textContent.includes('Smoke scratchpad')) {
+  throw new Error('Saving a scratchpad did not render it in workbench tools.');
+}
+sqlWindow.document.querySelector('[data-load-scratchpad]')?.click();
+await flush();
+if (!sqlWindow.document.getElementById('queryEditor').value.includes('SmokeValue')) {
+  throw new Error('Loading a scratchpad did not restore SQL into the editor.');
+}
 if (!sqlWindow.document.getElementById('sqlHelperSelect')) {
   throw new Error('Expected SQL helper selector to render on the SQL page.');
 }
@@ -989,6 +1028,9 @@ await flush();
 if (procedureWindow.document.getElementById('confirmModal').classList.contains('hidden')) {
   throw new Error('Running a procedure did not open the confirmation modal.');
 }
+if (!procedureWindow.document.getElementById('modalReview').textContent.includes('Execution path')) {
+  throw new Error('Procedure confirmation modal did not render review context.');
+}
 
 procedureWindow.document.getElementById('secondConfirmInput').value = 'RUN DBO.USP_PROCESSALERT';
 procedureWindow.document.getElementById('confirmModalBtn').click();
@@ -1119,29 +1161,29 @@ const autoHideWindow = await createWindow(
   }
 );
 const autoHideShell = autoHideWindow.document.querySelector('.app-shell');
-await new Promise((resolve) => setTimeout(resolve, 510));
-if (!autoHideShell?.classList.contains('control-rail-auto-hiding') || !autoHideShell?.classList.contains('activity-panel-auto-hiding')) {
-  throw new Error('Visible side panels should begin fading after the idle timeout.');
-}
+await waitForCondition(
+  () => autoHideShell?.classList.contains('control-rail-auto-hiding') && autoHideShell?.classList.contains('activity-panel-auto-hiding'),
+  'Visible side panels should begin fading after the idle timeout.'
+);
 autoHideWindow.document.querySelector('.control-rail')?.dispatchEvent(new autoHideWindow.Event('pointerdown', { bubbles: true }));
 if (autoHideShell.classList.contains('control-rail-auto-hiding')) {
   throw new Error('Using the connection panel should cancel its in-progress fade.');
 }
-await new Promise((resolve) => setTimeout(resolve, 110));
-if (!autoHideShell.classList.contains('activity-panel-collapsed')) {
-  throw new Error('An unused themes panel should collapse after its fade completes.');
-}
+await waitForCondition(
+  () => autoHideShell.classList.contains('activity-panel-collapsed'),
+  'An unused themes panel should collapse after its fade completes.'
+);
 if (autoHideShell.classList.contains('control-rail-collapsed')) {
   throw new Error('Panel activity should restart the connection panel idle timer.');
 }
-await new Promise((resolve) => setTimeout(resolve, 410));
-if (!autoHideShell.classList.contains('control-rail-auto-hiding')) {
-  throw new Error('The restarted connection panel idle timer should enter the fade state.');
-}
-await new Promise((resolve) => setTimeout(resolve, 110));
-if (!autoHideShell.classList.contains('control-rail-collapsed')) {
-  throw new Error('The connection panel should collapse after the restarted idle timer and fade complete.');
-}
+await waitForCondition(
+  () => autoHideShell.classList.contains('control-rail-auto-hiding'),
+  'The restarted connection panel idle timer should enter the fade state.'
+);
+await waitForCondition(
+  () => autoHideShell.classList.contains('control-rail-collapsed'),
+  'The connection panel should collapse after the restarted idle timer and fade complete.'
+);
 if (autoHideWindow.localStorage.getItem('dataWorkbenchSidePanelVisibilityV1')) {
   throw new Error('Automatic side panel collapse should not overwrite the saved visibility preference.');
 }

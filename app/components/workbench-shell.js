@@ -471,6 +471,9 @@ export default function WorkbenchShell({ pageMode = 'sql' }) {
                 >
                   Documentation
                 </Link>
+                <button id="openWorkbenchToolsBtn" className="ghost-btn small" type="button">
+                  Tools
+                </button>
                 <button id="toggleControlRailBtn" className="ghost-btn small" type="button" aria-pressed="false">
                   Hide connection panel
                 </button>
@@ -648,6 +651,7 @@ export default function WorkbenchShell({ pageMode = 'sql' }) {
           </div>
           <p id="modalMessage" className="modal-message" />
           <div id="modalMetrics" className="modal-metrics" />
+          <div id="modalReview" className="modal-review hidden" />
           <div id="secondConfirmWrap" className="field hidden">
             <span>Review the action details below, then continue when you are ready</span>
             <input id="secondConfirmInput" type="text" autoComplete="off" />
@@ -697,6 +701,60 @@ export default function WorkbenchShell({ pageMode = 'sql' }) {
           <div className="button-row wrap right modal-actions">
             <button id="clearAuditFiltersBtn" className="ghost-btn" type="button">Clear</button>
             <button id="applyAuditFiltersBtn" className="primary-btn" type="button">Load audit</button>
+          </div>
+        </div>
+      </div>
+
+      <div id="workbenchToolsDialog" className="modal-backdrop hidden" aria-hidden="true">
+        <div className="modal-card workbench-tools-card">
+          <div className="modal-header">
+            <h2>Workbench tools</h2>
+            <button id="closeWorkbenchToolsBtn" className="icon-btn" type="button" aria-label="Close">×</button>
+          </div>
+          <div className="tools-layout">
+            <section className="tools-panel">
+              <div className="section-title-row tight">
+                <div>
+                  <div className="eyebrow">Command</div>
+                  <h3>Quick actions</h3>
+                </div>
+              </div>
+              <input id="commandSearchInput" className="local-filter-input tools-search" type="text" placeholder="Search actions..." autoComplete="off" />
+              <div id="commandPaletteList" className="tools-command-list" />
+            </section>
+
+            <section className="tools-panel">
+              <div className="section-title-row tight">
+                <div>
+                  <div className="eyebrow">Safety</div>
+                  <h3>Current SQL</h3>
+                </div>
+              </div>
+              <div id="sqlExplainPanel" className="tools-info-grid" />
+              <div id="capabilityPanel" className="visual-chip-row" />
+            </section>
+
+            <section className="tools-panel">
+              <div className="section-title-row tight">
+                <div>
+                  <div className="eyebrow">Workspace</div>
+                  <h3>Scratchpads</h3>
+                </div>
+                <button id="saveScratchpadBtn" className="ghost-btn small" type="button">Save SQL</button>
+              </div>
+              <div id="scratchpadList" className="tools-list" />
+            </section>
+
+            <section className="tools-panel">
+              <div className="section-title-row tight">
+                <div>
+                  <div className="eyebrow">Release</div>
+                  <h3>Diagnostics</h3>
+                </div>
+                <button id="copyDiagnosticsBtn" className="ghost-btn small" type="button">Copy</button>
+              </div>
+              <div id="diagnosticsPanel" className="tools-info-grid" />
+            </section>
           </div>
         </div>
       </div>

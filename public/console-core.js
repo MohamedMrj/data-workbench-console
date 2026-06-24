@@ -15,6 +15,7 @@ window.createConsoleApp = function createConsoleApp() {
   const LIFECYCLE_SESSION_KEY = 'dataWorkbenchLifecycleSessionV1';
   const PINNED_OBJECTS_KEY = 'dataWorkbenchPinnedObjectsV1';
   const RECENT_OBJECTS_KEY = 'dataWorkbenchRecentObjectsV1';
+  const SCRATCHPADS_KEY = 'dataWorkbenchScratchpadsV1';
   const RESULT_TABS_MAX = 5;
   const LIFECYCLE_HEARTBEAT_MS = 10_000;
   const SIDE_PANEL_IDLE_MS = Math.max(0, Number(window.__dataWorkbenchTestConfig?.sidePanelIdleMs ?? 10_000));
@@ -70,6 +71,7 @@ window.createConsoleApp = function createConsoleApp() {
 
   const state = {
     health: null,
+    versionInfo: null,
     currentTheme: 'midnight',
     editorTextSize: 0.95,
     resultsTextSize: 0.9,
@@ -939,12 +941,14 @@ window.createConsoleApp = function createConsoleApp() {
   async function loadVersionInfo() {
     try {
       const info = await api('/api/version');
+      state.versionInfo = info;
       renderVersionInfo(info);
       if (info.updateAvailable) {
         setStatus('neutral', `A newer Data Workbench version is available on GitHub. Current: ${info.localCommitShort || 'unknown'}, latest: ${info.latestCommitShort || 'unknown'}.`);
       }
     } catch (error) {
-      renderVersionInfo({ version: state.health?.version || 'unknown', updateCheckAvailable: false });
+      state.versionInfo = { version: state.health?.version || 'unknown', updateCheckAvailable: false };
+      renderVersionInfo(state.versionInfo);
       console.warn('Could not check Data Workbench version.', error);
     }
   }
@@ -3172,6 +3176,241 @@ window.createConsoleApp = function createConsoleApp() {
     return false;
   }
 
+  function currentActionSummary(query = getQuery()) {
+    const clean = String(query || '')
+      .replace(/--.*$/gm, '')
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .trim();
+    const action = (clean.match(/^([a-z]+)/i)?.[1] || '').toUpperCase() || 'NONE';
+    const risk = ['DROP', 'TRUNCATE', 'ALTER', 'CREATE', 'MERGE', 'EXEC', 'EXECUTE'].includes(action)
+      ? 'High'
+      : ['INSERT', 'UPDATE', 'DELETE'].includes(action)
+        ? 'Write'
+        : action === 'SELECT' || action === 'WITH'
+          ? 'Read'
+          : 'Review';
+    return { action, risk, chars: String(query || '').length, lines: String(query || '').split(/\r?\n/).length };
+  }
+
+  function activeFilterCount() {
+    try {
+      return getFilters().filter((item) => item.column && item.operator).length;
+    } catch {
+      return 0;
+    }
+  }
+
+  function sqlExplanationRows() {
+    const summary = currentActionSummary();
+    return [
+      ['Action', summary.action],
+      ['Risk', summary.risk],
+      ['Builder mode', state.queryMode],
+      ['Target object', state.activeObject || state.activeProcedure || 'none selected'],
+      ['Selected columns', state.selectedColumns.size ? `${state.selectedColumns.size} selected` : 'all/default'],
+      ['Filters', `${activeFilterCount()} configured`],
+      ['Editor size', `${summary.lines} lines / ${summary.chars} chars`]
+    ];
+  }
+
+  function renderInfoGrid(container, rows) {
+    if (!container) {
+      return;
+    }
+    container.innerHTML = rows.map(([label, value]) => (
+      `<div class="tools-info"><strong>${esc(label)}</strong><span>${esc(value ?? '')}</span></div>`
+    )).join('');
+  }
+
+  function capabilityRows() {
+    const source = sourceOptions().find((item) => item.id === selectedSourceType());
+    const hasObjects = state.objects.length > 0;
+    const hasProcedures = state.procedures.length > 0;
+    return [
+      ['Catalog', hasObjects ? `${state.objects.length} objects loaded` : 'Load catalog to inspect objects'],
+      ['Procedures', source?.supportsProcedures === false ? 'Not supported by selected source' : hasProcedures ? `${state.procedures.length} loaded` : 'Supported when catalog is loaded'],
+      ['Object scripts', hasObjects || hasProcedures ? 'Available from loaded metadata' : 'Available after catalog load'],
+      ['Estimated plan', selectedSourceType() === 'fabric-lakehouse' ? 'May be unsupported' : 'Read-only request path'],
+      ['Audit', 'Local audited reads/writes available']
+    ];
+  }
+
+  function renderCapabilities() {
+    const panel = $('capabilityPanel');
+    if (!panel) {
+      return;
+    }
+    panel.innerHTML = capabilityRows().map(([label, value]) => (
+      `<span class="visual-chip"><strong>${esc(label)}</strong> ${esc(value)}</span>`
+    )).join('');
+  }
+
+  function diagnosticRows() {
+    const current = connection();
+    const version = state.versionInfo || {};
+    return [
+      ['Version', version.version ? `v${version.version}${version.localCommitShort ? ` (${version.localCommitShort})` : ''}` : 'unknown'],
+      ['Build/update', version.updateAvailable ? `Update available ${version.latestCommitShort || ''}` : version.updateCheckAvailable === false ? 'Update check unavailable' : 'Current or unchecked'],
+      ['Source', `${sourceOptions().find((item) => item.id === current.sourceType)?.label || current.sourceType} / ${authOptionsForSource(current.sourceType).find((item) => item.id === current.authMode)?.label || current.authMode}`],
+      ['Server/database', [current.server || 'no server', current.database || 'no database'].join(' / ')],
+      ['Catalog', `${state.objects.length} objects / ${state.procedures.length} procedures`],
+      ['Results', `${state.resultTabs.length}/${RESULT_TABS_MAX} result tabs`],
+      ['Audit log', 'Filtered viewer and CSV export available'],
+      ['Session', lifecycleSessionId().slice(0, 12)]
+    ];
+  }
+
+  function diagnosticsPayload() {
+    return {
+      version: state.versionInfo || null,
+      connection: storageConnection(),
+      catalog: {
+        objects: state.objects.length,
+        procedures: state.procedures.length,
+        activeObject: state.activeObject,
+        activeProcedure: state.activeProcedure
+      },
+      editor: Object.fromEntries(sqlExplanationRows()),
+      capabilities: Object.fromEntries(capabilityRows()),
+      results: {
+        tabs: state.resultTabs.length,
+        maxTabs: RESULT_TABS_MAX,
+        rows: state.results.rows.length,
+        columns: state.results.columns.length
+      }
+    };
+  }
+
+  function loadScratchpads() {
+    try {
+      const parsed = JSON.parse(safeGet(SCRATCHPADS_KEY) || '[]');
+      return Array.isArray(parsed) ? parsed.slice(0, 10) : [];
+    } catch {
+      return [];
+    }
+  }
+
+  function saveScratchpads(items) {
+    safeSet(SCRATCHPADS_KEY, JSON.stringify((items || []).slice(0, 10)));
+  }
+
+  function saveCurrentScratchpad() {
+    const query = getQuery().trim();
+    if (!query) {
+      setStatus('error', 'Write SQL before saving a scratchpad.');
+      return;
+    }
+    const summary = currentActionSummary(query);
+    const name = window.prompt('Scratchpad name', `${summary.action} ${state.activeObject || state.activeProcedure || 'SQL'}`.trim());
+    if (!name) {
+      return;
+    }
+    const item = {
+      id: `${Date.now()}-${Math.random().toString(16).slice(2, 8)}`,
+      name: String(name).slice(0, 80),
+      query: query.slice(0, 20000),
+      connectionSignature: connectionSignature(),
+      database: connection().database,
+      savedAt: new Date().toISOString()
+    };
+    saveScratchpads([item, ...loadScratchpads().filter((existing) => existing.name !== item.name)]);
+    renderScratchpads();
+    setStatus('success', `Scratchpad "${item.name}" saved.`);
+  }
+
+  function renderScratchpads() {
+    const list = $('scratchpadList');
+    if (!list) {
+      return;
+    }
+    const items = loadScratchpads();
+    if (!items.length) {
+      list.innerHTML = '<div class="empty-note">Saved SQL scratchpads will appear here.</div>';
+      return;
+    }
+    list.innerHTML = items.map((item) => (
+      `<div class="tools-item"><div><strong>${esc(item.name)}</strong><span>${esc(item.database || 'local')} • ${esc(formatTimestamp(item.savedAt))}</span></div><button class="ghost-btn" data-load-scratchpad="${esc(item.id)}" type="button">Load</button><button class="ghost-btn" data-delete-scratchpad="${esc(item.id)}" type="button">Delete</button></div>`
+    )).join('');
+    list.querySelectorAll('[data-load-scratchpad]').forEach((button) => {
+      button.onclick = () => {
+        const item = loadScratchpads().find((scratchpad) => scratchpad.id === button.dataset.loadScratchpad);
+        if (!item) return;
+        setQuery(item.query || '');
+        closeWorkbenchTools();
+        setStatus('success', `Scratchpad "${item.name}" loaded.`);
+      };
+    });
+    list.querySelectorAll('[data-delete-scratchpad]').forEach((button) => {
+      button.onclick = () => {
+        const next = loadScratchpads().filter((scratchpad) => scratchpad.id !== button.dataset.deleteScratchpad);
+        saveScratchpads(next);
+        renderScratchpads();
+        setStatus('success', 'Scratchpad deleted.');
+      };
+    });
+  }
+
+  function commandActions() {
+    return [
+      { id: 'load-catalog', label: 'Load catalog', detail: 'Refresh objects and procedures for the current connection.', shortcut: 'Catalog', run: () => loadCatalog().catch((error) => renderResultError(error, { title: 'Catalog load failed', operation: 'catalog' })) },
+      { id: 'run-query', label: 'Run query', detail: 'Use the existing query execution and confirmation path.', shortcut: 'Ctrl+Enter', run: () => runQuery().catch((error) => setStatus('error', error.message)) },
+      { id: 'format-sql', label: 'Format SQL', detail: 'Format the current SQL editor text.', shortcut: 'Ctrl+Shift+F', run: () => formatSql() },
+      { id: 'save-scratchpad', label: 'Save scratchpad', detail: 'Store the current SQL locally for quick restore.', shortcut: 'Local', run: () => saveCurrentScratchpad() },
+      { id: 'audit', label: 'Open audit filters', detail: 'Load or filter recent audit events.', shortcut: 'Audit', run: () => openAuditFilters() },
+      { id: 'profile', label: 'Profile active object', detail: 'Run read-only object profiling.', shortcut: 'Read', run: () => loadObjectProfile().catch((error) => setStatus('error', error.message)) },
+      { id: 'dependencies', label: 'Dependency view', detail: 'Load read-only dependency metadata.', shortcut: 'Read', run: () => loadDependencyView().catch((error) => setStatus('error', error.message)) },
+      { id: 'script-edit', label: 'Script ALTER/Edit', detail: 'Load editable script for the active object/procedure.', shortcut: 'DDL', run: () => scriptActiveDefinition('alter').catch((error) => setStatus('error', error.message)) }
+    ];
+  }
+
+  function renderCommandPalette() {
+    const list = $('commandPaletteList');
+    if (!list) return;
+    const filter = String($('commandSearchInput')?.value || '').trim().toLowerCase();
+    const commands = commandActions().filter((command) =>
+      !filter || `${command.label} ${command.detail} ${command.shortcut}`.toLowerCase().includes(filter)
+    );
+    list.innerHTML = commands.map((command) => (
+      `<button class="tools-command" data-command="${esc(command.id)}" type="button"><span><strong>${esc(command.label)}</strong><br>${esc(command.detail)}</span><kbd>${esc(command.shortcut)}</kbd></button>`
+    )).join('') || '<div class="empty-note">No actions match this search.</div>';
+    list.querySelectorAll('[data-command]').forEach((button) => {
+      button.onclick = () => {
+        const command = commandActions().find((item) => item.id === button.dataset.command);
+        if (!command) return;
+        closeWorkbenchTools();
+        command.run();
+      };
+    });
+  }
+
+  function renderWorkbenchTools() {
+    renderCommandPalette();
+    renderInfoGrid($('sqlExplainPanel'), sqlExplanationRows());
+    renderCapabilities();
+    renderScratchpads();
+    renderInfoGrid($('diagnosticsPanel'), diagnosticRows());
+  }
+
+  function openWorkbenchTools() {
+    const dialog = $('workbenchToolsDialog');
+    if (!dialog) return;
+    renderWorkbenchTools();
+    dialog.classList.remove('hidden');
+    dialog.setAttribute('aria-hidden', 'false');
+    $('commandSearchInput')?.focus();
+  }
+
+  function closeWorkbenchTools() {
+    const dialog = $('workbenchToolsDialog');
+    if (!dialog) return;
+    dialog.classList.add('hidden');
+    dialog.setAttribute('aria-hidden', 'true');
+  }
+
+  function copyDiagnostics() {
+    copyText(JSON.stringify(diagnosticsPayload(), null, 2), 'Diagnostics copied to clipboard.');
+  }
+
   function refreshActiveSummary() {
     const target = $('activeTarget');
     const meta = $('activeMeta');
@@ -4828,6 +5067,14 @@ window.createConsoleApp = function createConsoleApp() {
     $('modalTitle').textContent = config.title;
     $('modalMessage').textContent = config.message;
     $('modalMetrics').innerHTML = (config.metrics || []).map((metric) => `<div class="artifact-card"><strong>${esc(metric.label)}</strong><code>${esc(metric.value)}</code></div>`).join('');
+    const review = $('modalReview');
+    if (review && Array.isArray(config.review) && config.review.length) {
+      review.innerHTML = `<h3>Review context</h3><div class="modal-review-grid">${config.review.map((item) => `<div><span>${esc(item.label)}</span><code>${esc(item.value ?? '')}</code></div>`).join('')}</div>`;
+      review.classList.remove('hidden');
+    } else if (review) {
+      review.innerHTML = '';
+      review.classList.add('hidden');
+    }
     $('confirmModalBtn').textContent = config.confirmLabel;
     $('secondConfirmWrap').classList.add('hidden');
     $('secondConfirmHint').textContent = '';
@@ -4876,6 +5123,11 @@ window.createConsoleApp = function createConsoleApp() {
     }
     $('confirmModal').classList.add('hidden');
     $('confirmModal').setAttribute('aria-hidden', 'true');
+    const review = $('modalReview');
+    if (review) {
+      review.innerHTML = '';
+      review.classList.add('hidden');
+    }
     $('secondConfirmInput').value = '';
     if (state.lastFocusedElement?.focus) {
       state.lastFocusedElement.focus();
@@ -4897,6 +5149,8 @@ window.createConsoleApp = function createConsoleApp() {
     try {
       const payload = await api('/api/query', { method: 'POST', data: requestConnection({ query }) });
       if (payload.requiresConfirmation) {
+        const actionSummary = currentActionSummary(query);
+        const current = connection();
         setResults([], [], {
           rowsAffected: Number(payload.rowsAffected || 0),
           tabTitle: `${payload.action || 'Write'} review`,
@@ -4909,6 +5163,14 @@ window.createConsoleApp = function createConsoleApp() {
           message: payload.message,
           confirmLabel: payload.action === 'DELETE' ? 'Execute delete' : 'Execute write',
           metrics: [{ label: 'Action', value: payload.action }, { label: 'Rows', value: payload.rowsAffected }],
+          review: [
+            { label: 'Server', value: current.server },
+            { label: 'Database', value: current.database },
+            { label: 'Detected risk', value: actionSummary.risk },
+            { label: 'Active object', value: state.activeObject || 'not selected' },
+            { label: 'SQL size', value: `${actionSummary.lines} lines / ${actionSummary.chars} chars` },
+            { label: 'Execution path', value: '/api/query confirmation token' }
+          ],
           request: { query, confirmToken: payload.confirmationToken }
         });
         return;
@@ -4943,6 +5205,7 @@ window.createConsoleApp = function createConsoleApp() {
     try {
       const payload = await api('/api/procedures', { method: 'POST', data: requestConnection({ procedure: state.activeProcedure, parameters: currentProcedureValues() }) });
       if (payload.requiresConfirmation) {
+        const current = connection();
         setResults([], [], {
           tabTitle: `Prepare ${state.activeProcedure}`,
           tabKey: ''
@@ -4954,6 +5217,14 @@ window.createConsoleApp = function createConsoleApp() {
           message: payload.message,
           confirmLabel: 'Run procedure',
           metrics: [{ label: 'Procedure', value: payload.procedure }, { label: 'Parameters', value: payload.parameterCount }],
+          review: [
+            { label: 'Server', value: current.server },
+            { label: 'Database', value: current.database },
+            { label: 'Procedure', value: payload.procedure || state.activeProcedure },
+            { label: 'Parameters', value: payload.parameterCount },
+            { label: 'Execution path', value: '/api/procedures confirmation token' },
+            { label: 'Audit', value: 'procedure execution is recorded separately' }
+          ],
           request: { procedure: state.activeProcedure, parameters: currentProcedureValues(), confirmToken: payload.confirmationToken }
         });
         return;
@@ -5132,6 +5403,11 @@ window.createConsoleApp = function createConsoleApp() {
     if ($('loadAuditBtn')) {
       $('loadAuditBtn').onclick = openAuditFilters;
     }
+    if ($('openWorkbenchToolsBtn')) $('openWorkbenchToolsBtn').onclick = openWorkbenchTools;
+    if ($('closeWorkbenchToolsBtn')) $('closeWorkbenchToolsBtn').onclick = closeWorkbenchTools;
+    if ($('saveScratchpadBtn')) $('saveScratchpadBtn').onclick = saveCurrentScratchpad;
+    if ($('copyDiagnosticsBtn')) $('copyDiagnosticsBtn').onclick = copyDiagnostics;
+    if ($('commandSearchInput')) $('commandSearchInput').oninput = renderCommandPalette;
     if ($('closeAuditFiltersBtn')) $('closeAuditFiltersBtn').onclick = closeAuditFilters;
     if ($('clearAuditFiltersBtn')) $('clearAuditFiltersBtn').onclick = clearAuditFilters;
     if ($('applyAuditFiltersBtn')) $('applyAuditFiltersBtn').onclick = () => loadAudit().catch((error) => setStatus('error', error.message));
@@ -5257,6 +5533,11 @@ window.createConsoleApp = function createConsoleApp() {
     $('confirmModal').onclick = (event) => {
       if (event.target.id === 'confirmModal') closeConfirm();
     };
+    if ($('workbenchToolsDialog')) {
+      $('workbenchToolsDialog').onclick = (event) => {
+        if (event.target.id === 'workbenchToolsDialog') closeWorkbenchTools();
+      };
+    }
     document.querySelectorAll('[data-snippet]').forEach((button) => {
       button.onclick = () => {
         setWorkspace('sql');
@@ -5400,6 +5681,15 @@ window.createConsoleApp = function createConsoleApp() {
     window.__dataWorkbenchKeydownHandler = (event) => {
       if (event.key === 'Escape' && !$('confirmModal').classList.contains('hidden')) {
         closeConfirm();
+        return;
+      }
+      if (event.key === 'Escape' && !$('workbenchToolsDialog')?.classList.contains('hidden')) {
+        closeWorkbenchTools();
+        return;
+      }
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') {
+        event.preventDefault();
+        openWorkbenchTools();
         return;
       }
       if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
