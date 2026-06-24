@@ -93,7 +93,7 @@ For a clean Desktop shortcut on Windows, run:
 Create Desktop Shortcut.bat
 ```
 
-This creates a `Data Workbench Console` shortcut on the current user's Desktop. The shortcut uses the hidden launcher, shows a startup progress window, and opens the app in the browser when the local production server is ready.
+This creates a `Data Workbench Console` shortcut on the current user's Desktop. The shortcut uses the hidden launcher, opens a browser startup screen immediately, shows live percent/time-left progress while the local production server starts, and switches to SQL Studio automatically when the server is ready.
 
 The browser sends a local heartbeat while Data Workbench is open. When the final app tab is closed, the hidden local server shuts down after a two-hour inactivity grace period. Users can also click `Exit Data Workbench` in the app header to stop the server immediately.
 

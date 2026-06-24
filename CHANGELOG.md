@@ -32,6 +32,9 @@ Metadata, explorer, results, editor, audit, and regression coverage release.
   text, and limit.
 - Added metadata and UI smoke regression coverage for the new metadata,
   explorer, audit, and result-tab behavior.
+- Added an immediate browser startup screen for the Windows desktop launcher
+  with live progress, estimated time remaining, and automatic redirect when the
+  local server is ready.
 
 ### Changed
 

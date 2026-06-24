@@ -102,6 +102,29 @@ $logDir = Join-Path $projectDir '.data\logs'
 $launchLog = Join-Path $logDir 'data-workbench-launcher.log'
 $serverLog = Join-Path $logDir 'data-workbench-server.log'
 $iconPath = Join-Path $projectDir 'Data Workbench Console.ico'
+$launcherPagePath = Join-Path $projectDir 'launcher-loading.html'
+$openedLaunchPage = $false
+
+function ConvertTo-FileUri {
+    param([string]$Path)
+
+    return ([System.Uri]::new((Resolve-Path -LiteralPath $Path).Path)).AbsoluteUri
+}
+
+function Open-LauncherLoadingPage {
+    param([int]$ExpectedSeconds = 60)
+
+    if (-not (Test-Path -LiteralPath $launcherPagePath)) {
+        return $false
+    }
+
+    $target = [System.Uri]::EscapeDataString('http://localhost:3000/')
+    $ready = [System.Uri]::EscapeDataString('http://localhost:3000/launcher-ready.svg')
+    $timeout = [Math]::Max($ExpectedSeconds + 30, 120)
+    $launcherUrl = "$(ConvertTo-FileUri $launcherPagePath)?target=$target&ready=$ready&eta=$ExpectedSeconds&timeout=$timeout"
+    Start-Process $launcherUrl
+    return $true
+}
 
 function New-LauncherForm {
     $form = New-Object System.Windows.Forms.Form
@@ -285,6 +308,18 @@ try {
         Stop-ProjectServer
     }
 
+    $expectedLaunchSeconds = if (-not (Test-Path -LiteralPath (Join-Path $projectDir 'node_modules'))) {
+        110
+    } elseif (-not $buildCurrent) {
+        90
+    } else {
+        45
+    }
+    $openedLaunchPage = Open-LauncherLoadingPage -ExpectedSeconds $expectedLaunchSeconds
+    if ($openedLaunchPage) {
+        Update-Progress -Status 'Browser opened' -Value 9 -Detail 'The browser will redirect when the app is ready.'
+    }
+
     $npm = Get-NpmCommand
 
     Push-Location $projectDir
@@ -307,8 +342,11 @@ try {
         Update-Progress -Status 'Waiting for server' -Value $percent -Detail 'Checking http://localhost:3000'
         Start-Sleep -Seconds 1
         if (Test-AppHealth) {
-            Update-Progress -Status 'Ready' -Value 100 -Detail 'Opening browser.'
-            Start-Process 'http://localhost:3000'
+            $readyDetail = if ($openedLaunchPage) { 'Browser is redirecting to SQL Studio.' } else { 'Opening browser.' }
+            Update-Progress -Status 'Ready' -Value 100 -Detail $readyDetail
+            if (-not $openedLaunchPage) {
+                Start-Process 'http://localhost:3000'
+            }
             Start-Sleep -Milliseconds 500
             exit 0
         }

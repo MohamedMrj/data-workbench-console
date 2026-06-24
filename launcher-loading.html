@@ -1,0 +1,322 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Starting Data Workbench Console</title>
+  <style>
+    :root {
+      --bg: #071116;
+      --panel: #10212b;
+      --panel-strong: #142b36;
+      --line: rgba(167, 197, 213, 0.24);
+      --text: #edf5f7;
+      --muted: #91a9b5;
+      --accent: #22b8a8;
+      --accent-2: #f97316;
+      --danger: #ff6b57;
+      --shadow: 0 26px 80px rgba(0, 0, 0, 0.34);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      min-height: 100%;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      padding: 28px;
+      background:
+        linear-gradient(180deg, #071116 0%, #0d1b23 100%);
+      color: var(--text);
+      font-family: "Segoe UI", Arial, sans-serif;
+    }
+
+    main {
+      width: min(620px, 100%);
+      border: 1px solid var(--line);
+      border-radius: 22px;
+      background: linear-gradient(180deg, rgba(20, 43, 54, 0.96), rgba(12, 26, 34, 0.98));
+      box-shadow: var(--shadow);
+      padding: 30px;
+    }
+
+    .brand {
+      display: grid;
+      grid-template-columns: 48px minmax(0, 1fr);
+      gap: 14px;
+      align-items: center;
+      margin-bottom: 28px;
+    }
+
+    .mark {
+      width: 48px;
+      height: 48px;
+      border-radius: 14px;
+      border: 1px solid color-mix(in srgb, var(--accent) 42%, var(--line));
+      background: var(--panel-strong);
+      position: relative;
+    }
+
+    .mark span {
+      position: absolute;
+      left: 10px;
+      height: 6px;
+      border-radius: 999px;
+      background: linear-gradient(90deg, var(--accent), var(--accent-2));
+    }
+
+    .mark span:nth-child(1) {
+      top: 10px;
+      width: 28px;
+    }
+
+    .mark span:nth-child(2) {
+      top: 21px;
+      width: 20px;
+    }
+
+    .mark span:nth-child(3) {
+      top: 32px;
+      width: 12px;
+    }
+
+    .eyebrow {
+      margin: 0 0 3px;
+      color: color-mix(in srgb, var(--accent) 72%, white 28%);
+      font-size: 0.72rem;
+      font-weight: 700;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: clamp(1.55rem, 5vw, 2.1rem);
+      line-height: 1.1;
+    }
+
+    .status-row {
+      display: flex;
+      justify-content: space-between;
+      gap: 14px;
+      align-items: end;
+      margin-bottom: 10px;
+    }
+
+    #status {
+      margin: 0;
+      color: var(--muted);
+      line-height: 1.45;
+    }
+
+    #percent {
+      font-size: 2rem;
+      font-weight: 800;
+      color: var(--accent);
+      line-height: 1;
+      white-space: nowrap;
+    }
+
+    .bar {
+      position: relative;
+      height: 16px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.06);
+      overflow: hidden;
+    }
+
+    #barFill {
+      position: absolute;
+      inset: 0 auto 0 0;
+      width: 0%;
+      border-radius: inherit;
+      background: linear-gradient(90deg, var(--accent), var(--accent-2));
+      transition: width 0.35s ease;
+    }
+
+    .metrics {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px;
+      margin-top: 18px;
+    }
+
+    .metric {
+      min-width: 0;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: rgba(255, 255, 255, 0.045);
+      padding: 12px;
+    }
+
+    .metric span {
+      display: block;
+      color: var(--muted);
+      font-size: 0.76rem;
+      margin-bottom: 4px;
+    }
+
+    .metric strong {
+      display: block;
+      overflow-wrap: anywhere;
+      font-size: 1rem;
+    }
+
+    .hint {
+      margin: 18px 0 0;
+      color: var(--muted);
+      line-height: 1.5;
+      font-size: 0.92rem;
+    }
+
+    .failed #percent {
+      color: var(--danger);
+    }
+
+    .failed #barFill {
+      background: var(--danger);
+    }
+
+    @media (max-width: 560px) {
+      main {
+        padding: 22px;
+      }
+
+      .brand {
+        grid-template-columns: 1fr;
+      }
+
+      .metrics {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main id="card" aria-live="polite">
+    <div class="brand">
+      <div class="mark" aria-hidden="true"><span></span><span></span><span></span></div>
+      <div>
+        <p class="eyebrow">Local desktop startup</p>
+        <h1>Data Workbench Console</h1>
+      </div>
+    </div>
+
+    <div class="status-row">
+      <p id="status">Opening the local app...</p>
+      <div id="percent">0%</div>
+    </div>
+    <div class="bar" role="progressbar" aria-label="Startup progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+      <div id="barFill"></div>
+    </div>
+
+    <div class="metrics">
+      <div class="metric">
+        <span>Estimated time left</span>
+        <strong id="timeLeft">Calculating</strong>
+      </div>
+      <div class="metric">
+        <span>Remaining</span>
+        <strong id="remaining">100%</strong>
+      </div>
+      <div class="metric">
+        <span>Server check</span>
+        <strong id="checks">Waiting</strong>
+      </div>
+    </div>
+
+    <p class="hint" id="hint">This page will switch to SQL Studio automatically as soon as the local production server is ready.</p>
+  </main>
+
+  <script>
+    (function () {
+      const params = new URLSearchParams(window.location.search);
+      const target = params.get('target') || 'http://localhost:3000/';
+      const readyUrl = params.get('ready') || 'http://localhost:3000/launcher-ready.svg';
+      const etaSeconds = Math.max(10, Number(params.get('eta') || 60));
+      const timeoutSeconds = Math.max(etaSeconds + 15, Number(params.get('timeout') || 120));
+      const startedAt = Date.now();
+      let checks = 0;
+      let redirecting = false;
+
+      const card = document.getElementById('card');
+      const status = document.getElementById('status');
+      const percent = document.getElementById('percent');
+      const fill = document.getElementById('barFill');
+      const bar = document.querySelector('[role="progressbar"]');
+      const timeLeft = document.getElementById('timeLeft');
+      const remaining = document.getElementById('remaining');
+      const checksNode = document.getElementById('checks');
+      const hint = document.getElementById('hint');
+
+      function setProgress(value, message) {
+        const safe = Math.max(0, Math.min(100, Math.round(value)));
+        percent.textContent = safe + '%';
+        fill.style.width = safe + '%';
+        bar.setAttribute('aria-valuenow', String(safe));
+        remaining.textContent = Math.max(0, 100 - safe) + '%';
+        if (message) {
+          status.textContent = message;
+        }
+      }
+
+      function updateEstimate() {
+        if (redirecting) {
+          return;
+        }
+        const elapsedSeconds = (Date.now() - startedAt) / 1000;
+        const estimated = Math.min(98, (elapsedSeconds / etaSeconds) * 96);
+        const secondsLeft = Math.max(0, Math.ceil(etaSeconds - elapsedSeconds));
+        setProgress(estimated, checks ? 'Starting local server...' : 'Opening the local app...');
+        timeLeft.textContent = secondsLeft ? secondsLeft + 's' : 'Almost ready';
+        checksNode.textContent = checks ? checks + ' check' + (checks === 1 ? '' : 's') : 'Waiting';
+
+        if (elapsedSeconds > timeoutSeconds) {
+          card.classList.add('failed');
+          setProgress(100, 'Startup is taking longer than expected.');
+          timeLeft.textContent = 'Timed out';
+          remaining.textContent = '0%';
+          hint.textContent = 'Check the launcher window or .data/logs/data-workbench-launcher.log for details, then launch Data Workbench again.';
+        }
+      }
+
+      function checkReady() {
+        if (redirecting || card.classList.contains('failed')) {
+          return;
+        }
+
+        checks += 1;
+        const image = new Image();
+        image.onload = function () {
+          redirecting = true;
+          setProgress(100, 'Ready. Opening SQL Studio...');
+          timeLeft.textContent = '0s';
+          checksNode.textContent = 'Ready';
+          hint.textContent = 'Redirecting now.';
+          window.setTimeout(function () {
+            window.location.replace(target);
+          }, 500);
+        };
+        image.onerror = function () {
+          window.setTimeout(checkReady, 900);
+        };
+        image.src = readyUrl + (readyUrl.indexOf('?') === -1 ? '?' : '&') + 't=' + Date.now();
+        updateEstimate();
+      }
+
+      updateEstimate();
+      window.setInterval(updateEstimate, 500);
+      checkReady();
+    }());
+  </script>
+</body>
+</html>
