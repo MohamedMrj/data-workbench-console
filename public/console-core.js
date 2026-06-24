@@ -3412,6 +3412,106 @@ window.createConsoleApp = function createConsoleApp() {
     copyText(JSON.stringify(diagnosticsPayload(), null, 2), 'Diagnostics copied to clipboard.');
   }
 
+  function supportFieldValue(id) {
+    return String($(id)?.value || '').trim();
+  }
+
+  function selectedScreenshotName() {
+    const file = $('supportScreenshotInput')?.files?.[0];
+    return file?.name || '';
+  }
+
+  function updateSupportScreenshotNote() {
+    const note = $('supportScreenshotNote');
+    if (!note) return;
+    const fileName = selectedScreenshotName();
+    note.textContent = fileName
+      ? `Selected: ${fileName}. Attach it manually in the email draft before sending.`
+      : 'Optional. The email draft will remind you to attach the selected screenshot.';
+  }
+
+  function supportDiagnosticsText() {
+    const current = storageConnection();
+    const summary = currentActionSummary();
+    const version = state.versionInfo || {};
+    const diagnostics = {
+      version: version.version ? `v${version.version}` : 'unknown',
+      commit: version.localCommitShort || 'unknown',
+      workspace: state.workspace,
+      sourceType: current.sourceType,
+      authMode: current.authMode,
+      server: current.server || 'not set',
+      database: current.database || 'not set',
+      activeObject: state.activeObject || '',
+      activeProcedure: state.activeProcedure || '',
+      queryAction: summary.action,
+      queryRisk: summary.risk,
+      querySize: `${summary.lines} lines / ${summary.chars} chars`,
+      catalog: `${state.objects.length} objects / ${state.procedures.length} procedures`,
+      resultTabs: `${state.resultTabs.length}/${RESULT_TABS_MAX}`,
+      theme: state.currentTheme,
+      browser: navigator.userAgent,
+      time: new Date().toISOString()
+    };
+    return Object.entries(diagnostics).map(([key, value]) => `${key}: ${value}`).join('\n');
+  }
+
+  function buildSupportReport() {
+    const title = supportFieldValue('supportTitleInput') || 'Data Workbench support report';
+    const screenshot = selectedScreenshotName();
+    const includeDiagnostics = $('supportDiagnosticsInput')?.checked !== false;
+    const lines = [
+      `Title: ${title}`,
+      `Area: ${supportFieldValue('supportAreaSelect') || 'Other'}`,
+      `Severity: ${supportFieldValue('supportSeveritySelect') || 'Bug'}`,
+      `Reporter name: ${supportFieldValue('supportNameInput') || 'Not provided'}`,
+      `Reporter email: ${supportFieldValue('supportEmailInput') || 'Not provided'}`,
+      '',
+      'What happened:',
+      supportFieldValue('supportDescriptionInput') || 'Not provided',
+      '',
+      'Steps to reproduce:',
+      supportFieldValue('supportStepsInput') || 'Not provided',
+      '',
+      'Screenshot:',
+      screenshot ? `${screenshot} selected. Please attach it to this email before sending.` : 'No screenshot selected.'
+    ];
+    if (includeDiagnostics) {
+      lines.push('', 'Safe diagnostics:', supportDiagnosticsText());
+    }
+    lines.push('', 'No passwords, client secrets, or saved credentials are included by this report form.');
+    return { title, body: lines.join('\n') };
+  }
+
+  function openSupportDialog() {
+    const dialog = $('supportDialog');
+    if (!dialog) return;
+    updateSupportScreenshotNote();
+    dialog.classList.remove('hidden');
+    dialog.setAttribute('aria-hidden', 'false');
+    $('supportTitleInput')?.focus();
+  }
+
+  function closeSupportDialog() {
+    const dialog = $('supportDialog');
+    if (!dialog) return;
+    dialog.classList.add('hidden');
+    dialog.setAttribute('aria-hidden', 'true');
+  }
+
+  function copySupportReport() {
+    const report = buildSupportReport();
+    copyText(report.body, 'Support report copied. Paste it into an email if the draft does not open.');
+  }
+
+  function sendSupportReport() {
+    const report = buildSupportReport();
+    copyText(report.body, 'Support report copied. Review the email draft before sending.');
+    const subject = encodeURIComponent(`[Data Workbench] ${report.title}`);
+    const body = encodeURIComponent(report.body);
+    window.location.href = `mailto:${SUPPORT_EMAIL}?subject=${subject}&body=${body}`;
+  }
+
   function refreshActiveSummary() {
     const target = $('activeTarget');
     const meta = $('activeMeta');
@@ -5405,10 +5505,15 @@ window.createConsoleApp = function createConsoleApp() {
       $('loadAuditBtn').onclick = openAuditFilters;
     }
     if ($('openWorkbenchToolsBtn')) $('openWorkbenchToolsBtn').onclick = openWorkbenchTools;
+    if ($('openSupportBtn')) $('openSupportBtn').onclick = openSupportDialog;
     if ($('closeWorkbenchToolsBtn')) $('closeWorkbenchToolsBtn').onclick = closeWorkbenchTools;
+    if ($('closeSupportBtn')) $('closeSupportBtn').onclick = closeSupportDialog;
     if ($('saveScratchpadBtn')) $('saveScratchpadBtn').onclick = saveCurrentScratchpad;
     if ($('copyDiagnosticsBtn')) $('copyDiagnosticsBtn').onclick = copyDiagnostics;
+    if ($('copySupportReportBtn')) $('copySupportReportBtn').onclick = copySupportReport;
+    if ($('sendSupportReportBtn')) $('sendSupportReportBtn').onclick = sendSupportReport;
     if ($('commandSearchInput')) $('commandSearchInput').oninput = renderCommandPalette;
+    if ($('supportScreenshotInput')) $('supportScreenshotInput').onchange = updateSupportScreenshotNote;
     if ($('closeAuditFiltersBtn')) $('closeAuditFiltersBtn').onclick = closeAuditFilters;
     if ($('clearAuditFiltersBtn')) $('clearAuditFiltersBtn').onclick = clearAuditFilters;
     if ($('applyAuditFiltersBtn')) $('applyAuditFiltersBtn').onclick = () => loadAudit().catch((error) => setStatus('error', error.message));
@@ -5537,6 +5642,11 @@ window.createConsoleApp = function createConsoleApp() {
     if ($('workbenchToolsDialog')) {
       $('workbenchToolsDialog').onclick = (event) => {
         if (event.target.id === 'workbenchToolsDialog') closeWorkbenchTools();
+      };
+    }
+    if ($('supportDialog')) {
+      $('supportDialog').onclick = (event) => {
+        if (event.target.id === 'supportDialog') closeSupportDialog();
       };
     }
     document.querySelectorAll('[data-snippet]').forEach((button) => {
@@ -5686,6 +5796,10 @@ window.createConsoleApp = function createConsoleApp() {
       }
       if (event.key === 'Escape' && !$('workbenchToolsDialog')?.classList.contains('hidden')) {
         closeWorkbenchTools();
+        return;
+      }
+      if (event.key === 'Escape' && !$('supportDialog')?.classList.contains('hidden')) {
+        closeSupportDialog();
         return;
       }
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') {

@@ -522,12 +522,29 @@ assertVisibleAffordance(sqlWindow, '#queryEditor', 'SQL editor');
 if (sqlWindow.document.querySelector('.results-card')?.dataset.resultsState !== 'empty') {
   throw new Error('Empty results should mark the results card as empty for compact sizing.');
 }
-['saveConnectionBtn', 'testConnectionBtn', 'loadTablesBtn', 'runQueryBtn', 'clearHistoryBtn', 'toggleAdvancedOperationsBtn', 'insertSelectTemplateBtn', 'updateJoinTemplateBtn', 'mergePreviewBtn', 'profileObjectBtn', 'dependencyViewBtn', 'insertSqlHelperBtn', 'wrapSqlHelperBtn', 'openWorkbenchToolsBtn', 'scrollResultsLeftBtn', 'scrollResultsRightBtn', 'scrollResultsDockLeftBtn', 'scrollResultsDockRightBtn'].forEach((id) => {
+['saveConnectionBtn', 'testConnectionBtn', 'loadTablesBtn', 'runQueryBtn', 'clearHistoryBtn', 'toggleAdvancedOperationsBtn', 'insertSelectTemplateBtn', 'updateJoinTemplateBtn', 'mergePreviewBtn', 'profileObjectBtn', 'dependencyViewBtn', 'insertSqlHelperBtn', 'wrapSqlHelperBtn', 'openWorkbenchToolsBtn', 'openSupportBtn', 'scrollResultsLeftBtn', 'scrollResultsRightBtn', 'scrollResultsDockLeftBtn', 'scrollResultsDockRightBtn'].forEach((id) => {
   const element = sqlWindow.document.getElementById(id);
   if (!element || typeof element.onclick !== 'function') {
     throw new Error(`Expected ${id} to be wired on the SQL page.`);
   }
 });
+sqlWindow.document.getElementById('openSupportBtn').click();
+await flush();
+if (sqlWindow.document.getElementById('supportDialog').classList.contains('hidden')) {
+  throw new Error('Support dialog did not open.');
+}
+sqlWindow.document.getElementById('supportTitleInput').value = 'Smoke support bug';
+sqlWindow.document.getElementById('supportDescriptionInput').value = 'Support smoke description';
+sqlWindow.document.getElementById('copySupportReportBtn').click();
+await flush();
+if (!sqlWindow.__lastClipboardText.includes('Smoke support bug') || !sqlWindow.__lastClipboardText.includes('Safe diagnostics')) {
+  throw new Error('Copy support report did not write the report with diagnostics to the clipboard.');
+}
+sqlWindow.document.getElementById('closeSupportBtn').click();
+await flush();
+if (!sqlWindow.document.getElementById('supportDialog').classList.contains('hidden')) {
+  throw new Error('Support dialog did not close.');
+}
 sqlWindow.document.getElementById('openWorkbenchToolsBtn').click();
 await flush();
 if (sqlWindow.document.getElementById('workbenchToolsDialog').classList.contains('hidden')) {
