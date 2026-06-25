@@ -70,6 +70,9 @@ try {
   assert.equal(health.response.status, 200);
   assert.equal(health.payload.ok, true);
   assert.equal(health.response.headers.get('x-content-type-options'), 'nosniff');
+  assert.equal(health.payload.sidePanels.autoHideEnabled, true);
+  assert.equal(typeof health.payload.sidePanels.idleMs, 'number');
+  assert.equal(typeof health.payload.sidePanels.fadeMs, 'number');
 
   const version = await request('/api/version');
   assert.equal(version.response.status, 200);
@@ -83,6 +86,7 @@ try {
   const clientSecretField = envSettings.payload.settings.find((field) => field.key === 'AZURE_CLIENT_SECRET');
   assert.equal(clientSecretField?.value, '');
   assert.equal(clientSecretField?.secret, true);
+  assert.equal(envSettings.payload.settings.some((field) => field.key === 'APP_SIDE_PANEL_IDLE_MS'), true);
 
   const envWriteBlocked = await request('/api/env-settings', {
     method: 'POST',

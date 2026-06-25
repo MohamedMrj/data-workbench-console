@@ -19,8 +19,8 @@ window.createConsoleApp = function createConsoleApp() {
   const SUPPORT_EMAIL = 'mohamed.al-mefrej@hotmail.com';
   const RESULT_TABS_MAX = 5;
   const LIFECYCLE_HEARTBEAT_MS = 10_000;
-  const SIDE_PANEL_IDLE_MS = Math.max(0, Number(window.__dataWorkbenchTestConfig?.sidePanelIdleMs ?? 10_000));
-  const SIDE_PANEL_FADE_MS = Math.max(0, Number(window.__dataWorkbenchTestConfig?.sidePanelFadeMs ?? 800));
+  const DEFAULT_SIDE_PANEL_IDLE_MS = 10_000;
+  const DEFAULT_SIDE_PANEL_FADE_MS = 800;
   const THEMES = ['midnight', 'harbor', 'forge', 'field', 'ink', 'paper'];
   const CONNECTION_HISTORY_MAX = 12;
   const QUERY_HISTORY_MAX = 20;
@@ -681,10 +681,20 @@ window.createConsoleApp = function createConsoleApp() {
     return hasFocus || hovered;
   }
 
+  function sidePanelTimingMs(testValue, healthValue, fallback) {
+    const raw = testValue ?? healthValue ?? fallback;
+    const value = Number(raw);
+    return Number.isFinite(value) ? Math.max(0, value) : fallback;
+  }
+
   function scheduleSidePanelAutoHide(panelName) {
     const config = sidePanelConfig(panelName);
     clearSidePanelAutoHide(panelName);
-    if (!config.element || state.sidePanels[config.stateKey]) {
+    const sidePanelSettings = state.health?.sidePanels || {};
+    const autoHideEnabled = window.__dataWorkbenchTestConfig?.sidePanelAutoHideEnabled ?? sidePanelSettings.autoHideEnabled ?? true;
+    const idleMs = sidePanelTimingMs(window.__dataWorkbenchTestConfig?.sidePanelIdleMs, sidePanelSettings.idleMs, DEFAULT_SIDE_PANEL_IDLE_MS);
+    const configuredFadeMs = sidePanelTimingMs(window.__dataWorkbenchTestConfig?.sidePanelFadeMs, sidePanelSettings.fadeMs, DEFAULT_SIDE_PANEL_FADE_MS);
+    if (!autoHideEnabled || !config.element || state.sidePanels[config.stateKey]) {
       return;
     }
 
@@ -698,14 +708,14 @@ window.createConsoleApp = function createConsoleApp() {
       const shell = document.querySelector('.app-shell');
       shell?.classList.add(config.fadingClass);
       const reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches;
-      const fadeMs = reducedMotion ? 0 : SIDE_PANEL_FADE_MS;
+      const fadeMs = reducedMotion ? 0 : configuredFadeMs;
       state.sidePanelFadeTimers[panelName] = window.setTimeout(() => {
         state.sidePanelFadeTimers[panelName] = null;
         shell?.classList.remove(config.fadingClass);
         state.sidePanels[config.stateKey] = true;
         syncResizablePanels();
       }, fadeMs);
-    }, SIDE_PANEL_IDLE_MS);
+    }, idleMs);
   }
 
   function resetSidePanelAutoHide(panelName) {

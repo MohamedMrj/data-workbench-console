@@ -5,6 +5,34 @@ All notable Data Workbench Console changes are tracked here.
 The in-app version is read from `package.json` and exposed through `/api/version`
 together with the current git commit and build information.
 
+## 1.4.1 - 2026-06-25
+
+Production usability patch for configurable side-panel behavior.
+
+### Added
+
+- Added `.env` settings for side-panel auto-hide behavior:
+  `APP_SIDE_PANEL_AUTO_HIDE_ENABLED`, `APP_SIDE_PANEL_IDLE_MS`, and
+  `APP_SIDE_PANEL_FADE_MS`.
+- Exposed side-panel auto-hide configuration through `/api/health` so the
+  browser uses server/runtime settings instead of hardcoded timing.
+- Added the side-panel auto-hide settings to the in-app Settings editor with
+  validation, descriptions, and restart guidance.
+
+### Changed
+
+- The default side-panel behavior remains unchanged: auto-hide enabled, 10
+  second idle delay, and 800 ms fade duration.
+- Documentation now explains that panel auto-hide can be adjusted or disabled
+  from Settings.
+
+### Verification
+
+- `npm run build`
+- `node scripts/server-unit.test.mjs`
+- `node scripts/route-contract.test.mjs`
+- `node scripts/ui-smoke.mjs`
+
 ## 1.4.0 - 2026-06-25
 
 Workbench usability, support, documentation, and Lakehouse metadata hardening release.

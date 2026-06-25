@@ -56,6 +56,11 @@ function attachMocks(window) {
         writePreviewLimit: 10,
         heightenedConfirmLimit: 3,
         responseRowLimit: 250,
+        sidePanels: {
+          autoHideEnabled: true,
+          idleMs: 10000,
+          fadeMs: 800
+        },
         supportedSourceTypes: [
           { id: 'fabric-sql', label: 'Fabric SQL endpoint', authModes: ['servicePrincipal'], supportsProcedures: true },
           { id: 'fabric-lakehouse', label: 'Fabric Lakehouse SQL endpoint', authModes: ['servicePrincipal'], supportsProcedures: false },
@@ -232,6 +237,40 @@ function attachMocks(window) {
             secret: true,
             description: 'Client secret.',
             appropriate: 'Leave blank to keep current.',
+            restartRequired: true
+          },
+          {
+            key: 'APP_SIDE_PANEL_AUTO_HIDE_ENABLED',
+            group: 'runtime',
+            type: 'boolean',
+            label: 'Side panel auto-hide',
+            value: 'true',
+            description: 'Controls side panel auto-hide.',
+            appropriate: 'Use true.',
+            restartRequired: true
+          },
+          {
+            key: 'APP_SIDE_PANEL_IDLE_MS',
+            group: 'runtime',
+            type: 'number',
+            min: 1000,
+            max: 3600000,
+            label: 'Side panel idle delay',
+            value: '10000',
+            description: 'Idle delay.',
+            appropriate: '10000 means 10 seconds.',
+            restartRequired: true
+          },
+          {
+            key: 'APP_SIDE_PANEL_FADE_MS',
+            group: 'runtime',
+            type: 'number',
+            min: 0,
+            max: 10000,
+            label: 'Side panel fade duration',
+            value: '800',
+            description: 'Fade duration.',
+            appropriate: '800 is default.',
             restartRequired: true
           }
         ],
@@ -591,6 +630,9 @@ if (sqlWindow.document.getElementById('envSettingsDialog').classList.contains('h
 }
 if (!sqlWindow.document.getElementById('envSettingsContent').textContent.includes('App port')) {
   throw new Error('App settings did not render editable settings.');
+}
+if (!sqlWindow.document.getElementById('envSettingsContent').textContent.includes('Side panel idle delay')) {
+  throw new Error('App settings did not render side panel auto-hide controls.');
 }
 const secretInput = sqlWindow.document.querySelector('[data-env-key="AZURE_CLIENT_SECRET"]');
 if (!secretInput || secretInput.value !== '') {

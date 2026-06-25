@@ -15,6 +15,11 @@ const healthPayload = {
   writePreviewLimit: 10,
   heightenedConfirmLimit: 3,
   responseRowLimit: 250,
+  sidePanels: {
+    autoHideEnabled: true,
+    idleMs: 10000,
+    fadeMs: 800
+  },
   supportedSourceTypes: [
     { id: 'fabric-sql', label: 'Fabric SQL endpoint', authModes: ['servicePrincipal'], supportsProcedures: true },
     { id: 'fabric-lakehouse', label: 'Fabric Lakehouse SQL endpoint', authModes: ['servicePrincipal'], supportsProcedures: false },
