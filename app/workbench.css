@@ -129,6 +129,10 @@
   overflow: visible;
 }
 
+.app-shell[data-layout-mode="stacked"] .control-rail .grow-section .saved-connections {
+  max-height: 320px;
+}
+
 .app-shell[data-layout-mode="stacked"] .control-rail > .panel-section + .panel-section {
   padding-top: 0;
   border-top: 0;
@@ -280,17 +284,18 @@
 
 .control-rail .grow-section {
   display: flex;
-  flex: 1 1 auto;
+  flex: 0 0 auto;
   flex-direction: column;
 }
 
-/* Make the saved-connections list fill whatever extra space the
-   control-rail has, so the card doesn't end with dead space below its
-   last visible section. The clamp still caps it if the list ends up
-   being very long. */
 .control-rail .grow-section .saved-connections {
-  flex: 1 1 auto;
-  max-height: none;
+  flex: 0 1 auto;
+  max-height: clamp(220px, 34vh, 520px);
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-right: 8px;
+  scrollbar-gutter: stable;
+  overscroll-behavior: contain;
 }
 
 .section-title-row {
