@@ -7,6 +7,7 @@ export const metadata = {
 
 const sections = [
   { id: 'overview', label: 'Overview' },
+  { id: 'workspace-controls', label: 'Workspace controls' },
   { id: 'connection', label: 'Connect' },
   { id: 'explorer', label: 'Explorer' },
   { id: 'builder', label: 'Build SQL' },
@@ -53,6 +54,26 @@ export default function SqlStudioDocsPage() {
         </div>
       </DocsSection>
 
+      <DocsSection id="workspace-controls" title="Workspace Controls And Support" intro="The top workspace buttons are shared across SQL Studio and Procedure Runner. They control documentation, support, tools, panels, and the local desktop server.">
+        <div className="docs-table">
+          <div><strong>Documentation</strong><span>Opens this guide in a new tab. Use it when you need button behavior, requirements, source support, or troubleshooting details.</span></div>
+          <div><strong>Tools</strong><span>Opens Workbench Tools. Use it for quick actions, SQL safety summary, capability checks, scratchpads, and diagnostics.</span></div>
+          <div><strong>Support</strong><span>Opens a bug-report form. Fill in title, area, severity, description, reproduction steps, and optional screenshot, then open an email draft to support.</span></div>
+          <div><strong>Hide / Show connection panel</strong><span>Collapses or restores the left connection rail. Use it when you need more space for query building or result inspection.</span></div>
+          <div><strong>Hide / Show themes & history</strong><span>Collapses or restores the right activity panel. Use it when history and themes are not needed for the current task.</span></div>
+          <div><strong>Exit Data Workbench</strong><span>Requests shutdown of the local desktop server. Use it when you are done with the app, not just when you want to close a tab.</span></div>
+        </div>
+        <DocsMiniSection title="Workbench Tools">
+          <p><strong>Quick actions</strong> can load catalog, run the current query, format SQL, save a scratchpad, open audit filters, profile the active object, load dependencies, or script ALTER/Edit for the active object.</p>
+          <p><strong>Current SQL</strong> summarizes detected action, risk, builder mode, target object, selected columns, filters, and editor size. Use it before running copied or generated SQL.</p>
+          <p><strong>Scratchpads</strong> save temporary SQL locally for quick restore. Use them for drafts that are not ready for query history or source control.</p>
+          <p><strong>Diagnostics</strong> shows safe app/session context and can copy a diagnostic payload for support. It does not include passwords or client secrets.</p>
+        </DocsMiniSection>
+        <DocsMiniSection title="Support reports">
+          <p>The Support form prepares an email to <code>mohamed.al-mefrej@hotmail.com</code> and copies the report text. Browser email drafts cannot attach screenshots automatically, so attach the selected screenshot manually before sending.</p>
+        </DocsMiniSection>
+      </DocsSection>
+
       <DocsSection id="connection" title="Connect To A Source" intro="The connection rail defines where catalog loads and queries run. Saved profiles fill in fields, but they do not automatically connect or execute anything.">
         <div className="docs-table">
           <div><strong>Source type</strong><span>Choose Fabric SQL endpoint, Fabric Lakehouse SQL endpoint, or SQL Server.</span></div>
@@ -63,8 +84,8 @@ export default function SqlStudioDocsPage() {
           <div><strong>SQL login fields</strong><span>Username and password appear only for SQL login mode. Passwords are used for the current session and are not saved in profiles.</span></div>
           <div><strong>Trust certificate</strong><span>SQL Server can show a trust-server-certificate toggle when that environment requires it.</span></div>
           <div><strong>Test connection</strong><span>Verifies server, database, authentication mode, and credentials before you load metadata.</span></div>
-          <div><strong>Load catalog</strong><span>Loads tables, views, and procedures when the selected source supports them.</span></div>
-          <div><strong>Saved profiles</strong><span>Save reusable source, auth mode, server, port, database, username, and trust settings. Secrets are not stored.</span></div>
+          <div><strong>Load catalog</strong><span>Loads tables, views, and procedures when the selected source supports them. Required before object selection, scripting, profiling, dependency view, pins/recent filtering, and most advanced operations.</span></div>
+          <div><strong>Saved profiles</strong><span>Save reusable source, auth mode, server, port, database, username, and trust settings. Secrets are not stored. Clicking a saved profile loads its catalog automatically when the profile has enough connection information.</span></div>
         </div>
         <DocsExample title="Good connection flow">
           <ol>
@@ -93,15 +114,23 @@ export default function SqlStudioDocsPage() {
 
       <DocsSection id="builder" title="Query Builder" intro="The builder turns the selected object and columns into editable SQL. Generated SQL is a starting point, not a locked query.">
         <div className="docs-table">
+          <div><strong>Preview rows</strong><span>Switches to Select mode, sets TOP rows to 100, and regenerates a read query. Requires an active table or view.</span></div>
+          <div><strong>Count rows</strong><span>Loads a <code>COUNT_BIG(*)</code> query into the editor for the active object. Requires an active table or view.</span></div>
+          <div><strong>Reset</strong><span>Clears selected columns, filters, sort, TOP, and DISTINCT back to defaults. Use it when builder state no longer matches the query you want.</span></div>
           <div><strong>Select</strong><span>Builds a read query with selected columns, filters, sort, TOP rows, and DISTINCT.</span></div>
           <div><strong>Insert</strong><span>Creates an INSERT template. Review values before running.</span></div>
           <div><strong>Update</strong><span>Creates an UPDATE template. A WHERE clause is required before execution.</span></div>
           <div><strong>Delete</strong><span>Creates a DELETE template. A WHERE clause is required before execution.</span></div>
+          <div><strong>All / Clear columns</strong><span>Selects all loaded columns or clears explicit column choices. Clear means the generated SELECT returns the default/all column set.</span></div>
           <div><strong>Filters</strong><span>Add one or more conditions. Supported operators include comparisons, LIKE, IS NULL, and IS NOT NULL.</span></div>
+          <div><strong>Add filter</strong><span>Adds a filter row. Pick a column, operator, and value before generating or inserting a usable WHERE clause.</span></div>
           <div><strong>Sort and limit</strong><span>Choose sort column, direction, TOP rows, and DISTINCT for generated reads.</span></div>
           <div><strong>Refresh SQL</strong><span>Rebuilds the editor text from the current builder selections when you want to discard manual edits and return to the generated template.</span></div>
           <div><strong>Script CREATE</strong><span>Loads a CREATE script for the active table, view, or procedure into the SQL editor for review.</span></div>
           <div><strong>Script ALTER/Edit</strong><span>Loads an editable ALTER-style script where the source supports it. The script is not executed automatically.</span></div>
+          <div><strong>Insert WHERE</strong><span>Inserts or rebuilds a WHERE clause from completed filter rows. Requires at least one complete filter.</span></div>
+          <div><strong>Insert ORDER BY</strong><span>Inserts an ORDER BY clause from the selected sort column and direction. If no sort column is selected, it inserts a placeholder.</span></div>
+          <div><strong>Join note</strong><span>Inserts a comment template for documenting an intended join. Use it as a reminder before manually writing joins.</span></div>
         </div>
         <DocsExample title="Example generated read">
           <pre>{`SELECT TOP (100)
@@ -130,26 +159,42 @@ ORDER BY [CreatedUtc] DESC;`}</pre>
             { title: 'Text size', text: 'Use A- and A+ to tune editor readability. The editor adapter preserves textarea behavior and can use Monaco when available.' }
           ]}
         />
+        <div className="docs-table">
+          <div><strong>A- / A+</strong><span>Decrease or increase SQL editor font size. Use it for long review sessions or projected screens.</span></div>
+          <div><strong>Format</strong><span>Formats common SQL clauses. Use it before review, especially after loading scripts or helper snippets.</span></div>
+          <div><strong>Copy</strong><span>Copies the full editor SQL to the clipboard.</span></div>
+          <div><strong>Clear</strong><span>Clears the editor. It does not clear builder state, history, or result tabs.</span></div>
+          <div><strong>Run query</strong><span>Runs the current editor text through the existing query API. Writes still require preview and confirmation.</span></div>
+        </div>
         <DocsMiniSection title="SQL helper">
           <p>The helper inserts common expressions such as <code>CONCAT</code>, <code>REPLACE</code>, <code>TRY_CONVERT</code>, <code>COALESCE</code>, <code>CASE</code>, <code>DATEADD</code>, and <code>HASHBYTES</code> templates.</p>
+          <p><strong>Insert helper</strong> inserts the selected expression at the cursor. <strong>Wrap selection</strong> wraps selected text or the preferred active column with the helper expression.</p>
         </DocsMiniSection>
         <DocsMiniSection title="Keyboard shortcuts">
           <p><span className="docs-kbd">Ctrl</span> + <span className="docs-kbd">Enter</span> runs the current query. <span className="docs-kbd">Ctrl</span> + <span className="docs-kbd">Shift</span> + <span className="docs-kbd">F</span> formats SQL.</p>
         </DocsMiniSection>
       </DocsSection>
 
-      <DocsSection id="advanced" title="Advanced Tools" intro="Advanced tools help create cross-object templates and run read-only object analysis without leaving SQL Studio.">
+      <DocsSection id="advanced" title="Advanced Operations And Object Analysis" intro="Advanced Operations create cross-object SQL templates. Object Analysis runs read-only metadata or profiling requests against the current connection.">
+        <DocsMiniSection title="Template context requirements">
+          <p>Advanced templates require an active target object from Object Explorer. For cross-object templates, load the catalog, choose a source object in Template Context, choose a target key, and confirm or edit the source key. Profile sample rows controls how many rows read-only profiling should sample.</p>
+        </DocsMiniSection>
         <div className="docs-table">
-          <div><strong>INSERT SELECT</strong><span>Creates a review template for loading one object from another object.</span></div>
-          <div><strong>UPDATE JOIN</strong><span>Creates a review template for joining source and target objects by key.</span></div>
-          <div><strong>MERGE preview</strong><span>Creates a MERGE review template only. MERGE execution is blocked by the app.</span></div>
-          <div><strong>Sample profile</strong><span>Runs a read-only sample profile and shows completeness, nulls, and simple column characteristics.</span></div>
-          <div><strong>Dependency view</strong><span>Loads read-only dependency information plus graph metadata where the source supports it.</span></div>
-          <div><strong>Row count</strong><span>Loads metadata row counts where available without changing the object.</span></div>
-          <div><strong>Top values</strong><span>Groups selected columns and returns the most common values for quick inspection.</span></div>
-          <div><strong>Result shape</strong><span>Describes read-query output columns without executing the query where supported.</span></div>
-          <div><strong>Schema compare</strong><span>Compares the active object with the selected source object, or with itself when no source object is selected.</span></div>
-          <div><strong>Estimated plan</strong><span>Requests a non-executing estimated plan for read queries when the source and permissions allow it.</span></div>
+          <div><strong>Hide / Show advanced</strong><span>Collapses or expands the Advanced Operations panel. The preference is saved locally.</span></div>
+          <div><strong>Source object</strong><span>The companion object used by Insert SELECT, Update JOIN, MERGE preview, and Schema compare. Requires catalog metadata.</span></div>
+          <div><strong>Profile sample rows</strong><span>Maximum sample size used by Sample profile. Use smaller values for large or sensitive tables.</span></div>
+          <div><strong>Target key</strong><span>Column on the active object used as the join key in generated cross-object templates.</span></div>
+          <div><strong>Source key</strong><span>Column or expression on the source object. Defaults to the target key name when possible, but should always be reviewed.</span></div>
+          <div><strong>Insert SELECT</strong><span>Creates an INSERT...SELECT review template for loading the active target object from a source object. Requires active target, source object, and column metadata.</span></div>
+          <div><strong>Update JOIN</strong><span>Creates an UPDATE...FROM JOIN review template. Requires target key/source key and should be scoped before execution.</span></div>
+          <div><strong>MERGE preview</strong><span>Creates a MERGE review template only. MERGE execution is blocked by the app; use it for design review or copy into a controlled deployment process.</span></div>
+          <div><strong>Sample profile</strong><span>Runs a read-only profile for the active object, using the sample-row setting. Use it to inspect nulls, completeness, and simple column characteristics before writing SQL.</span></div>
+          <div><strong>Dependency view</strong><span>Loads dependency rows plus graph-friendly upstream/downstream metadata where the source exposes dependencies. Best for views/procedures and SQL Server/Fabric SQL metadata.</span></div>
+          <div><strong>Row count</strong><span>Loads metadata row counts where available. Use it for fast size checks before previewing rows or profiling.</span></div>
+          <div><strong>Top values</strong><span>Groups selected or relevant columns and returns common values, null counts, and blanks where supported. Use it to understand categorical fields.</span></div>
+          <div><strong>Schema compare</strong><span>Compares columns and supported constraints/index metadata between active and source objects. Use it before copying data or creating migration SQL.</span></div>
+          <div><strong>Result shape</strong><span>Describes read-query output columns without executing the full query where supported. Requires a readable SQL statement in the editor.</span></div>
+          <div><strong>Estimated plan</strong><span>Requests a non-executing estimated plan for read statements. Requires source support and SHOWPLAN-style permission.</span></div>
         </div>
         <DocsExample title="Example UPDATE JOIN template">
           <pre>{`UPDATE tgt
@@ -159,20 +204,26 @@ INNER JOIN [staging].[AlertUpdates] AS src
     ON tgt.[AlertId] = src.[AlertId]
 WHERE <review scope before execution>;`}</pre>
         </DocsExample>
+        <div className="docs-callout docs-callout-warning">
+          Advanced templates are loaded into the SQL editor only. They do not execute automatically, and all execution still goes through the normal query classifier, preview, and confirmation path.
+        </div>
       </DocsSection>
 
       <DocsSection id="results" title="Results Panel" intro="Results are designed for inspection first: read the shape, filter locally, inspect long values, then copy or export what you need.">
         <ul className="docs-check-list">
           <li><strong>Result tabs</strong> keep up to five query, procedure, and metadata results available for quick comparison.</li>
+          <li><strong>A- / A+</strong> changes result text size for dense data or screen sharing.</li>
           <li><strong>Local filter</strong> filters rows already returned to the browser. It does not run a new database query.</li>
           <li><strong>Sorting</strong> sorts visible result rows by a column.</li>
           <li><strong>Pagination</strong> keeps large returned sets easier to scan.</li>
+          <li><strong>Prev / Next</strong> moves through local result pages without re-running the query.</li>
+          <li><strong>Columns arrows</strong> scroll wide result tables horizontally without using the browser scrollbar.</li>
           <li><strong>Column resizing</strong> lets you widen important columns and reset by double-clicking handles.</li>
           <li><strong>NULL values</strong> appear as a visible pill so blanks are easier to distinguish from missing data.</li>
           <li><strong>Long JSON/text</strong> is collapsed with Show more / Show less, while copy/export still uses the full value.</li>
           <li><strong>Cell context menu</strong> can copy the clicked cell value, column name, formatted JSON, or the whole row as JSON/CSV.</li>
           <li><strong>Copy rows</strong> and <strong>Export CSV</strong> use the current result data.</li>
-          <li><strong>Audit log</strong> opens filters for event, outcome, action, source type, database, search text, and limit.</li>
+          <li><strong>Audit log</strong> opens filters for event, outcome, action, source type, database, search text, and limit. Use it to review metadata reads, query previews, confirmations, executions, and errors.</li>
         </ul>
       </DocsSection>
 
@@ -185,7 +236,9 @@ WHERE <review scope before execution>;`}</pre>
           <div><strong>Workspace restore</strong><span>Editor text, cursor position, filters, sort, result tabs, pagination, and active object are restored for the same browser tab and connection.</span></div>
           <div><strong>Saved profiles</strong><span>Server/database profile details can be saved. Passwords and service principal secrets are not saved.</span></div>
           <div><strong>Themes</strong><span>Choose a theme in the activity panel. The selected theme is saved locally and also applies to documentation pages.</span></div>
+          <div><strong>Clear history</strong><span>Clears the current workspace history list. SQL history and procedure history are separate.</span></div>
           <div><strong>Panel layout</strong><span>Resize the connection rail, explorer, activity panel, and results height on wide layouts. Hide/show state and sizes are saved locally.</span></div>
+          <div><strong>Panel auto-hide</strong><span>When side panels are visible but unused, they fade and collapse after the idle delay. Interacting with a panel resets its timer.</span></div>
         </div>
       </DocsSection>
 

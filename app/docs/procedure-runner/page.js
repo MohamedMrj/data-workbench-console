@@ -7,8 +7,9 @@ export const metadata = {
 
 const sections = [
   { id: 'overview', label: 'Overview' },
+  { id: 'workspace-controls', label: 'Workspace controls' },
   { id: 'connection', label: 'Connect' },
-  { id: 'support', label: 'Support' },
+  { id: 'sources', label: 'Supported sources' },
   { id: 'explorer', label: 'Explorer' },
   { id: 'parameters', label: 'Parameters' },
   { id: 'execution', label: 'Run flow' },
@@ -54,6 +55,25 @@ export default function ProcedureRunnerDocsPage() {
         </div>
       </DocsSection>
 
+      <DocsSection id="workspace-controls" title="Workspace Controls And Support" intro="The top workspace buttons are shared across SQL Studio and Procedure Runner. They control documentation, support, tools, panels, and the local desktop server.">
+        <div className="docs-table">
+          <div><strong>Documentation</strong><span>Opens this guide in a new tab. Use it when you need procedure workflow, parameter, support-source, or troubleshooting details.</span></div>
+          <div><strong>Tools</strong><span>Opens Workbench Tools. Use it for quick actions, current SQL/procedure context, scratchpads, safe diagnostics, and support information.</span></div>
+          <div><strong>Support</strong><span>Opens a bug-report form. Fill in title, area, severity, description, reproduction steps, and optional screenshot, then open an email draft to support.</span></div>
+          <div><strong>Hide / Show connection panel</strong><span>Collapses or restores the left connection rail. Use it when parameter review or results need more screen space.</span></div>
+          <div><strong>Hide / Show themes & history</strong><span>Collapses or restores the right activity panel. Use it when procedure history and themes are not needed.</span></div>
+          <div><strong>Exit Data Workbench</strong><span>Requests shutdown of the local desktop server. Use it when you are done with the app.</span></div>
+        </div>
+        <DocsMiniSection title="Workbench Tools">
+          <p><strong>Quick actions</strong> can load catalog, run the current procedure/query path, format SQL, save scratchpads, open audit filters, load dependency/profile metadata, or script ALTER/Edit.</p>
+          <p><strong>Scratchpads</strong> are local SQL drafts. They are useful when a procedure script or investigation query is not ready to run.</p>
+          <p><strong>Diagnostics</strong> copies safe app/session context for troubleshooting. It does not include passwords or client secrets.</p>
+        </DocsMiniSection>
+        <DocsMiniSection title="Support reports">
+          <p>The Support form prepares an email to <code>mohamed.al-mefrej@hotmail.com</code> and copies the report text. Browser email drafts cannot attach screenshots automatically, so attach the selected screenshot manually before sending.</p>
+        </DocsMiniSection>
+      </DocsSection>
+
       <DocsSection id="connection" title="Connect And Load Metadata" intro="Procedure Runner uses the same connection rail as SQL Studio. The selected source, server, database, and authentication mode decide which procedures can be discovered and executed.">
         <div className="docs-table">
           <div><strong>Source type</strong><span>Choose Fabric SQL endpoint or SQL Server when you need stored procedure support.</span></div>
@@ -64,7 +84,7 @@ export default function ProcedureRunnerDocsPage() {
           <div><strong>SQL login fields</strong><span>Username and password appear only for SQL login mode. Passwords are not saved in connection profiles.</span></div>
           <div><strong>Trust certificate</strong><span>SQL Server can show a trust-server-certificate toggle when your environment needs it.</span></div>
           <div><strong>Test connection</strong><span>Confirms the app can authenticate before metadata or execution calls are made.</span></div>
-          <div><strong>Load catalog</strong><span>Loads procedure names and related metadata where the source supports it.</span></div>
+          <div><strong>Load catalog</strong><span>Loads procedure names and related metadata where the source supports it. Required before selecting procedures, refreshing parameters, scripting definitions, pins/recent filtering, and execution.</span></div>
           <div><strong>Saved profiles</strong><span>Profiles restore source, auth mode, server, port, database, username, and trust settings without storing secrets.</span></div>
           <div><strong>Refresh params</strong><span>Reloads the selected procedure parameter list after database changes or permission updates.</span></div>
         </div>
@@ -79,7 +99,7 @@ export default function ProcedureRunnerDocsPage() {
         </DocsExample>
       </DocsSection>
 
-      <DocsSection id="support" title="Supported Sources" intro="Stored procedure support depends on the source. The UI hides or disables procedure actions when the selected source cannot expose procedures safely.">
+      <DocsSection id="sources" title="Supported Sources" intro="Stored procedure support depends on the source. The UI hides or disables procedure actions when the selected source cannot expose procedures safely.">
         <div className="docs-card-row">
           <div className="docs-card docs-card-success"><strong>Fabric SQL endpoint</strong><span>Procedure catalog, parameters, execution, output values, and audit are supported when permissions allow them.</span></div>
           <div className="docs-card docs-card-success"><strong>SQL Server</strong><span>Supported when the login has metadata read access and execute permission for the target procedure.</span></div>
@@ -105,6 +125,10 @@ export default function ProcedureRunnerDocsPage() {
 
       <DocsSection id="parameters" title="Parameter Entry" intro="The parameter panel shows the values that will be sent to the selected stored procedure. Treat this as the main review surface before execution.">
         <div className="docs-table">
+          <div><strong>Refresh params</strong><span>Reloads parameter metadata for the selected procedure. Use it after procedure changes, permission changes, or when parameter details look stale.</span></div>
+          <div><strong>Script CREATE</strong><span>Loads the procedure CREATE definition into SQL Studio when the source exposes module text and the login can view definitions.</span></div>
+          <div><strong>Script ALTER/Edit</strong><span>Loads an editable ALTER-style procedure definition into SQL Studio. It is not executed automatically.</span></div>
+          <div><strong>Run procedure</strong><span>Prepares the selected procedure and current parameter values for confirmation. Requires a selected procedure and a valid connection.</span></div>
           <div><strong>Blank field</strong><span>The parameter is omitted. If the procedure has a database default, the default can be used.</span></div>
           <div><strong>NULL</strong><span>Type <code>NULL</code> to send a real null value instead of an empty string.</span></div>
           <div><strong>Text</strong><span>Enter text without wrapping quotes unless the UI specifically asks for a quoted literal.</span></div>
@@ -143,12 +167,16 @@ export default function ProcedureRunnerDocsPage() {
       <DocsSection id="results" title="Results And Audit" intro="Procedure results can include recordsets, rows affected, output parameters, return values, and messages. The exact shape depends on what the procedure returns.">
         <ul className="docs-check-list">
           <li><strong>Result tabs</strong> keep up to five procedure, query, and metadata results available for comparison.</li>
+          <li><strong>A- / A+</strong> changes result text size for dense procedure output or screen sharing.</li>
           <li><strong>Recordsets</strong> appear in the results grid when the procedure returns tabular data.</li>
           <li><strong>Rows affected</strong> shows the count reported by the database driver when available.</li>
           <li><strong>Output parameters</strong> are displayed after the confirmed execution finishes.</li>
           <li><strong>Return value</strong> is shown when the procedure returns one through the database driver.</li>
           <li><strong>Local filtering</strong> filters rows already returned to the browser. It does not execute the procedure again.</li>
+          <li><strong>Prev / Next</strong> moves through local result pages without re-running the procedure.</li>
+          <li><strong>Columns arrows</strong> scroll wide result tables horizontally.</li>
           <li><strong>Copy rows</strong> and <strong>Export CSV</strong> work on visible tabular results.</li>
+          <li><strong>Audit log</strong> opens filters for event, outcome, action, source type, database, search text, and limit.</li>
           <li><strong>Audit entries</strong> record prepare, execute, and definition-read activity with source, database, outcome, and details where audit access is available.</li>
         </ul>
       </DocsSection>
@@ -160,6 +188,7 @@ export default function ProcedureRunnerDocsPage() {
           <div><strong>Restore from history</strong><span>Click a history item to restore the procedure, refill parameter values, and switch the active procedure when it exists in the loaded catalog.</span></div>
           <div><strong>Current catalog required</strong><span>If the procedure is not in the loaded catalog, the app can restore values but cannot select the active procedure until metadata is loaded.</span></div>
           <div><strong>Separate history</strong><span>Procedure Runner only shows procedure history. SQL Studio only shows SQL history.</span></div>
+          <div><strong>Clear history</strong><span>Clears the current Procedure History list. It does not clear SQL Studio history.</span></div>
           <div><strong>Mode switching</strong><span>Use the top workspace tabs to switch between Procedure Runner and SQL Studio without reopening the connection panel.</span></div>
           <div><strong>Session restore</strong><span>The selected procedure, parameters, result tabs, filters, pagination, and history are restored for the same browser tab where possible.</span></div>
           <div><strong>Panel layout</strong><span>Resizable panels, hidden side panels, result height, and layout choices are saved locally and adapt on narrower screens.</span></div>
