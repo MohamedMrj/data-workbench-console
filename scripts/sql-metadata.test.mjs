@@ -1,5 +1,5 @@
 import assert from 'assert/strict';
-import { renderCreateTableFromSnapshot } from '../lib/server/sql-metadata.js';
+import { loadSchemaCompare, renderCreateTableFromSnapshot } from '../lib/server/sql-metadata.js';
 
 const snapshot = {
   object: 'dbo.Customer',
@@ -103,5 +103,62 @@ assert.match(ddl, /WHERE \[Amount\] IS NOT NULL/);
 assert.match(ddl, /ALTER TABLE \[dbo\]\.\[Customer\]/);
 assert.match(ddl, /FOREIGN KEY \(\[CustomerID\]\)/);
 assert.match(ddl, /ON UPDATE CASCADE/);
+
+function createColumnPool(columnsByObject, observedQueries = []) {
+  return {
+    request() {
+      const inputs = {};
+      return {
+        input(name, _type, value) {
+          inputs[name] = value;
+          return this;
+        },
+        async query(queryText) {
+          observedQueries.push(queryText);
+          const key = `${inputs.schemaName}.${inputs.objectName}`;
+          const columns = columnsByObject[key] || [];
+          return {
+            recordset: columns.map((column, index) => ({
+              COLUMN_NAME: column.name,
+              DATA_TYPE: column.type,
+              IS_NULLABLE: column.nullable ? 'YES' : 'NO',
+              ORDINAL_POSITION: index + 1
+            }))
+          };
+        }
+      };
+    }
+  };
+}
+
+const observedCompareQueries = [];
+const compareResult = await loadSchemaCompare(
+  createColumnPool({
+    'dbo.LeftTable': [
+      { name: 'Id', type: 'int', nullable: false },
+      { name: 'Name', type: 'varchar', nullable: true }
+    ]
+  }, observedCompareQueries),
+  createColumnPool({
+    'dbo.RightTable': [
+      { name: 'Id', type: 'int', nullable: false },
+      { name: 'Name', type: 'nvarchar', nullable: true }
+    ]
+  }, observedCompareQueries),
+  {
+    leftObject: 'dbo.LeftTable',
+    rightObject: 'dbo.RightTable',
+    objectType: 'table',
+    leftSourceType: 'fabric-lakehouse',
+    rightSourceType: 'fabric-lakehouse'
+  }
+);
+
+assert.equal(compareResult.success, true);
+assert.equal(compareResult.objectType, 'table');
+assert.equal(compareResult.differences.length, 1);
+assert.equal(compareResult.differences[0].field, 'type');
+assert.match(compareResult.warnings.join(' '), /INFORMATION_SCHEMA column metadata only/);
+assert.equal(observedCompareQueries.some((query) => /dm_db_partition_stats/i.test(query)), false);
 
 console.log('SQL metadata tests passed.');

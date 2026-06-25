@@ -5039,9 +5039,9 @@ window.createConsoleApp = function createConsoleApp() {
 
   async function loadResultShapeInsight() {
     if (!ensureReadyConnection('loading result shape')) return;
-    const query = getQuery().trim();
+    const query = getQuery().trim() || (state.activeObject ? buildSelect() : '');
     if (!query) {
-      setStatus('error', 'Enter a read query first.');
+      setStatus('error', 'Enter a read query or select a table/view first.');
       return;
     }
     setStatus('loading', 'Loading result shape metadata...');
@@ -5066,9 +5066,9 @@ window.createConsoleApp = function createConsoleApp() {
 
   async function loadEstimatedPlan() {
     if (!ensureReadyConnection('loading an estimated plan')) return;
-    const query = getQuery().trim();
+    const query = getQuery().trim() || (state.activeObject ? buildSelect() : '');
     if (!query) {
-      setStatus('error', 'Enter a read query first.');
+      setStatus('error', 'Enter a read query or select a table/view first.');
       return;
     }
     setStatus('loading', 'Loading estimated execution plan...');

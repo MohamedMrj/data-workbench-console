@@ -120,12 +120,46 @@ try {
   assert.equal(objectInsights.response.status, 400);
   assert.match(objectInsights.payload.error, /Object name is required/);
 
+  const resultShapeWithoutObject = await request('/api/object-insights', {
+    method: 'POST',
+    body: { ...safeSqlLogin, action: 'resultShape', query: '' }
+  });
+  assert.equal(resultShapeWithoutObject.response.status, 400);
+  assert.doesNotMatch(resultShapeWithoutObject.payload.error, /Object name is required/);
+
+  const lakehouseRowCount = await request('/api/object-insights', {
+    method: 'POST',
+    body: {
+      sourceType: 'fabric-lakehouse',
+      authMode: 'servicePrincipal',
+      server: 'demo',
+      database: 'lakehouse_db',
+      action: 'rowCount',
+      object: 'dbo.Table1'
+    }
+  });
+  assert.equal(lakehouseRowCount.response.status, 400);
+  assert.match(lakehouseRowCount.payload.error, /Lakehouse SQL endpoints/i);
+
   const queryPlan = await request('/api/query-plan', {
     method: 'POST',
     body: { ...safeSqlLogin, query: 'UPDATE dbo.T SET A = 1' }
   });
   assert.equal(queryPlan.response.status, 400);
   assert.match(queryPlan.payload.error, /read queries/i);
+
+  const lakehouseQueryPlan = await request('/api/query-plan', {
+    method: 'POST',
+    body: {
+      sourceType: 'fabric-lakehouse',
+      authMode: 'servicePrincipal',
+      server: 'demo',
+      database: 'lakehouse_db',
+      query: 'SELECT 1 AS value'
+    }
+  });
+  assert.equal(lakehouseQueryPlan.response.status, 400);
+  assert.match(lakehouseQueryPlan.payload.error, /not supported for Fabric Lakehouse/i);
 
   const schemaCompare = await request('/api/schema-compare', {
     method: 'POST',
