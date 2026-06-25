@@ -43,6 +43,7 @@ the copyright owner.
 | Explorer workflow | Pin and filter objects/procedures by type, schema, recent use, pinned state, object name, and loaded column names. |
 | Audit | Track and filter connection tests, catalog loads, metadata reads, query execution, write previews, procedure execution, and saved profile changes. |
 | Workbench tools | Open quick actions, SQL safety summary, local scratchpads, and safe diagnostics from one compact modal. |
+| App settings | Edit local `.env` settings through a guided interface with descriptions, typed controls, and restart guidance. |
 | Support | Fill a support form, include safe diagnostics, select a screenshot, and open an email draft to the maintainer. |
 | Self-update | Git-installed local copies can show an `Update` button when the remote app version is newer. |
 | Documentation | Built-in user docs at `/docs/sql-studio` and `/docs/procedure-runner`. |
@@ -76,7 +77,8 @@ the copyright owner.
 8. Switch modes from the top of the workspace. The app keeps each mode where you left it during the same browser tab session.
 9. Use Advanced Operations for read-only metadata tools such as profile, dependency view, row count, top values, result shape, schema compare, and estimated plans.
 10. Use `Tools` for command shortcuts, scratchpads, current SQL review, and diagnostics.
-11. Use `Support` to prepare a bug report email with safe app context.
+11. Use `Settings` to edit local `.env` values without opening files manually. Restart the app after applying changes.
+12. Use `Support` to prepare a bug report email with safe app context.
 
 History behavior:
 
@@ -103,6 +105,18 @@ This creates a `Data Workbench Console` shortcut on the current user's Desktop. 
 The browser sends a local heartbeat while Data Workbench is open. When the final app tab is closed, the hidden local server shuts down after a two-hour inactivity grace period. Users can also click `Exit Data Workbench` in the app header to stop the server immediately.
 
 Startup details are written under `.data/logs/` so runtime logs do not clutter the project root.
+
+### App Settings
+
+The `Settings` button opens a guided editor for the local `.env` file. It groups runtime, database, query safety, audit, desktop lifecycle, request guardrail, and Fabric authentication settings.
+
+Important behavior:
+
+- settings are saved to `.env` in the app folder
+- most settings are read when the server starts, so restart Data Workbench after applying changes
+- `AZURE_CLIENT_SECRET` is never returned to the browser; leave it blank to keep the existing secret, or type a new value to replace it
+- unknown settings and invalid values are rejected
+- the settings API is local-only and write-protected by same-origin checks
 
 ### Updates For Local Desktop Users
 

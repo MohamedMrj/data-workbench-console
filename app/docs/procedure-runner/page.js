@@ -59,6 +59,7 @@ export default function ProcedureRunnerDocsPage() {
         <div className="docs-table">
           <div><strong>Documentation</strong><span>Opens this guide in a new tab. Use it when you need procedure workflow, parameter, support-source, or troubleshooting details.</span></div>
           <div><strong>Tools</strong><span>Opens Workbench Tools. Use it for quick actions, current SQL/procedure context, scratchpads, safe diagnostics, and support information.</span></div>
+          <div><strong>Settings</strong><span>Opens a guided editor for local <code>.env</code> settings. Each setting includes a description, appropriate values, and restart guidance. Secret values can be replaced but are never shown after saving.</span></div>
           <div><strong>Support</strong><span>Opens a bug-report form. Fill in title, area, severity, description, reproduction steps, and optional screenshot, then open an email draft to support.</span></div>
           <div><strong>Update</strong><span>Appears only when the local Git checkout is behind the configured remote. It pulls the latest app code, preserves local <code>.env</code> and <code>.data</code>, rebuilds, restarts the local server, and reloads the browser.</span></div>
           <div><strong>Hide / Show connection panel</strong><span>Collapses or restores the left connection rail. Use it when parameter review or results need more screen space.</span></div>
@@ -69,6 +70,9 @@ export default function ProcedureRunnerDocsPage() {
           <p><strong>Quick actions</strong> can load catalog, run the current procedure/query path, format SQL, save scratchpads, open audit filters, load dependency/profile metadata, or script ALTER/Edit.</p>
           <p><strong>Scratchpads</strong> are local SQL drafts. They are useful when a procedure script or investigation query is not ready to run.</p>
           <p><strong>Diagnostics</strong> copies safe app/session context for troubleshooting. It does not include passwords or client secrets.</p>
+        </DocsMiniSection>
+        <DocsMiniSection title="App settings">
+          <p>Settings writes to the local <code>.env</code> file. Runtime, database, safety, audit, lifecycle, request guardrail, and Fabric service-principal settings are grouped with short descriptions. Most values are read when the server starts, so restart Data Workbench from the desktop shortcut after applying changes.</p>
         </DocsMiniSection>
         <DocsMiniSection title="Support reports">
           <p>The Support form prepares an email to <code>mohamed.al-mefrej@hotmail.com</code> and copies the report text. Browser email drafts cannot attach screenshots automatically, so attach the selected screenshot manually before sending.</p>

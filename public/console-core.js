@@ -73,6 +73,7 @@ window.createConsoleApp = function createConsoleApp() {
   const state = {
     health: null,
     versionInfo: null,
+    envSettings: null,
     updateInProgress: false,
     currentTheme: 'midnight',
     editorTextSize: 0.95,
@@ -3465,6 +3466,7 @@ window.createConsoleApp = function createConsoleApp() {
       { id: 'run-query', label: 'Run query', detail: 'Use the existing query execution and confirmation path.', shortcut: 'Ctrl+Enter', run: () => runQuery().catch((error) => setStatus('error', error.message)) },
       { id: 'format-sql', label: 'Format SQL', detail: 'Format the current SQL editor text.', shortcut: 'Ctrl+Shift+F', run: () => formatSql() },
       { id: 'save-scratchpad', label: 'Save scratchpad', detail: 'Store the current SQL locally for quick restore.', shortcut: 'Local', run: () => saveCurrentScratchpad() },
+      { id: 'settings', label: 'App settings', detail: 'Edit local .env settings with descriptions and validation.', shortcut: '.env', run: () => openEnvSettingsDialog() },
       { id: 'audit', label: 'Open audit filters', detail: 'Load or filter recent audit events.', shortcut: 'Audit', run: () => openAuditFilters() },
       { id: 'profile', label: 'Profile active object', detail: 'Run read-only object profiling.', shortcut: 'Read', run: () => loadObjectProfile().catch((error) => setStatus('error', error.message)) },
       { id: 'dependencies', label: 'Dependency view', detail: 'Load read-only dependency metadata.', shortcut: 'Read', run: () => loadDependencyView().catch((error) => setStatus('error', error.message)) },
@@ -3518,6 +3520,156 @@ window.createConsoleApp = function createConsoleApp() {
 
   function copyDiagnostics() {
     copyText(JSON.stringify(diagnosticsPayload(), null, 2), 'Diagnostics copied to clipboard.');
+  }
+
+  function envSettingsStatus(kind = '', message = '') {
+    const panel = $('envSettingsStatus');
+    if (!panel) return;
+    if (!message) {
+      panel.className = 'connection-test-panel empty-note hidden';
+      panel.textContent = '';
+      return;
+    }
+    panel.className = `connection-test-panel empty-note${kind ? ` ${kind}` : ''}`;
+    panel.textContent = message;
+  }
+
+  function envSettingControl(field) {
+    const key = esc(field.key);
+    const value = esc(field.value || '');
+    if (field.type === 'boolean') {
+      const checked = String(field.value || field.defaultValue || '').toLowerCase() === 'true' ? ' checked' : '';
+      return `<label class="toggle-field compact-toggle"><input data-env-key="${key}" data-env-type="boolean" type="checkbox"${checked} /><span>${esc(field.label)}</span></label>`;
+    }
+    if (field.type === 'select') {
+      const options = (field.options || []).map((option) => `<option value="${esc(option)}"${String(option) === String(field.value) ? ' selected' : ''}>${esc(option)}</option>`).join('');
+      return `<select data-env-key="${key}" data-env-type="select">${options}</select>`;
+    }
+    if (field.type === 'number') {
+      return `<input data-env-key="${key}" data-env-type="number" type="number" min="${esc(field.min ?? '')}" max="${esc(field.max ?? '')}" value="${value}" />`;
+    }
+    if (field.type === 'secret') {
+      const placeholder = field.configured ? 'Configured. Leave blank to keep current secret.' : 'Paste secret value';
+      return `<input data-env-key="${key}" data-env-type="secret" type="password" value="" placeholder="${esc(placeholder)}" autocomplete="new-password" />`;
+    }
+    return `<input data-env-key="${key}" data-env-type="text" type="text" value="${value}" />`;
+  }
+
+  function renderEnvSettings() {
+    const container = $('envSettingsContent');
+    if (!container) return;
+    const payload = state.envSettings;
+    if (!payload?.settings?.length) {
+      container.innerHTML = '<div class="empty-note">No editable settings were loaded.</div>';
+      return;
+    }
+
+    const groups = payload.groups || [];
+    const settingsByGroup = payload.settings.reduce((acc, field) => {
+      const group = field.group || 'runtime';
+      if (!acc[group]) acc[group] = [];
+      acc[group].push(field);
+      return acc;
+    }, {});
+
+    container.innerHTML = groups.map((group) => {
+      const settings = settingsByGroup[group.id] || [];
+      if (!settings.length) return '';
+      return `<section class="env-settings-group">
+        <h3>${esc(group.title)}</h3>
+        <p>${esc(group.description || '')}</p>
+        <div class="env-setting-list">
+          ${settings.map((field) => `<div class="env-setting-item">
+            <div class="env-setting-label-row"><strong>${esc(field.label)}</strong><code class="env-key">${esc(field.key)}</code></div>
+            ${envSettingControl(field)}
+            <p class="env-setting-description">${esc(field.description || '')}</p>
+            <p class="env-setting-appropriate">${esc(field.appropriate || '')}${field.restartRequired ? ' Restart required.' : ''}</p>
+            ${field.secret ? '<span class="env-secret-note">Secret values are never shown after saving.</span>' : ''}
+          </div>`).join('')}
+        </div>
+      </section>`;
+    }).join('');
+  }
+
+  async function loadEnvSettings() {
+    const container = $('envSettingsContent');
+    if (container) {
+      container.innerHTML = '<div class="empty-note">Loading settings...</div>';
+    }
+    envSettingsStatus('', '');
+    const payload = await api('/api/env-settings');
+    state.envSettings = payload;
+    renderEnvSettings();
+    if (!payload.envExists) {
+      envSettingsStatus('neutral', 'No .env file exists yet. Applying settings will create one from the template.');
+    }
+  }
+
+  function openEnvSettingsDialog() {
+    const dialog = $('envSettingsDialog');
+    if (!dialog) return;
+    dialog.classList.remove('hidden');
+    dialog.setAttribute('aria-hidden', 'false');
+    loadEnvSettings()
+      .then(() => dialog.querySelector('[data-env-key]')?.focus())
+      .catch((error) => {
+        envSettingsStatus('error', error.message || 'Could not load settings.');
+        setStatus('error', `Could not load app settings: ${error.message}`);
+      });
+  }
+
+  function closeEnvSettingsDialog() {
+    const dialog = $('envSettingsDialog');
+    if (!dialog) return;
+    dialog.classList.add('hidden');
+    dialog.setAttribute('aria-hidden', 'true');
+  }
+
+  function collectEnvSettings() {
+    const settings = {};
+    document.querySelectorAll('[data-env-key]').forEach((element) => {
+      const key = element.dataset.envKey;
+      if (!key) return;
+      if (element.dataset.envType === 'boolean') {
+        settings[key] = element.checked ? 'true' : 'false';
+      } else {
+        settings[key] = element.value || '';
+      }
+    });
+    return settings;
+  }
+
+  async function applyEnvSettings() {
+    const applyButton = $('applyEnvSettingsBtn');
+    if (applyButton) {
+      applyButton.disabled = true;
+      applyButton.textContent = 'Applying...';
+    }
+    envSettingsStatus('neutral', 'Saving settings to .env...');
+    try {
+      const payload = await api('/api/env-settings', {
+        method: 'POST',
+        data: { settings: collectEnvSettings() }
+      });
+      state.envSettings = { ...state.envSettings, settings: payload.settings || state.envSettings?.settings || [] };
+      renderEnvSettings();
+      const changed = payload.changedKeys?.length
+        ? `Changed: ${payload.changedKeys.join(', ')}. `
+        : 'No setting values changed. ';
+      const restart = payload.restartRequired
+        ? 'Restart Data Workbench from the desktop shortcut to apply the saved values.'
+        : 'No restart is needed.';
+      envSettingsStatus('success', `${changed}${restart}`);
+      setStatus('success', 'App settings saved.');
+    } catch (error) {
+      envSettingsStatus('error', error.message || 'Could not save settings.');
+      setStatus('error', `Could not save app settings: ${error.message}`);
+    } finally {
+      if (applyButton) {
+        applyButton.disabled = false;
+        applyButton.textContent = 'Apply settings';
+      }
+    }
   }
 
   function supportFieldValue(id) {
@@ -5613,9 +5765,13 @@ window.createConsoleApp = function createConsoleApp() {
       $('loadAuditBtn').onclick = openAuditFilters;
     }
     if ($('openWorkbenchToolsBtn')) $('openWorkbenchToolsBtn').onclick = openWorkbenchTools;
+    if ($('openEnvSettingsBtn')) $('openEnvSettingsBtn').onclick = openEnvSettingsDialog;
     if ($('openSupportBtn')) $('openSupportBtn').onclick = openSupportDialog;
     if ($('updateWorkbenchBtn')) $('updateWorkbenchBtn').onclick = () => updateWorkbench().catch((error) => setStatus('error', error.message));
     if ($('closeWorkbenchToolsBtn')) $('closeWorkbenchToolsBtn').onclick = closeWorkbenchTools;
+    if ($('closeEnvSettingsBtn')) $('closeEnvSettingsBtn').onclick = closeEnvSettingsDialog;
+    if ($('reloadEnvSettingsBtn')) $('reloadEnvSettingsBtn').onclick = () => loadEnvSettings().catch((error) => envSettingsStatus('error', error.message));
+    if ($('applyEnvSettingsBtn')) $('applyEnvSettingsBtn').onclick = () => applyEnvSettings().catch((error) => envSettingsStatus('error', error.message));
     if ($('closeSupportBtn')) $('closeSupportBtn').onclick = closeSupportDialog;
     if ($('saveScratchpadBtn')) $('saveScratchpadBtn').onclick = saveCurrentScratchpad;
     if ($('copyDiagnosticsBtn')) $('copyDiagnosticsBtn').onclick = copyDiagnostics;
@@ -5751,6 +5907,11 @@ window.createConsoleApp = function createConsoleApp() {
     if ($('workbenchToolsDialog')) {
       $('workbenchToolsDialog').onclick = (event) => {
         if (event.target.id === 'workbenchToolsDialog') closeWorkbenchTools();
+      };
+    }
+    if ($('envSettingsDialog')) {
+      $('envSettingsDialog').onclick = (event) => {
+        if (event.target.id === 'envSettingsDialog') closeEnvSettingsDialog();
       };
     }
     if ($('supportDialog')) {
@@ -5905,6 +6066,10 @@ window.createConsoleApp = function createConsoleApp() {
       }
       if (event.key === 'Escape' && !$('workbenchToolsDialog')?.classList.contains('hidden')) {
         closeWorkbenchTools();
+        return;
+      }
+      if (event.key === 'Escape' && !$('envSettingsDialog')?.classList.contains('hidden')) {
+        closeEnvSettingsDialog();
         return;
       }
       if (event.key === 'Escape' && !$('supportDialog')?.classList.contains('hidden')) {

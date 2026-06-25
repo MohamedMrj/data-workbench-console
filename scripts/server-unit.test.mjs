@@ -29,6 +29,7 @@ const confirmationStore = await import('../lib/server/confirmation-store.js');
 const savedStore = await import('../lib/server/saved-connections-store.js');
 const lifecycleStore = await import('../lib/server/lifecycle-store.js');
 const nextHandler = await import('../lib/server/next-handler.js');
+const envSettingsStore = await import('../lib/server/env-settings-store.js');
 
 function makeReq(url, options = {}) {
   return new Request(url, {
@@ -137,6 +138,20 @@ assert.equal(lifecycleStore.isLocalLifecycleRequest(makeReq('http://127.0.0.1:30
 assert.equal(lifecycleStore.isLocalLifecycleRequest(makeReq('http://127.0.0.1:3000/api/lifecycle/status', {
   headers: { host: 'example.com' }
 })), false);
+
+assert.deepEqual(envSettingsStore.validateEnvSettingsForTest({
+  PORT: '3001',
+  NODE_ENV: 'production',
+  APP_SELF_UPDATE_ENABLED: 'false',
+  AZURE_CLIENT_SECRET: ''
+}), {
+  PORT: '3001',
+  NODE_ENV: 'production',
+  APP_SELF_UPDATE_ENABLED: 'false'
+});
+assert.throws(() => envSettingsStore.validateEnvSettingsForTest({ PORT: '99999' }), /at most 65535/);
+assert.throws(() => envSettingsStore.validateEnvSettingsForTest({ NODE_ENV: 'staging' }), /must be one of/);
+assert.throws(() => envSettingsStore.validateEnvSettingsForTest({ UNKNOWN_SETTING: 'x' }), /Unknown setting/);
 
 const okResponse = await nextHandler.runHandler((_req, res) => res.json({ success: true, value: 42 }), makeReq('http://127.0.0.1:3000/api/unit'));
 assert.equal(okResponse.status, 200);

@@ -85,6 +85,7 @@ for (const file of requiredFiles) {
 
 const routeFiles = [
   'app/api/health/route.js',
+  'app/api/env-settings/route.js',
   'app/api/version/route.js',
   'app/api/update/route.js',
   'app/api/query/route.js',

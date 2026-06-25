@@ -189,6 +189,61 @@ function attachMocks(window) {
       });
     }
 
+    if (String(url).includes('/api/env-settings')) {
+      const payload = {
+        success: true,
+        envExists: true,
+        envPath: '.env',
+        groups: [
+          { id: 'runtime', title: 'Runtime', description: 'Runtime settings' },
+          { id: 'fabric', title: 'Fabric Authentication', description: 'Fabric auth settings' }
+        ],
+        settings: [
+          {
+            key: 'PORT',
+            group: 'runtime',
+            type: 'number',
+            min: 1,
+            max: 65535,
+            label: 'App port',
+            value: '3000',
+            description: 'Local browser port.',
+            appropriate: 'Keep 3000.',
+            restartRequired: true
+          },
+          {
+            key: 'NODE_ENV',
+            group: 'runtime',
+            type: 'select',
+            options: ['production', 'development'],
+            label: 'Runtime mode',
+            value: 'production',
+            description: 'Production for users.',
+            appropriate: 'Use production.',
+            restartRequired: true
+          },
+          {
+            key: 'AZURE_CLIENT_SECRET',
+            group: 'fabric',
+            type: 'secret',
+            label: 'Azure client secret',
+            value: '',
+            configured: true,
+            secret: true,
+            description: 'Client secret.',
+            appropriate: 'Leave blank to keep current.',
+            restartRequired: true
+          }
+        ],
+        changedKeys: options.method === 'POST' ? ['PORT'] : [],
+        restartRequired: options.method === 'POST'
+      };
+      return new Response(JSON.stringify(payload), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+
     if (String(url).includes('/api/object-insights')) {
       if (body.action === 'rowCount') {
         return new Response(JSON.stringify({
@@ -522,12 +577,37 @@ assertVisibleAffordance(sqlWindow, '#queryEditor', 'SQL editor');
 if (sqlWindow.document.querySelector('.results-card')?.dataset.resultsState !== 'empty') {
   throw new Error('Empty results should mark the results card as empty for compact sizing.');
 }
-['saveConnectionBtn', 'testConnectionBtn', 'loadTablesBtn', 'runQueryBtn', 'clearHistoryBtn', 'toggleAdvancedOperationsBtn', 'insertSelectTemplateBtn', 'updateJoinTemplateBtn', 'mergePreviewBtn', 'profileObjectBtn', 'dependencyViewBtn', 'insertSqlHelperBtn', 'wrapSqlHelperBtn', 'openWorkbenchToolsBtn', 'openSupportBtn', 'scrollResultsLeftBtn', 'scrollResultsRightBtn', 'scrollResultsDockLeftBtn', 'scrollResultsDockRightBtn'].forEach((id) => {
+['saveConnectionBtn', 'testConnectionBtn', 'loadTablesBtn', 'runQueryBtn', 'clearHistoryBtn', 'toggleAdvancedOperationsBtn', 'insertSelectTemplateBtn', 'updateJoinTemplateBtn', 'mergePreviewBtn', 'profileObjectBtn', 'dependencyViewBtn', 'insertSqlHelperBtn', 'wrapSqlHelperBtn', 'openWorkbenchToolsBtn', 'openEnvSettingsBtn', 'openSupportBtn', 'scrollResultsLeftBtn', 'scrollResultsRightBtn', 'scrollResultsDockLeftBtn', 'scrollResultsDockRightBtn'].forEach((id) => {
   const element = sqlWindow.document.getElementById(id);
   if (!element || typeof element.onclick !== 'function') {
     throw new Error(`Expected ${id} to be wired on the SQL page.`);
   }
 });
+sqlWindow.document.getElementById('openEnvSettingsBtn').click();
+await flush();
+await flush();
+if (sqlWindow.document.getElementById('envSettingsDialog').classList.contains('hidden')) {
+  throw new Error('App settings dialog did not open.');
+}
+if (!sqlWindow.document.getElementById('envSettingsContent').textContent.includes('App port')) {
+  throw new Error('App settings did not render editable settings.');
+}
+const secretInput = sqlWindow.document.querySelector('[data-env-key="AZURE_CLIENT_SECRET"]');
+if (!secretInput || secretInput.value !== '') {
+  throw new Error('Secret environment setting should render blank.');
+}
+sqlWindow.document.querySelector('[data-env-key="PORT"]').value = '3001';
+sqlWindow.document.getElementById('applyEnvSettingsBtn').click();
+await flush();
+await flush();
+if (!sqlWindow.document.getElementById('envSettingsStatus').textContent.includes('Restart Data Workbench')) {
+  throw new Error('Applying settings did not show restart guidance.');
+}
+sqlWindow.document.getElementById('closeEnvSettingsBtn').click();
+await flush();
+if (!sqlWindow.document.getElementById('envSettingsDialog').classList.contains('hidden')) {
+  throw new Error('App settings dialog did not close.');
+}
 sqlWindow.document.getElementById('openSupportBtn').click();
 await flush();
 if (sqlWindow.document.getElementById('supportDialog').classList.contains('hidden')) {

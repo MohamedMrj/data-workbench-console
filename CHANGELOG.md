@@ -16,6 +16,9 @@ Workbench usability, support, documentation, and Lakehouse metadata hardening re
   `.data`, rebuilds, restarts the local server, and reloads the browser.
 - Added `POST /api/update` and `scripts/apply-update.ps1` for Git-based
   desktop self-updates.
+- Added a local-only Settings interface and `/api/env-settings` route for
+  editing known `.env` values through typed controls with descriptions,
+  validation, secret redaction, and restart guidance.
 - Added Workbench Tools in the workspace header with quick actions, current SQL
   safety summary, capability notes, local scratchpads, and copyable diagnostics.
 - Added a Support form that prepares an email draft to

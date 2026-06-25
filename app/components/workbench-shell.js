@@ -475,6 +475,9 @@ export default function WorkbenchShell({ pageMode = 'sql' }) {
                   <button id="openWorkbenchToolsBtn" className="ghost-btn small" type="button">
                     Tools
                   </button>
+                  <button id="openEnvSettingsBtn" className="ghost-btn small" type="button">
+                    Settings
+                  </button>
                   <button id="openSupportBtn" className="ghost-btn small" type="button">
                     Support
                   </button>
@@ -757,6 +760,26 @@ export default function WorkbenchShell({ pageMode = 'sql' }) {
           <div className="button-row wrap right modal-actions">
             <button id="copySupportReportBtn" className="ghost-btn" type="button">Copy report</button>
             <button id="sendSupportReportBtn" className="primary-btn" type="button">Open email draft</button>
+          </div>
+        </div>
+      </div>
+
+      <div id="envSettingsDialog" className="modal-backdrop hidden" aria-hidden="true">
+        <div className="modal-card env-settings-card">
+          <div className="modal-header">
+            <div>
+              <h2>App settings</h2>
+              <p className="modal-message compact-message">Edit the local <code>.env</code> settings through a guided form. Most changes require restarting Data Workbench.</p>
+            </div>
+            <button id="closeEnvSettingsBtn" className="icon-btn" type="button" aria-label="Close">×</button>
+          </div>
+          <div id="envSettingsStatus" className="connection-test-panel empty-note hidden" aria-live="polite" />
+          <div id="envSettingsContent" className="env-settings-layout">
+            <div className="empty-note">Loading settings...</div>
+          </div>
+          <div className="button-row wrap right modal-actions">
+            <button id="reloadEnvSettingsBtn" className="ghost-btn" type="button">Reload</button>
+            <button id="applyEnvSettingsBtn" className="primary-btn" type="button">Apply settings</button>
           </div>
         </div>
       </div>

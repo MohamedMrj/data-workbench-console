@@ -58,6 +58,7 @@ export default function SqlStudioDocsPage() {
         <div className="docs-table">
           <div><strong>Documentation</strong><span>Opens this guide in a new tab. Use it when you need button behavior, requirements, source support, or troubleshooting details.</span></div>
           <div><strong>Tools</strong><span>Opens Workbench Tools. Use it for quick actions, SQL safety summary, capability checks, scratchpads, and diagnostics.</span></div>
+          <div><strong>Settings</strong><span>Opens a guided editor for local <code>.env</code> settings. Each setting includes a description, appropriate values, and restart guidance. Secret values can be replaced but are never shown after saving.</span></div>
           <div><strong>Support</strong><span>Opens a bug-report form. Fill in title, area, severity, description, reproduction steps, and optional screenshot, then open an email draft to support.</span></div>
           <div><strong>Update</strong><span>Appears only when the local Git checkout is behind the configured remote. It pulls the latest app code, preserves local <code>.env</code> and <code>.data</code>, rebuilds, restarts the local server, and reloads the browser.</span></div>
           <div><strong>Hide / Show connection panel</strong><span>Collapses or restores the left connection rail. Use it when you need more space for query building or result inspection.</span></div>
@@ -69,6 +70,9 @@ export default function SqlStudioDocsPage() {
           <p><strong>Current SQL</strong> summarizes detected action, risk, builder mode, target object, selected columns, filters, and editor size. Use it before running copied or generated SQL.</p>
           <p><strong>Scratchpads</strong> save temporary SQL locally for quick restore. Use them for drafts that are not ready for query history or source control.</p>
           <p><strong>Diagnostics</strong> shows safe app/session context and can copy a diagnostic payload for support. It does not include passwords or client secrets.</p>
+        </DocsMiniSection>
+        <DocsMiniSection title="App settings">
+          <p>Settings writes to the local <code>.env</code> file. Runtime, database, safety, audit, lifecycle, request guardrail, and Fabric service-principal settings are grouped with short descriptions. Most values are read when the server starts, so restart Data Workbench from the desktop shortcut after applying changes.</p>
         </DocsMiniSection>
         <DocsMiniSection title="Support reports">
           <p>The Support form prepares an email to <code>mohamed.al-mefrej@hotmail.com</code> and copies the report text. Browser email drafts cannot attach screenshots automatically, so attach the selected screenshot manually before sending.</p>

@@ -76,6 +76,21 @@ try {
   assert.equal(version.payload.success, true);
   assert.equal(typeof version.payload.version, 'string');
 
+  const envSettings = await request('/api/env-settings');
+  assert.equal(envSettings.response.status, 200);
+  assert.equal(envSettings.payload.success, true);
+  assert.equal(Array.isArray(envSettings.payload.settings), true);
+  const clientSecretField = envSettings.payload.settings.find((field) => field.key === 'AZURE_CLIENT_SECRET');
+  assert.equal(clientSecretField?.value, '');
+  assert.equal(clientSecretField?.secret, true);
+
+  const envWriteBlocked = await request('/api/env-settings', {
+    method: 'POST',
+    body: { settings: { PORT: '3001' } }
+  });
+  assert.equal(envWriteBlocked.response.status, 403);
+  assert.match(envWriteBlocked.payload.error, /same-origin/i);
+
   const updateDisabled = await request('/api/update', {
     method: 'POST',
     body: {}
