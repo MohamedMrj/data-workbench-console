@@ -478,6 +478,9 @@ export default function WorkbenchShell({ pageMode = 'sql' }) {
                   <button id="openSupportBtn" className="ghost-btn small" type="button">
                     Support
                   </button>
+                  <button id="updateWorkbenchBtn" className="primary-btn small update-workbench-btn hidden" type="button">
+                    Update
+                  </button>
                 </div>
                 <div className="hero-action-group panel-toggle-group" aria-label="Panel visibility">
                   <button id="toggleControlRailBtn" className="ghost-btn small" type="button" aria-pressed="false">

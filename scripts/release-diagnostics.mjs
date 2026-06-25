@@ -66,6 +66,7 @@ const requiredFiles = [
   'launcher-loading.html',
   'app/page.js',
   'app/procedures/page.js',
+  'scripts/apply-update.ps1',
   'public/launcher-ready.svg',
   'public/console-core.js',
   'public/console-app.js',
@@ -85,6 +86,7 @@ for (const file of requiredFiles) {
 const routeFiles = [
   'app/api/health/route.js',
   'app/api/version/route.js',
+  'app/api/update/route.js',
   'app/api/query/route.js',
   'app/api/audit/route.js',
   'app/api/object-definition/route.js',

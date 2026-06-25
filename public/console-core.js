@@ -73,6 +73,7 @@ window.createConsoleApp = function createConsoleApp() {
   const state = {
     health: null,
     versionInfo: null,
+    updateInProgress: false,
     currentTheme: 'midnight',
     editorTextSize: 0.95,
     resultsTextSize: 0.9,
@@ -913,6 +914,7 @@ window.createConsoleApp = function createConsoleApp() {
   function renderVersionInfo(info = {}) {
     const versionText = $('appVersionText');
     const updateText = $('appUpdateText');
+    const updateButton = $('updateWorkbenchBtn');
     if (!versionText || !updateText) {
       return;
     }
@@ -926,7 +928,22 @@ window.createConsoleApp = function createConsoleApp() {
         ? `Update available: ${info.latestCommitShort}`
         : 'Update available';
       updateText.classList.remove('hidden');
+      if (updateButton) {
+        updateButton.classList.remove('hidden');
+        updateButton.disabled = state.updateInProgress;
+        updateButton.textContent = state.updateInProgress ? 'Updating...' : 'Update';
+        updateButton.title = info.latestCommitShort
+          ? `Install update ${info.latestCommitShort}`
+          : 'Install available update';
+      }
       return;
+    }
+
+    if (updateButton) {
+      updateButton.classList.add('hidden');
+      updateButton.disabled = false;
+      updateButton.textContent = 'Update';
+      updateButton.title = '';
     }
 
     if (info.updateCheckAvailable === false) {
@@ -951,6 +968,97 @@ window.createConsoleApp = function createConsoleApp() {
       state.versionInfo = { version: state.health?.version || 'unknown', updateCheckAvailable: false };
       renderVersionInfo(state.versionInfo);
       console.warn('Could not check Data Workbench version.', error);
+    }
+  }
+
+  function waitForUpdateRestart() {
+    const startedAt = Date.now();
+    let sawOffline = false;
+    let attempts = 0;
+
+    const poll = async () => {
+      attempts += 1;
+      try {
+        const response = await fetch(`/api/health?updatePoll=${Date.now()}`, {
+          cache: 'no-store',
+          credentials: 'same-origin'
+        });
+        if (response.ok && (sawOffline || Date.now() - startedAt > 20_000)) {
+          window.location.reload();
+          return;
+        }
+      } catch {
+        sawOffline = true;
+      }
+
+      if (attempts > 180) {
+        showShutdownOverlay(
+          'Update needs a manual check',
+          'Data Workbench did not come back online automatically. Check .data/logs/data-workbench-update.log, then launch Data Workbench again.',
+          true
+        );
+        setStatus('error', 'Update did not finish automatically. Check the update log.');
+        return;
+      }
+
+      const elapsedSeconds = Math.max(1, Math.round((Date.now() - startedAt) / 1000));
+      const message = sawOffline
+        ? `Installing update and restarting the local server. Waiting ${elapsedSeconds}s...`
+        : `Preparing update. Waiting for the local server to restart (${elapsedSeconds}s)...`;
+      showShutdownOverlay('Updating Data Workbench', message);
+      window.setTimeout(poll, 2000);
+    };
+
+    window.setTimeout(poll, 2500);
+  }
+
+  async function updateWorkbench() {
+    if (state.updateInProgress) {
+      return;
+    }
+
+    if (!state.versionInfo?.updateAvailable) {
+      setStatus('neutral', 'No Data Workbench update is available.');
+      return;
+    }
+
+    const current = state.versionInfo.localCommitShort || 'current';
+    const latest = state.versionInfo.latestCommitShort || 'latest';
+    const confirmed = window.confirm(`Update Data Workbench from ${current} to ${latest}?\n\nYour .env and .data files stay local and are not overwritten. The local server will restart.`);
+    if (!confirmed) {
+      return;
+    }
+
+    state.updateInProgress = true;
+    renderVersionInfo(state.versionInfo);
+    showShutdownOverlay('Updating Data Workbench', 'Starting the updater. The app will reload when the updated server is ready.');
+    setStatus('loading', 'Starting Data Workbench update...');
+
+    try {
+      const result = await api('/api/update', {
+        method: 'POST',
+        data: {
+          expectedCommit: state.versionInfo.latestCommit || ''
+        }
+      });
+
+      if (!result.updateStarted) {
+        state.updateInProgress = false;
+        renderVersionInfo({ ...state.versionInfo, updateAvailable: false });
+        setStatus('success', result.message || 'Data Workbench is already current.');
+        showShutdownOverlay('Data Workbench is current', result.message || 'No update was needed.');
+        window.setTimeout(() => window.location.reload(), 1200);
+        return;
+      }
+
+      showShutdownOverlay('Updating Data Workbench', 'Downloading, rebuilding, and restarting. This can take a few minutes after dependency changes.');
+      setStatus('loading', 'Updating Data Workbench. The browser will reload when ready.');
+      waitForUpdateRestart();
+    } catch (error) {
+      state.updateInProgress = false;
+      renderVersionInfo(state.versionInfo);
+      showShutdownOverlay('Update failed', error.message || 'The update could not be started.', true);
+      setStatus('error', `Update failed: ${error.message}`);
     }
   }
 
@@ -5506,6 +5614,7 @@ window.createConsoleApp = function createConsoleApp() {
     }
     if ($('openWorkbenchToolsBtn')) $('openWorkbenchToolsBtn').onclick = openWorkbenchTools;
     if ($('openSupportBtn')) $('openSupportBtn').onclick = openSupportDialog;
+    if ($('updateWorkbenchBtn')) $('updateWorkbenchBtn').onclick = () => updateWorkbench().catch((error) => setStatus('error', error.message));
     if ($('closeWorkbenchToolsBtn')) $('closeWorkbenchToolsBtn').onclick = closeWorkbenchTools;
     if ($('closeSupportBtn')) $('closeSupportBtn').onclick = closeSupportDialog;
     if ($('saveScratchpadBtn')) $('saveScratchpadBtn').onclick = saveCurrentScratchpad;

@@ -238,6 +238,12 @@
   font-weight: 700;
 }
 
+.update-workbench-btn {
+  min-height: 34px;
+  padding-inline: 14px;
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--warning) 42%, transparent);
+}
+
 .docs-link-button {
   text-decoration: none;
 }

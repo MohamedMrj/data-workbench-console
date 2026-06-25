@@ -44,6 +44,7 @@ the copyright owner.
 | Audit | Track and filter connection tests, catalog loads, metadata reads, query execution, write previews, procedure execution, and saved profile changes. |
 | Workbench tools | Open quick actions, SQL safety summary, local scratchpads, and safe diagnostics from one compact modal. |
 | Support | Fill a support form, include safe diagnostics, select a screenshot, and open an email draft to the maintainer. |
+| Self-update | Git-installed local copies can show an `Update` button when the remote app version is newer. |
 | Documentation | Built-in user docs at `/docs/sql-studio` and `/docs/procedure-runner`. |
 
 ## Screenshots
@@ -102,6 +103,22 @@ This creates a `Data Workbench Console` shortcut on the current user's Desktop. 
 The browser sends a local heartbeat while Data Workbench is open. When the final app tab is closed, the hidden local server shuts down after a two-hour inactivity grace period. Users can also click `Exit Data Workbench` in the app header to stop the server immediately.
 
 Startup details are written under `.data/logs/` so runtime logs do not clutter the project root.
+
+### Updates For Local Desktop Users
+
+Use `git clone` installs for users who should receive updates. Zip-folder installs are fixed copies and cannot safely self-update because they do not know the remote repository.
+
+When the app is a Git checkout and `origin/main` is ahead, the workspace header shows an `Update` button. Clicking it:
+
+- pulls the latest code with Git
+- preserves local `.env`, `.data`, saved profiles, audit logs, and pending confirmations
+- installs dependencies when `package-lock.json` changed
+- rebuilds the production app
+- restarts the hidden local server
+- reloads the browser when the server is ready
+
+Update logs are written to `.data/logs/data-workbench-update.log`. Set `APP_SELF_UPDATE_ENABLED=false` to hide the update path from the API while keeping version checks available.
+
 - `/docs/sql-studio` - SQL Studio guide
 - `/docs/procedure-runner` - Procedure Runner guide
 

@@ -58,7 +58,8 @@ const child = spawn(process.execPath, [nextBin, 'start', '-p', String(port)], {
     APP_DATA_DIR: path.join(tempRoot, 'data'),
     AUDIT_LOG_FILE: path.join(tempRoot, 'audit.ndjson'),
     CONFIRMATION_STORE_FILE: path.join(tempRoot, 'confirmations.json'),
-    ALLOW_LOCAL_MISSING_ORIGIN: 'true'
+    ALLOW_LOCAL_MISSING_ORIGIN: 'true',
+    APP_SELF_UPDATE_ENABLED: 'false'
   }
 });
 
@@ -74,6 +75,13 @@ try {
   assert.equal(version.response.status, 200);
   assert.equal(version.payload.success, true);
   assert.equal(typeof version.payload.version, 'string');
+
+  const updateDisabled = await request('/api/update', {
+    method: 'POST',
+    body: {}
+  });
+  assert.equal(updateDisabled.response.status, 403);
+  assert.match(updateDisabled.payload.error, /Self-update is disabled/);
 
   const blockedQuery = await request('/api/query', {
     method: 'POST',

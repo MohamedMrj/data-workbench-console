@@ -59,6 +59,7 @@ export default function SqlStudioDocsPage() {
           <div><strong>Documentation</strong><span>Opens this guide in a new tab. Use it when you need button behavior, requirements, source support, or troubleshooting details.</span></div>
           <div><strong>Tools</strong><span>Opens Workbench Tools. Use it for quick actions, SQL safety summary, capability checks, scratchpads, and diagnostics.</span></div>
           <div><strong>Support</strong><span>Opens a bug-report form. Fill in title, area, severity, description, reproduction steps, and optional screenshot, then open an email draft to support.</span></div>
+          <div><strong>Update</strong><span>Appears only when the local Git checkout is behind the configured remote. It pulls the latest app code, preserves local <code>.env</code> and <code>.data</code>, rebuilds, restarts the local server, and reloads the browser.</span></div>
           <div><strong>Hide / Show connection panel</strong><span>Collapses or restores the left connection rail. Use it when you need more space for query building or result inspection.</span></div>
           <div><strong>Hide / Show themes & history</strong><span>Collapses or restores the right activity panel. Use it when history and themes are not needed for the current task.</span></div>
           <div><strong>Exit Data Workbench</strong><span>Requests shutdown of the local desktop server. Use it when you are done with the app, not just when you want to close a tab.</span></div>
@@ -71,6 +72,9 @@ export default function SqlStudioDocsPage() {
         </DocsMiniSection>
         <DocsMiniSection title="Support reports">
           <p>The Support form prepares an email to <code>mohamed.al-mefrej@hotmail.com</code> and copies the report text. Browser email drafts cannot attach screenshots automatically, so attach the selected screenshot manually before sending.</p>
+        </DocsMiniSection>
+        <DocsMiniSection title="App updates">
+          <p>The Update button requires the app to be installed with <code>git clone</code>. Zip-folder installs cannot self-update because they have no remote repository metadata. Update logs are written to <code>.data/logs/data-workbench-update.log</code>.</p>
         </DocsMiniSection>
       </DocsSection>
 
