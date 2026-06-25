@@ -190,7 +190,7 @@ ORDER BY [CreatedUtc] DESC;`}</pre>
           <div><strong>MERGE preview</strong><span>Creates a MERGE review template only. MERGE execution is blocked by the app; use it for design review or copy into a controlled deployment process.</span></div>
           <div><strong>Sample profile</strong><span>Runs a read-only profile for the active object, using the sample-row setting. Use it to inspect nulls, completeness, and simple column characteristics before writing SQL.</span></div>
           <div><strong>Dependency view</strong><span>Loads dependency rows plus graph-friendly upstream/downstream metadata where the source exposes dependencies. Best for views/procedures and SQL Server/Fabric SQL metadata.</span></div>
-          <div><strong>Row count</strong><span>Loads metadata row counts where available. Use it for fast size checks before previewing rows or profiling.</span></div>
+          <div><strong>Row count</strong><span>Loads metadata row counts where available. If the source does not expose row-count metadata, the button falls back to an exact <code>COUNT_BIG(*)</code>, which can read the object.</span></div>
           <div><strong>Top values</strong><span>Groups selected or relevant columns and returns common values, null counts, and blanks where supported. Use it to understand categorical fields.</span></div>
           <div><strong>Schema compare</strong><span>Compares columns and supported constraints/index metadata between active and source objects. Use it before copying data or creating migration SQL.</span></div>
           <div><strong>Result shape</strong><span>Describes read-query output columns without executing the full query where supported. Requires a readable SQL statement in the editor.</span></div>

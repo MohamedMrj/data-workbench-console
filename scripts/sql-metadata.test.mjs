@@ -1,5 +1,5 @@
 import assert from 'assert/strict';
-import { loadSchemaCompare, renderCreateTableFromSnapshot } from '../lib/server/sql-metadata.js';
+import { loadObjectDependencies, loadObjectRowCount, loadSchemaCompare, renderCreateTableFromSnapshot } from '../lib/server/sql-metadata.js';
 
 const snapshot = {
   object: 'dbo.Customer',
@@ -160,5 +160,122 @@ assert.equal(compareResult.differences.length, 1);
 assert.equal(compareResult.differences[0].field, 'type');
 assert.match(compareResult.warnings.join(' '), /INFORMATION_SCHEMA column metadata only/);
 assert.equal(observedCompareQueries.some((query) => /dm_db_partition_stats/i.test(query)), false);
+
+function createRowCountFallbackPool() {
+  const queries = [];
+  return {
+    queries,
+    request() {
+      return {
+        input() {
+          return this;
+        },
+        async query(queryText) {
+          queries.push(queryText);
+          if (/dm_db_partition_stats/i.test(queryText)) {
+            const error = new Error("DMV (Dynamic Management View) 'dm_db_partition_stats' is not supported.");
+            error.code = 'EREQUEST';
+            throw error;
+          }
+          if (/COUNT_BIG/i.test(queryText)) {
+            return { recordset: [{ row_count: 123 }] };
+          }
+          return { recordset: [] };
+        }
+      };
+    }
+  };
+}
+
+const rowCountFallbackPool = createRowCountFallbackPool();
+const rowCountFallback = await loadObjectRowCount(rowCountFallbackPool, 'dbo.LakehouseTable', { allowCountFallback: true });
+assert.equal(rowCountFallback.rowCount, 123);
+assert.equal(rowCountFallback.source, 'count_big');
+assert.equal(rowCountFallback.exact, true);
+assert.equal(rowCountFallbackPool.queries.some((query) => /COUNT_BIG/i.test(query)), true);
+
+await assert.rejects(
+  () => loadObjectRowCount(createRowCountFallbackPool(), 'dbo.LakehouseTable', { allowCountFallback: false }),
+  /Metadata row count is not supported by this source/
+);
+
+function createUnsupportedDependencyPool() {
+  return {
+    request() {
+      return {
+        input() {
+          return this;
+        },
+        async query() {
+          const error = new Error("Object 'sys.sql_expression_dependencies' is not supported.");
+          error.code = 'EREQUEST';
+          throw error;
+        }
+      };
+    }
+  };
+}
+
+const dependencyFallback = await loadObjectDependencies(createUnsupportedDependencyPool(), 'dbo.LakehouseTable');
+assert.deepEqual(dependencyFallback.rows, []);
+assert.equal(dependencyFallback.nodes[0].id, 'dbo.LakehouseTable');
+assert.match(dependencyFallback.warnings.join(' '), /Dependency metadata is not supported/);
+
+function createRichMetadataUnsupportedPool(columnsByObject, observedQueries = []) {
+  return {
+    request() {
+      const inputs = {};
+      return {
+        input(name, _type, value) {
+          inputs[name] = value;
+          return this;
+        },
+        async query(queryText) {
+          observedQueries.push(queryText);
+          if (/dm_db_partition_stats/i.test(queryText)) {
+            const error = new Error("DMV (Dynamic Management View) 'dm_db_partition_stats' is not supported.");
+            error.code = 'EREQUEST';
+            throw error;
+          }
+          if (/INFORMATION_SCHEMA\.COLUMNS/i.test(queryText)) {
+            const key = `${inputs.schemaName}.${inputs.objectName}`;
+            const columns = columnsByObject[key] || [];
+            return {
+              recordset: columns.map((column, index) => ({
+                COLUMN_NAME: column.name,
+                DATA_TYPE: column.type,
+                IS_NULLABLE: column.nullable ? 'YES' : 'NO',
+                ORDINAL_POSITION: index + 1
+              }))
+            };
+          }
+          return { recordset: [] };
+        }
+      };
+    }
+  };
+}
+
+const observedRichFallbackQueries = [];
+const compareRichFallback = await loadSchemaCompare(
+  createRichMetadataUnsupportedPool({
+    'dbo.LeftTable': [{ name: 'Id', type: 'int', nullable: false }]
+  }, observedRichFallbackQueries),
+  createRichMetadataUnsupportedPool({
+    'dbo.RightTable': [{ name: 'Id', type: 'bigint', nullable: false }]
+  }, observedRichFallbackQueries),
+  {
+    leftObject: 'dbo.LeftTable',
+    rightObject: 'dbo.RightTable',
+    objectType: 'table',
+    leftSourceType: 'fabric-sql',
+    rightSourceType: 'fabric-sql'
+  }
+);
+
+assert.equal(compareRichFallback.success, true);
+assert.equal(compareRichFallback.differences[0].field, 'type');
+assert.match(compareRichFallback.warnings.join(' '), /INFORMATION_SCHEMA column metadata only/);
+assert.equal(observedRichFallbackQueries.some((query) => /INFORMATION_SCHEMA\.COLUMNS/i.test(query)), true);
 
 console.log('SQL metadata tests passed.');

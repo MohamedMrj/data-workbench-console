@@ -4989,7 +4989,7 @@ window.createConsoleApp = function createConsoleApp() {
     try {
       const payload = await api('/api/object-insights', {
         method: 'POST',
-        data: requestConnection({ action: 'rowCount', object: state.activeObject })
+        data: requestConnection({ action: 'rowCount', object: state.activeObject, allowCountFallback: true })
       });
       setResults(payload.columns || [], payload.rows || [], {
         totalRows: Number(payload.totalRows ?? (payload.rows || []).length),
@@ -5049,7 +5049,7 @@ window.createConsoleApp = function createConsoleApp() {
     try {
       const payload = await api('/api/object-insights', {
         method: 'POST',
-        data: requestConnection({ action: 'resultShape', query })
+        data: requestConnection({ action: 'resultShape', query, object: state.activeObject || '' })
       });
       setResults(payload.columns || [], payload.rows || [], {
         totalRows: Number(payload.totalRows ?? (payload.rows || []).length),
