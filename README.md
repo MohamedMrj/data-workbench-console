@@ -6,7 +6,7 @@ Production-safe internal SQL workbench for Microsoft Fabric SQL endpoints, Fabri
 
 Data Workbench Console is built for controlled operational work: browse metadata, generate SQL, run read queries, preview writes before execution, run stored procedures from a dedicated flow, and keep an audit trail of important actions.
 
-Current app version: `1.3.0`. See [CHANGELOG.md](CHANGELOG.md) for release notes.
+Current app version: `1.4.0`. See [CHANGELOG.md](CHANGELOG.md) for release notes.
 
 <p>
   <img alt="Next.js" src="https://img.shields.io/badge/Next.js-15-111827?style=for-the-badge&logo=nextdotjs" />
@@ -42,6 +42,8 @@ the copyright owner.
 | Connection profiles | Save reusable connection details without storing passwords or client secrets. |
 | Explorer workflow | Pin and filter objects/procedures by type, schema, recent use, pinned state, object name, and loaded column names. |
 | Audit | Track and filter connection tests, catalog loads, metadata reads, query execution, write previews, procedure execution, and saved profile changes. |
+| Workbench tools | Open quick actions, SQL safety summary, local scratchpads, and safe diagnostics from one compact modal. |
+| Support | Fill a support form, include safe diagnostics, select a screenshot, and open an email draft to the maintainer. |
 | Documentation | Built-in user docs at `/docs/sql-studio` and `/docs/procedure-runner`. |
 
 ## Screenshots
@@ -72,6 +74,8 @@ the copyright owner.
 7. Use `Procedure Runner` for stored procedures where the selected source supports them.
 8. Switch modes from the top of the workspace. The app keeps each mode where you left it during the same browser tab session.
 9. Use Advanced Operations for read-only metadata tools such as profile, dependency view, row count, top values, result shape, schema compare, and estimated plans.
+10. Use `Tools` for command shortcuts, scratchpads, current SQL review, and diagnostics.
+11. Use `Support` to prepare a bug report email with safe app context.
 
 History behavior:
 
@@ -408,6 +412,15 @@ Read-only object analysis actions:
 
 These actions load results into the results grid without changing saved SQL history.
 
+Source compatibility behavior:
+
+- Lakehouse or Fabric endpoints can expose a smaller metadata surface than SQL Server.
+- `Row count` uses metadata when available and falls back to exact `COUNT_BIG(*)` when metadata row-count DMVs are unavailable.
+- `Dependency view` returns a clear warning and an empty graph when dependency catalog metadata is unavailable.
+- `Schema compare` falls back to column-only `INFORMATION_SCHEMA` comparison when rich table metadata is unavailable.
+- `Result shape` falls back to active-object column metadata when result-shape DMV metadata is unavailable and an active object is selected.
+- `Estimated plan` returns a clear unsupported message when SHOWPLAN is unavailable for the source or permission set.
+
 Object scripting actions:
 
 - `Script CREATE` loads a CREATE script into the SQL editor.
@@ -425,10 +438,36 @@ Schema compare behavior:
 
 Performance helper behavior:
 
-- `Row count` uses source metadata where available.
+- `Row count` uses source metadata where available, and can fall back to `COUNT_BIG(*)` when metadata is unavailable.
 - `Top values` reads grouped value counts for selected columns.
 - `Result shape` describes read-query output metadata without executing the query where supported.
 - `Estimated plan` is allowed only for read queries and uses non-executing plan metadata where the source and permissions allow it.
+
+### Workbench Tools And Support
+
+The top header includes:
+
+- `Documentation`
+  opens the relevant guide.
+- `Tools`
+  opens a compact workbench modal with quick actions, current SQL safety summary, local scratchpads, capability notes, and diagnostics.
+- `Support`
+  opens a support report form for bug reports and questions.
+- `Hide/Show connection panel`
+  controls the left connection rail.
+- `Hide/Show themes & history`
+  controls the right activity rail.
+- `Exit Data Workbench`
+  stops the local desktop server.
+
+Support reports:
+
+- are addressed to `mohamed.al-mefrej@hotmail.com`
+- include title, area, severity, description, reproduction steps, and optional reporter details
+- can include safe diagnostics such as version, source type, auth mode, server/database, active object/procedure, browser, and timestamp
+- do not include passwords or client secrets
+- open an email draft and copy the report text
+- cannot attach screenshots automatically through browser `mailto:` behavior, so users must attach the selected screenshot manually
 
 ### SQL Editor
 

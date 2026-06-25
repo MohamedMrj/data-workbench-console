@@ -5,6 +5,62 @@ All notable Data Workbench Console changes are tracked here.
 The in-app version is read from `package.json` and exposed through `/api/version`
 together with the current git commit and build information.
 
+## 1.4.0 - 2026-06-25
+
+Workbench usability, support, documentation, and Lakehouse metadata hardening release.
+
+### Added
+
+- Added Workbench Tools in the workspace header with quick actions, current SQL
+  safety summary, capability notes, local scratchpads, and copyable diagnostics.
+- Added a Support form that prepares an email draft to
+  `mohamed.al-mefrej@hotmail.com`, copies the report text, includes safe
+  diagnostics, and supports selecting a screenshot for manual attachment.
+- Added richer in-app documentation for shared workspace controls, Support,
+  Workbench Tools, Query Builder buttons, SQL helper buttons, Advanced
+  Operations, Object Analysis actions, result controls, and Procedure Runner
+  actions.
+- Added regression coverage for Support modal wiring, Lakehouse-safe schema
+  compare fallback, dependency metadata fallback, result-shape fallback, and
+  row-count fallback behavior.
+
+### Changed
+
+- Grouped the connection-panel and themes/history show-hide buttons together so
+  header actions read as distinct control groups.
+- Widened and cleaned up the Workbench Tools modal to avoid horizontal scrolling
+  and cramped cards on narrow viewports.
+- `Row count` now enables exact `COUNT_BIG(*)` fallback when metadata row-count
+  DMVs are unavailable.
+- `Schema compare` now falls back to column-only `INFORMATION_SCHEMA` comparison
+  when rich SQL Server table metadata is not supported by the source.
+- `Result shape` now falls back to active-object column metadata when the
+  result-shape DMV is unavailable and an active object is selected.
+- `Dependency view` now returns an empty graph with a clear warning when
+  dependency metadata is unavailable.
+- `Estimated plan` now returns a clear unsupported-source/permission message
+  when SHOWPLAN metadata is unavailable.
+- Support and diagnostics payloads avoid passwords and client secrets.
+
+### Fixed
+
+- Fixed Support button doing nothing by wiring the open/close/copy/email actions.
+- Fixed Object Analysis raw Lakehouse DMV errors such as
+  `dm_db_partition_stats is not supported`.
+- Fixed Result Shape requiring an object name even though it is query based.
+- Fixed estimated plan requests being sent as an invalid single SHOWPLAN batch.
+- Fixed Workbench Tools modal overflow and cramped two-column layout on smaller
+  screens.
+
+### Verification
+
+- `npm run build`
+- `node scripts/sql-metadata.test.mjs`
+- `node scripts/route-contract.test.mjs`
+- `node scripts/ui-smoke.mjs`
+- Browser checks for docs pages, Support modal, Workbench Tools modal, and
+  header action grouping.
+
 ## 1.3.0 - 2026-06-17
 
 Metadata, explorer, results, editor, audit, and regression coverage release.
