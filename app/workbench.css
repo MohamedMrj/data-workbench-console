@@ -1774,9 +1774,10 @@
   cursor: pointer;
 }
 
-.env-settings-card {
-  width: min(1180px, calc(100vw - 24px));
-  max-height: min(88vh, 860px);
+.modal-card.env-settings-card {
+  width: min(1480px, calc(100vw - 32px));
+  max-width: calc(100vw - 32px);
+  max-height: min(90vh, 920px);
   overflow: hidden;
   display: flex;
   flex-direction: column;
@@ -1790,12 +1791,12 @@
 
 .env-settings-layout {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 14px;
+  grid-template-columns: repeat(3, minmax(300px, 1fr));
+  gap: 16px;
   margin-top: 14px;
   overflow-y: auto;
   overflow-x: hidden;
-  padding: 1px 2px 4px 1px;
+  padding: 1px 4px 6px 1px;
   min-height: 0;
 }
 
@@ -1804,7 +1805,7 @@
   border: 1px solid var(--line);
   border-radius: var(--radius-md);
   background: color-mix(in srgb, var(--surface-strong) 64%, transparent);
-  padding: 14px;
+  padding: 16px;
 }
 
 .env-settings-group h3 {
@@ -1828,32 +1829,37 @@
   display: grid;
   gap: 7px;
   min-width: 0;
-  padding: 10px;
+  padding: 12px;
   border: 1px solid color-mix(in srgb, var(--input-border) 78%, transparent);
   border-radius: var(--radius-md);
   background: color-mix(in srgb, var(--input-bg) 72%, transparent);
 }
 
 .env-setting-label-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: 10px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 8px;
 }
 
 .env-setting-label-row strong {
-  overflow-wrap: anywhere;
+  overflow-wrap: normal;
+  word-break: normal;
+  line-height: 1.25;
 }
 
 .env-key {
-  flex: 0 1 auto;
+  justify-self: end;
+  max-width: 150px;
   border: 1px solid color-mix(in srgb, var(--line-strong) 80%, transparent);
   border-radius: var(--radius-sm);
   padding: 2px 6px;
   color: var(--muted);
   font-family: var(--font-mono);
-  font-size: 0.7rem;
+  font-size: 0.66rem;
+  line-height: 1.25;
   overflow-wrap: anywhere;
+  text-align: right;
 }
 
 .env-setting-item input,
@@ -3353,6 +3359,18 @@
   }
 }
 
+@media (max-width: 1320px) {
+  .env-settings-layout {
+    grid-template-columns: repeat(2, minmax(300px, 1fr));
+  }
+}
+
+@media (max-width: 760px) {
+  .env-settings-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
 @media (max-width: 1180px) {
   .advanced-operations-grid {
     grid-template-columns: 1fr;
@@ -3362,9 +3380,6 @@
       'analysis';
   }
 
-  .env-settings-layout {
-    grid-template-columns: 1fr;
-  }
 }
 
 @container (max-width: 340px) {
