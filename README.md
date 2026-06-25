@@ -92,6 +92,145 @@ Useful pages:
 - `/` - SQL Studio
 - `/procedures` - Procedure Runner
 
+## Non-Technical Windows Install Guide
+
+Use this guide for colleagues who should run Data Workbench locally and receive updates without manually downloading new zip files.
+
+### What You Need First
+
+Ask IT or the app maintainer for:
+
+- access to the Data Workbench repository
+- Node.js `>=20` installed on the computer
+- Git for Windows installed on the computer
+- the correct Fabric service-principal values if Fabric sources will be used:
+  - `AZURE_CLIENT_ID`
+  - `AZURE_CLIENT_SECRET`
+  - `AZURE_TENANT_ID`
+
+Recommended install location:
+
+```text
+C:\Users\<your-user>\Desktop\data-workbench-console
+```
+
+Avoid installing the app inside `Downloads`, OneDrive sync folders, or temporary zip extraction folders.
+
+### One-Time Installation
+
+1. Open the Windows Start menu.
+2. Search for `PowerShell`.
+3. Open PowerShell.
+4. Go to the Desktop:
+
+```powershell
+cd "$env:USERPROFILE\Desktop"
+```
+
+5. Download the app with Git:
+
+```powershell
+git clone https://github.com/MohamedMrj/data-workbench-console.git
+```
+
+6. Go into the app folder:
+
+```powershell
+cd data-workbench-console
+```
+
+7. Install the app dependencies:
+
+```powershell
+npm install
+```
+
+8. Create the local settings file:
+
+```powershell
+Copy-Item .env.example .env
+```
+
+9. Create the Desktop shortcut by double-clicking:
+
+```text
+Create Desktop Shortcut.bat
+```
+
+After this, start the app from the `Data Workbench Console` Desktop shortcut.
+
+### First Startup
+
+The first startup can take longer because the app may need to build the production version. The launcher shows progress while it prepares the local server.
+
+When the browser opens:
+
+1. Click `Settings`.
+2. Fill in the Fabric authentication values if your source uses Fabric.
+3. Click `Apply settings`.
+4. Close Data Workbench.
+5. Start it again from the Desktop shortcut.
+
+The `.env` file is your private local settings file. It is not replaced by app updates.
+
+### Daily Use
+
+1. Double-click `Data Workbench Console` on the Desktop.
+2. Wait for the browser to open.
+3. Choose or click a saved profile.
+4. The catalog loads automatically when the saved profile has enough connection information.
+5. Use SQL Studio or Procedure Runner.
+6. Click `Exit Data Workbench` when finished if you want to stop the local server immediately.
+
+### Getting Updates
+
+Do not download a new zip for normal updates. Git-installed copies can update themselves.
+
+When a new version is available, an `Update` button appears in the app header. Click it to:
+
+- download the latest app code
+- keep your `.env` settings
+- keep local `.data`, saved profiles, audit logs, and history
+- rebuild the app
+- restart the local server
+- reload the browser
+
+If the `Update` button does not appear, the app is either already current or the update check cannot reach the Git repository.
+
+### If Something Goes Wrong
+
+Use these checks before asking for support:
+
+- Make sure Node.js is installed:
+
+```powershell
+node --version
+```
+
+- Make sure Git is installed:
+
+```powershell
+git --version
+```
+
+- Check launcher and update logs:
+
+```text
+.data\logs\data-workbench-launcher.log
+.data\logs\data-workbench-update.log
+.data\logs\data-workbench-server.log
+```
+
+- Use the in-app `Support` button to prepare a bug report with safe diagnostics.
+
+### Important Rules For Users
+
+- Do not edit app source files.
+- Do not delete `.env`.
+- Do not share `.env` because it can contain secrets.
+- Do not use zip downloads for users who need updates.
+- Use `Settings` in the app instead of opening `.env` manually.
+
 ## Windows Launcher
 
 For a clean Desktop shortcut on Windows, run:
