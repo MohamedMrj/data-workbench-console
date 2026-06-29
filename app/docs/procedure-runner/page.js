@@ -85,15 +85,15 @@ export default function ProcedureRunnerDocsPage() {
       <DocsSection id="connection" title="Connect And Load Metadata" intro="Procedure Runner uses the same connection rail as SQL Studio. The selected source, server, database, and authentication mode decide which procedures can be discovered and executed.">
         <div className="docs-table">
           <div><strong>Source type</strong><span>Choose Fabric SQL endpoint or SQL Server when you need stored procedure support.</span></div>
-          <div><strong>Authentication</strong><span>Fabric uses service principal settings from the server environment. SQL Server can use SQL login or service principal where supported.</span></div>
+          <div><strong>Authentication</strong><span>Fabric uses service principal settings from the server environment. SQL Server can use SQL login, Windows authentication, or service principal where supported.</span></div>
           <div><strong>Server</strong><span>Use the host name for the endpoint or SQL Server. Avoid full connection strings in the server field.</span></div>
           <div><strong>Port</strong><span>Use the default SQL port unless your SQL Server procedure connection requires a custom port.</span></div>
           <div><strong>Database</strong><span>The database where the procedure exists and where execution should happen.</span></div>
-          <div><strong>SQL login fields</strong><span>Username and password appear only for SQL login mode. Passwords are not saved in connection profiles.</span></div>
+          <div><strong>Credential fields</strong><span>SQL login asks for username and password. Windows authentication asks for domain, Windows username, and password. Passwords are not saved in connection profiles.</span></div>
           <div><strong>Trust certificate</strong><span>SQL Server can show a trust-server-certificate toggle when your environment needs it.</span></div>
           <div><strong>Test connection</strong><span>Confirms the app can authenticate before metadata or execution calls are made.</span></div>
           <div><strong>Load catalog</strong><span>Loads procedure names and related metadata where the source supports it. Required before selecting procedures, refreshing parameters, scripting definitions, pins/recent filtering, and execution.</span></div>
-          <div><strong>Saved profiles</strong><span>Profiles restore source, auth mode, server, port, database, username, and trust settings without storing secrets.</span></div>
+          <div><strong>Saved profiles</strong><span>Profiles restore source, auth mode, server, port, database, domain where relevant, username, and trust settings without storing secrets.</span></div>
           <div><strong>Refresh params</strong><span>Reloads the selected procedure parameter list after database changes or permission updates.</span></div>
         </div>
         <DocsExample title="Good preparation flow">

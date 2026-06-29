@@ -5,6 +5,33 @@ All notable Data Workbench Console changes are tracked here.
 The in-app version is read from `package.json` and exposed through `/api/version`
 together with the current git commit and build information.
 
+## 1.4.2 - 2026-06-29
+
+SQL Server authentication expansion patch.
+
+### Added
+
+- Added SQL Server Windows authentication through Tedious NTLM using explicit
+  domain, Windows username, and password fields.
+- Added Windows authentication as a SQL Server-only auth option in the
+  connection rail while keeping SQL login and Azure service principal unchanged.
+- Saved profiles now preserve the Windows domain and username, but still never
+  persist passwords.
+
+### Changed
+
+- Saved SQL Server profiles that use SQL login or Windows authentication now
+  auto-load the catalog only when the password is still available in the
+  browser session; otherwise the app asks the user to enter the password first.
+- Documentation now explains SQL Server Windows authentication and the saved
+  profile password behavior.
+
+### Verification
+
+- Added server, route-contract, and UI smoke coverage for Windows
+  authentication mode selection, validation, saved profile normalization, and
+  password redaction.
+
 ## 1.4.1 - 2026-06-25
 
 Production usability patch for configurable side-panel behavior.

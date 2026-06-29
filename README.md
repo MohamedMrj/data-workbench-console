@@ -6,7 +6,7 @@ Production-safe internal SQL workbench for Microsoft Fabric SQL endpoints, Fabri
 
 Data Workbench Console is built for controlled operational work: browse metadata, generate SQL, run read queries, preview writes before execution, run stored procedures from a dedicated flow, and keep an audit trail of important actions.
 
-Current app version: `1.4.1`. See [CHANGELOG.md](CHANGELOG.md) for release notes.
+Current app version: `1.4.2`. See [CHANGELOG.md](CHANGELOG.md) for release notes.
 
 <p>
   <img alt="Next.js" src="https://img.shields.io/badge/Next.js-15-111827?style=for-the-badge&logo=nextdotjs" />
@@ -417,7 +417,7 @@ Source types:
 - `sql-server`
   SQL Server
   Supports objects and stored procedures
-  Authentication: `sqlLogin` and `servicePrincipal`
+  Authentication: `sqlLogin`, `windowsNtlm`, and `servicePrincipal`
 
 Authentication modes:
 
@@ -430,6 +430,9 @@ Authentication modes:
 - `sqlLogin`
   SQL username and password
 
+- `windowsNtlm`
+  SQL Server Windows/NTLM domain credentials using domain, Windows username, and password. This is only available for `sql-server`.
+
 Connection normalization behavior:
 
 - default source type is `fabric-sql`
@@ -437,6 +440,7 @@ Connection normalization behavior:
 - server and port are normalized from either split inputs or `server:port`
 - SQL Server can use `trustServerCertificate`
 - SQL login requires username and password
+- Windows authentication requires domain, username, and password
 
 ## Main Pages
 
@@ -459,6 +463,7 @@ The left panel contains:
 - server input
 - port input
 - database input
+- domain input for SQL Server Windows authentication
 - conditional credential inputs
 - SQL Server certificate trust toggle
 - `Test` action
@@ -479,8 +484,9 @@ Saved connection behavior:
 - saved connections are persisted server-side to a JSON file
 - the client also maintains a local fallback copy for resilience
 - saved connections can be deleted
-- loading a saved connection restores source, auth mode, server, port, database, username, and trust setting
-- loading a saved connection does not automatically execute SQL or load the catalog
+- loading a saved connection restores source, auth mode, server, port, database, domain where relevant, username, and trust setting
+- loading a saved connection automatically loads the catalog when enough non-secret connection information is present
+- SQL login and Windows authentication profiles require the password again unless it is still available in the browser session
 
 ### Object Explorer
 
@@ -1087,6 +1093,7 @@ Verification helpers:
 ## Important Notes
 
 - SQL login passwords are never saved in connection profiles
+- SQL Server Windows authentication passwords are never saved in connection profiles
 - service principal secrets are never persisted in saved profiles
 - saved connections restore connection details, not an already-open live connection
 - procedures must be executed from the dedicated procedure workflow

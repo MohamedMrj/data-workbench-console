@@ -47,9 +47,22 @@ assert.deepEqual(sourceConfig.parseServerAndPort('demo.fabric.microsoft.com,1444
 });
 assert.equal(sourceConfig.normalizeAuthMode('', 'sql-server'), 'sqlLogin');
 assert.equal(sourceConfig.normalizeAuthMode('sqlLogin', 'fabric-sql'), 'servicePrincipal');
+assert.equal(sourceConfig.normalizeAuthMode('windowsNtlm', 'sql-server'), 'windowsNtlm');
+assert.equal(sourceConfig.normalizeAuthMode('windowsNtlm', 'fabric-sql'), 'servicePrincipal');
 assert.throws(
   () => sourceConfig.buildConfig({ sourceType: 'sql-server', authMode: 'sqlLogin', server: 'demo', database: 'meta_store' }),
   /Username and password/
+);
+assert.throws(
+  () => sourceConfig.buildConfig({
+    sourceType: 'sql-server',
+    authMode: 'windowsNtlm',
+    server: 'demo',
+    database: 'meta_store',
+    username: 'tester',
+    password: 'secret'
+  }),
+  /Domain, username, and password/
 );
 const sqlLoginConfig = sourceConfig.buildConfig({
   sourceType: 'sql-server',
@@ -64,6 +77,24 @@ assert.equal(sqlLoginConfig.server, 'demo');
 assert.equal(sqlLoginConfig.port, 1444);
 assert.equal(sqlLoginConfig.user, 'tester');
 assert.equal(sqlLoginConfig.options.trustServerCertificate, false);
+const windowsConfig = sourceConfig.buildConfig({
+  sourceType: 'sql-server',
+  authMode: 'windowsNtlm',
+  server: 'demo,1444',
+  database: 'meta_store',
+  domain: 'CONTOSO',
+  username: 'tester',
+  password: 'secret',
+  trustServerCertificate: false
+});
+assert.equal(windowsConfig.server, 'demo');
+assert.equal(windowsConfig.port, 1444);
+assert.equal(windowsConfig.authentication.type, 'ntlm');
+assert.equal(windowsConfig.authentication.options.domain, 'CONTOSO');
+assert.equal(windowsConfig.authentication.options.userName, 'tester');
+assert.equal(windowsConfig.authentication.options.password, 'secret');
+assert.equal(Object.hasOwn(windowsConfig, 'user'), false);
+assert.equal(windowsConfig.options.trustServerCertificate, false);
 
 const rateKey = `server-unit-${Date.now()}`;
 assert.equal(rateLimit.checkRateLimit(rateKey, { maxRequests: 2, windowMs: 60_000 }).allowed, true);
@@ -126,6 +157,23 @@ assert.equal(saved.port, '1444');
 assert.equal(Object.hasOwn(saved, 'password'), false);
 assert.equal((await savedStore.listSavedConnections()).length, 1);
 assert.equal(await savedStore.deleteSavedConnection(saved.id), true);
+assert.equal((await savedStore.listSavedConnections()).length, 0);
+const savedWindows = await savedStore.upsertSavedConnection({
+  profileName: 'Windows Unit Test',
+  sourceType: 'sql-server',
+  authMode: 'windowsNtlm',
+  server: 'demo,1444',
+  database: 'meta_store',
+  domain: 'CONTOSO',
+  username: 'tester',
+  password: 'must-not-persist'
+});
+assert.equal(savedWindows.profileName, 'Windows Unit Test');
+assert.equal(savedWindows.authMode, 'windowsNtlm');
+assert.equal(savedWindows.domain, 'CONTOSO');
+assert.equal(savedWindows.username, 'tester');
+assert.equal(Object.hasOwn(savedWindows, 'password'), false);
+assert.equal(await savedStore.deleteSavedConnection(savedWindows.id), true);
 assert.equal((await savedStore.listSavedConnections()).length, 0);
 
 assert.equal(lifecycleStore.recordHeartbeat({ sessionId: 'bad' }).ok, false);

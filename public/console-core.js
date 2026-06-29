@@ -48,11 +48,12 @@ window.createConsoleApp = function createConsoleApp() {
   const FALLBACK_SOURCES = [
     { id: 'fabric-sql', label: 'Fabric SQL endpoint', authModes: ['servicePrincipal'], supportsProcedures: true },
     { id: 'fabric-lakehouse', label: 'Fabric Lakehouse SQL endpoint', authModes: ['servicePrincipal'], supportsProcedures: false },
-    { id: 'sql-server', label: 'SQL Server', authModes: ['sqlLogin', 'servicePrincipal'], supportsProcedures: true }
+    { id: 'sql-server', label: 'SQL Server', authModes: ['sqlLogin', 'windowsNtlm', 'servicePrincipal'], supportsProcedures: true }
   ];
   const FALLBACK_AUTH = [
     { id: 'servicePrincipal', label: 'Azure service principal' },
-    { id: 'sqlLogin', label: 'SQL login' }
+    { id: 'sqlLogin', label: 'SQL login' },
+    { id: 'windowsNtlm', label: 'Windows authentication' }
   ];
   const DEFAULT_QUERY = `-- Connect to a source and load the catalog to get started.\n-- Select a table or view from the explorer to generate SQL automatically.\n-- You can also write or paste SQL directly here.\nSELECT TOP 100 *\nFROM dbo.YourTableName;`;
   const SNIPPETS = {};
@@ -1316,45 +1317,61 @@ window.createConsoleApp = function createConsoleApp() {
     const authMode = selectedAuthMode(sourceType);
 
     const authFields = $('authFields');
+    const domainField = $('domainField');
     const usernameField = $('usernameField');
     const passwordField = $('passwordField');
     const trustField = $('trustServerCertificateField');
+    const domainInput = $('domainInput');
     const usernameInput = $('usernameInput');
     const passwordInput = $('passwordInput');
 
-    if (!authFields || !usernameField || !passwordField || !trustField) {
+    if (!authFields || !domainField || !usernameField || !passwordField || !trustField) {
       return;
     }
 
     const isSqlLogin = authMode === 'sqlLogin';
+    const isWindowsAuth = authMode === 'windowsNtlm';
+    const needsPassword = authModeNeedsPassword(authMode);
     const sourceLabel =
       sourceOptions().find((source) => source.id === sourceType)?.label || sourceType;
 
     authFields.classList.toggle('hidden', false);
+    domainField.classList.toggle('hidden', !isWindowsAuth);
     usernameField.classList.toggle('hidden', false);
-    passwordField.classList.toggle('hidden', !isSqlLogin);
+    passwordField.classList.toggle('hidden', !needsPassword);
     trustField.classList.toggle('hidden', sourceType !== 'sql-server');
 
+    const domainLabel = domainField.querySelector('span');
     const usernameLabel = usernameField.querySelector('span');
     const passwordLabel = passwordField.querySelector('span');
 
+    if (domainLabel) {
+      domainLabel.textContent = 'Domain';
+    }
     if (usernameLabel) {
-      usernameLabel.textContent = isSqlLogin ? 'Username' : 'Client / app id';
+      usernameLabel.textContent = isWindowsAuth ? 'Windows username' : isSqlLogin ? 'Username' : 'Client / app id';
     }
     if (passwordLabel) {
-      passwordLabel.textContent = isSqlLogin ? 'Password' : 'Client secret';
+      passwordLabel.textContent = needsPassword ? 'Password' : 'Client secret';
     }
 
+    if (domainInput) {
+      domainInput.placeholder = isWindowsAuth ? 'DOMAIN or CONTOSO' : '';
+      domainInput.disabled = !isWindowsAuth;
+    }
     if (usernameInput) {
-      usernameInput.placeholder = isSqlLogin ? 'sql_login' : 'service principal client id';
-      usernameInput.disabled = !isSqlLogin;
+      usernameInput.placeholder = isWindowsAuth ? 'windows_user' : isSqlLogin ? 'sql_login' : 'service principal client id';
+      usernameInput.disabled = !needsPassword;
     }
     if (passwordInput) {
-      passwordInput.placeholder = isSqlLogin ? 'password' : 'service principal client secret';
-      passwordInput.disabled = !isSqlLogin;
+      passwordInput.placeholder = needsPassword ? 'password' : 'service principal client secret';
+      passwordInput.disabled = !needsPassword;
     }
 
-    if (!isSqlLogin) {
+    if (!isWindowsAuth && domainInput) {
+      domainInput.value = '';
+    }
+    if (!needsPassword) {
       usernameInput.value = '';
       passwordInput.value = '';
       window.__dataWorkbenchSessionPassword = '';
@@ -1489,6 +1506,14 @@ window.createConsoleApp = function createConsoleApp() {
     return normalized;
   }
 
+  function authModeNeedsPassword(authMode = selectedAuthMode()) {
+    return authMode === 'sqlLogin' || authMode === 'windowsNtlm';
+  }
+
+  function authModeNeedsDomain(authMode = selectedAuthMode()) {
+    return authMode === 'windowsNtlm';
+  }
+
   function connection() {
     const sourceType = selectedSourceType();
     const authMode = selectedAuthMode(sourceType);
@@ -1498,6 +1523,7 @@ window.createConsoleApp = function createConsoleApp() {
       server: $('serverInput').value.trim(),
       port: $('portInput').value.trim(),
       database: $('databaseInput').value.trim(),
+      domain: $('domainInput')?.value.trim() || '',
       username: $('usernameInput').value.trim(),
       password: $('passwordInput').value,
       trustServerCertificate: $('trustServerCertificateInput').checked
@@ -1516,6 +1542,7 @@ window.createConsoleApp = function createConsoleApp() {
       server: current.server,
       port: current.port,
       database: current.database,
+      domain: current.domain,
       username: current.username,
       trustServerCertificate: current.trustServerCertificate
     };
@@ -1528,6 +1555,7 @@ window.createConsoleApp = function createConsoleApp() {
       snapshot.server || '',
       snapshot.port || '',
       snapshot.database || '',
+      snapshot.domain || '',
       snapshot.username || '',
       snapshot.trustServerCertificate === false ? '0' : '1'
     ].join('|');
@@ -1536,7 +1564,7 @@ window.createConsoleApp = function createConsoleApp() {
   function persistActiveConnection() {
     const current = connection();
     safeSessionSet(ACTIVE_CONNECTION_KEY, JSON.stringify(storageConnection()));
-    window.__dataWorkbenchSessionPassword = current.authMode === 'sqlLogin' ? current.password : '';
+    window.__dataWorkbenchSessionPassword = authModeNeedsPassword(current.authMode) ? current.password : '';
   }
 
   function persistCatalogState() {
@@ -1830,8 +1858,9 @@ window.createConsoleApp = function createConsoleApp() {
     $('serverInput').value = current.server || '';
     $('portInput').value = current.port || '';
     $('databaseInput').value = current.database || '';
+    if ($('domainInput')) $('domainInput').value = current.domain || '';
     $('usernameInput').value = current.username || '';
-    $('passwordInput').value = authMode === 'sqlLogin' ? (window.__dataWorkbenchSessionPassword || '') : '';
+    $('passwordInput').value = authModeNeedsPassword(authMode) ? (window.__dataWorkbenchSessionPassword || '') : '';
     $('trustServerCertificateInput').checked = current.trustServerCertificate !== false;
     renderConnectionSummary();
   }
@@ -1849,6 +1878,7 @@ window.createConsoleApp = function createConsoleApp() {
       server: String(item.server || item.host || '').trim(),
       port: String(item.port || '').trim(),
       database: String(item.database || item.database_name || item.db || item.name || '').trim(),
+      domain: String(item.domain || item.windowsDomain || item.windows_domain || '').trim(),
       username: String(item.username || item.user || '').trim(),
       trustServerCertificate: item.trustServerCertificate !== false && item.trust_server_certificate !== 0
     };
@@ -2243,9 +2273,11 @@ window.createConsoleApp = function createConsoleApp() {
       container.innerHTML = '<div class="empty-note">Saved connections will appear here. They are stored in the app database and survive restarts.</div>';
       return;
     }
-    container.innerHTML = state.connectionHistory.map((item, index) => (
-      `<div class="saved-item"><button class="saved-item-main" data-connection-index="${index}" type="button"><strong>${esc(item.profileName || item.database)}</strong><span>${esc((sourceOptions().find((source) => source.id === item.sourceType)?.label) || item.sourceType)} • ${esc(item.server)} • ${esc(item.database)}</span></button><button class="saved-item-delete" data-delete-index="${index}" type="button">×</button></div>`
-    )).join('');
+    container.innerHTML = state.connectionHistory.map((item, index) => {
+      const sourceLabel = (sourceOptions().find((source) => source.id === item.sourceType)?.label) || item.sourceType;
+      const authLabel = authOptionsForSource(item.sourceType).find((auth) => auth.id === item.authMode)?.label || item.authMode;
+      return `<div class="saved-item"><button class="saved-item-main" data-connection-index="${index}" type="button"><strong>${esc(item.profileName || item.database)}</strong><span>${esc(sourceLabel)} / ${esc(authLabel)} • ${esc(item.server)} • ${esc(item.database)}</span></button><button class="saved-item-delete" data-delete-index="${index}" type="button">×</button></div>`;
+    }).join('');
     container.querySelectorAll('[data-connection-index]').forEach((button) => {
       button.onclick = () => applySavedConnectionAndLoadCatalog(state.connectionHistory[Number(button.dataset.connectionIndex)]);
     });
@@ -2283,10 +2315,11 @@ window.createConsoleApp = function createConsoleApp() {
     $('serverInput').value = item.server || '';
     $('portInput').value = item.port || '';
     $('databaseInput').value = item.database || '';
+    if ($('domainInput')) $('domainInput').value = item.domain || '';
     $('usernameInput').value = item.username || '';
     $('trustServerCertificateInput').checked = item.trustServerCertificate !== false;
     const nextSignature = connectionSignature();
-    $('passwordInput').value = authMode === 'sqlLogin' && previousSignature === nextSignature
+    $('passwordInput').value = authModeNeedsPassword(authMode) && previousSignature === nextSignature
       ? previousSessionPassword
       : '';
     window.__dataWorkbenchSessionPassword = $('passwordInput').value;
@@ -2303,8 +2336,9 @@ window.createConsoleApp = function createConsoleApp() {
 
     applySavedConnection(item);
     const profileName = item.profileName || item.database || 'saved profile';
-    if (selectedAuthMode() === 'sqlLogin' && !$('passwordInput')?.value) {
-      setStatus('neutral', `Loaded ${profileName}. Enter the SQL password, then load the catalog.`);
+    const authMode = selectedAuthMode();
+    if (authModeNeedsPassword(authMode) && !$('passwordInput')?.value) {
+      setStatus('neutral', `Loaded ${profileName}. Enter the ${authMode === 'windowsNtlm' ? 'Windows' : 'SQL'} password, then load the catalog.`);
       return;
     }
 
@@ -2362,8 +2396,8 @@ window.createConsoleApp = function createConsoleApp() {
           throw error;
         }
       }
-      const signature = [saved.sourceType, saved.authMode, saved.server, saved.port, saved.database, saved.username].join('|');
-      state.connectionHistory = [saved, ...state.connectionHistory.filter((item) => [item.sourceType, item.authMode, item.server, item.port, item.database, item.username].join('|') !== signature)].slice(0, CONNECTION_HISTORY_MAX);
+      const signature = [saved.sourceType, saved.authMode, saved.server, saved.port, saved.database, saved.domain, saved.username].join('|');
+      state.connectionHistory = [saved, ...state.connectionHistory.filter((item) => [item.sourceType, item.authMode, item.server, item.port, item.database, item.domain, item.username].join('|') !== signature)].slice(0, CONNECTION_HISTORY_MAX);
       saveStoredConnectionHistory(state.connectionHistory);
       renderConnectionHistory();
       // Clear the profile name input after a successful save.
@@ -5753,7 +5787,7 @@ window.createConsoleApp = function createConsoleApp() {
       persistActiveConnection();
       clearConnectionTestResult();
     };
-    ['serverInput', 'portInput', 'databaseInput', 'usernameInput', 'passwordInput'].forEach((id) => { $(id).oninput = handleConnectionFieldChange; });
+    ['serverInput', 'portInput', 'databaseInput', 'domainInput', 'usernameInput', 'passwordInput'].forEach((id) => { if ($(id)) $(id).oninput = handleConnectionFieldChange; });
     $('trustServerCertificateInput').onchange = handleConnectionFieldChange;
     $('saveConnectionBtn').onclick = saveCurrentConnection;
     if ($('toggleControlRailBtn')) {

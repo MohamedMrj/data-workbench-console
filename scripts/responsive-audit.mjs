@@ -23,11 +23,12 @@ const healthPayload = {
   supportedSourceTypes: [
     { id: 'fabric-sql', label: 'Fabric SQL endpoint', authModes: ['servicePrincipal'], supportsProcedures: true },
     { id: 'fabric-lakehouse', label: 'Fabric Lakehouse SQL endpoint', authModes: ['servicePrincipal'], supportsProcedures: false },
-    { id: 'sql-server', label: 'SQL Server', authModes: ['sqlLogin', 'servicePrincipal'], supportsProcedures: true }
+    { id: 'sql-server', label: 'SQL Server', authModes: ['sqlLogin', 'windowsNtlm', 'servicePrincipal'], supportsProcedures: true }
   ],
   supportedAuthModes: [
     { id: 'servicePrincipal', label: 'Azure service principal' },
-    { id: 'sqlLogin', label: 'SQL login' }
+    { id: 'sqlLogin', label: 'SQL login' },
+    { id: 'windowsNtlm', label: 'Windows authentication' }
   ]
 };
 

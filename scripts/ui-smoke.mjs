@@ -64,11 +64,12 @@ function attachMocks(window) {
         supportedSourceTypes: [
           { id: 'fabric-sql', label: 'Fabric SQL endpoint', authModes: ['servicePrincipal'], supportsProcedures: true },
           { id: 'fabric-lakehouse', label: 'Fabric Lakehouse SQL endpoint', authModes: ['servicePrincipal'], supportsProcedures: false },
-          { id: 'sql-server', label: 'SQL Server', authModes: ['sqlLogin', 'servicePrincipal'], supportsProcedures: true }
+          { id: 'sql-server', label: 'SQL Server', authModes: ['sqlLogin', 'windowsNtlm', 'servicePrincipal'], supportsProcedures: true }
         ],
         supportedAuthModes: [
           { id: 'servicePrincipal', label: 'Azure service principal' },
-          { id: 'sqlLogin', label: 'SQL login' }
+          { id: 'sqlLogin', label: 'SQL login' },
+          { id: 'windowsNtlm', label: 'Windows authentication' }
         ]
       }), {
         status: 200,
@@ -613,6 +614,28 @@ if (sqlWindow.document.querySelectorAll('#themeList .theme-chip').length !== 6) 
 assertVisibleAffordance(sqlWindow, '#serverInput', 'server input');
 assertVisibleAffordance(sqlWindow, '#testConnectionBtn', 'test connection button');
 assertVisibleAffordance(sqlWindow, '#queryEditor', 'SQL editor');
+sqlWindow.document.getElementById('sourceTypeSelect').value = 'sql-server';
+sqlWindow.document.getElementById('sourceTypeSelect').dispatchEvent(new sqlWindow.Event('change', { bubbles: true }));
+const sqlAuthOptions = Array.from(sqlWindow.document.getElementById('authModeSelect').options);
+if (!sqlAuthOptions.some((option) => option.value === 'windowsNtlm' && option.textContent.includes('Windows authentication'))) {
+  throw new Error('SQL Server auth selector should include Windows authentication.');
+}
+sqlWindow.document.getElementById('authModeSelect').value = 'windowsNtlm';
+sqlWindow.document.getElementById('authModeSelect').dispatchEvent(new sqlWindow.Event('change', { bubbles: true }));
+if (sqlWindow.document.getElementById('domainField').classList.contains('hidden')) {
+  throw new Error('Windows authentication should show the domain field.');
+}
+if (!sqlWindow.document.querySelector('#usernameField span')?.textContent.includes('Windows username')) {
+  throw new Error('Windows authentication should label the username field clearly.');
+}
+if (sqlWindow.document.getElementById('passwordField').classList.contains('hidden')) {
+  throw new Error('Windows authentication should show the password field.');
+}
+if (sqlWindow.document.getElementById('trustServerCertificateField').classList.contains('hidden')) {
+  throw new Error('Windows authentication should keep SQL Server trust certificate visible.');
+}
+sqlWindow.document.getElementById('sourceTypeSelect').value = 'fabric-sql';
+sqlWindow.document.getElementById('sourceTypeSelect').dispatchEvent(new sqlWindow.Event('change', { bubbles: true }));
 if (sqlWindow.document.querySelector('.results-card')?.dataset.resultsState !== 'empty') {
   throw new Error('Empty results should mark the results card as empty for compact sizing.');
 }

@@ -73,6 +73,9 @@ try {
   assert.equal(health.payload.sidePanels.autoHideEnabled, true);
   assert.equal(typeof health.payload.sidePanels.idleMs, 'number');
   assert.equal(typeof health.payload.sidePanels.fadeMs, 'number');
+  const sqlServerSource = health.payload.supportedSourceTypes.find((source) => source.id === 'sql-server');
+  assert.equal(sqlServerSource.authModes.includes('windowsNtlm'), true);
+  assert.equal(health.payload.supportedAuthModes.some((auth) => auth.id === 'windowsNtlm'), true);
 
   const version = await request('/api/version');
   assert.equal(version.response.status, 200);
@@ -109,6 +112,21 @@ try {
   assert.equal(blockedQuery.response.status, 400);
   assert.match(blockedQuery.payload.error, /one SQL statement|blocked/i);
 
+  const missingWindowsDomain = await request('/api/query', {
+    method: 'POST',
+    body: {
+      sourceType: 'sql-server',
+      authMode: 'windowsNtlm',
+      server: 'demo',
+      database: 'meta_store',
+      username: 'tester',
+      password: 'secret',
+      query: 'SELECT 1'
+    }
+  });
+  assert.equal(missingWindowsDomain.response.status, 400);
+  assert.match(missingWindowsDomain.payload.error, /Domain, username, and password/);
+
   const audit = await request('/api/audit?limit=10&event=query&outcome=blocked');
   assert.equal(audit.response.status, 200);
   assert.equal(Array.isArray(audit.payload.entries), true);
@@ -132,6 +150,31 @@ try {
   });
   assert.equal(savedDelete.response.status, 200);
   assert.equal(savedDelete.payload.success, true);
+
+  const savedWindowsCreate = await request('/api/saved-connections', {
+    method: 'POST',
+    body: {
+      sourceType: 'sql-server',
+      authMode: 'windowsNtlm',
+      server: 'demo',
+      database: 'meta_store',
+      domain: 'CONTOSO',
+      username: 'tester',
+      password: 'must-not-persist',
+      profileName: 'Windows Route Contract'
+    }
+  });
+  assert.equal(savedWindowsCreate.response.status, 200);
+  assert.equal(savedWindowsCreate.payload.success, true);
+  assert.equal(savedWindowsCreate.payload.item.authMode, 'windowsNtlm');
+  assert.equal(savedWindowsCreate.payload.item.domain, 'CONTOSO');
+  assert.equal(Object.hasOwn(savedWindowsCreate.payload.item, 'password'), false);
+  const savedWindowsDelete = await request('/api/saved-connections', {
+    method: 'DELETE',
+    body: { id: savedWindowsCreate.payload.item.id }
+  });
+  assert.equal(savedWindowsDelete.response.status, 200);
+  assert.equal(savedWindowsDelete.payload.success, true);
 
   const objectDefinition = await request('/api/object-definition', {
     method: 'POST',

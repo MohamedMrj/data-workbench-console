@@ -85,15 +85,15 @@ export default function SqlStudioDocsPage() {
       <DocsSection id="connection" title="Connect To A Source" intro="The connection rail defines where catalog loads and queries run. Saved profiles fill in fields, but they do not automatically connect or execute anything.">
         <div className="docs-table">
           <div><strong>Source type</strong><span>Choose Fabric SQL endpoint, Fabric Lakehouse SQL endpoint, or SQL Server.</span></div>
-          <div><strong>Authentication</strong><span>Fabric uses Azure service principal settings from the server environment. SQL Server can use SQL login or service principal where supported.</span></div>
+          <div><strong>Authentication</strong><span>Fabric uses Azure service principal settings from the server environment. SQL Server can use SQL login, Windows authentication, or service principal where supported.</span></div>
           <div><strong>Server</strong><span>Use only the host name, for example <code>workspace.datawarehouse.fabric.microsoft.com</code>. Do not paste a full connection string.</span></div>
           <div><strong>Port</strong><span>Use the default SQL port unless your SQL Server connection requires a custom port.</span></div>
           <div><strong>Database</strong><span>The database or SQL endpoint database where catalog metadata and SQL execution should happen.</span></div>
-          <div><strong>SQL login fields</strong><span>Username and password appear only for SQL login mode. Passwords are used for the current session and are not saved in profiles.</span></div>
+          <div><strong>Credential fields</strong><span>SQL login asks for username and password. Windows authentication asks for domain, Windows username, and password. Passwords are used for the current session and are not saved in profiles.</span></div>
           <div><strong>Trust certificate</strong><span>SQL Server can show a trust-server-certificate toggle when that environment requires it.</span></div>
           <div><strong>Test connection</strong><span>Verifies server, database, authentication mode, and credentials before you load metadata.</span></div>
           <div><strong>Load catalog</strong><span>Loads tables, views, and procedures when the selected source supports them. Required before object selection, scripting, profiling, dependency view, pins/recent filtering, and most advanced operations.</span></div>
-          <div><strong>Saved profiles</strong><span>Save reusable source, auth mode, server, port, database, username, and trust settings. Secrets are not stored. Clicking a saved profile loads its catalog automatically when the profile has enough connection information.</span></div>
+          <div><strong>Saved profiles</strong><span>Save reusable source, auth mode, server, port, database, domain where relevant, username, and trust settings. Secrets are not stored. Clicking a saved profile loads its catalog automatically when the profile has enough connection information.</span></div>
         </div>
         <DocsExample title="Good connection flow">
           <ol>

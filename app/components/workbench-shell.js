@@ -379,6 +379,10 @@ export default function WorkbenchShell({ pageMode = 'sql' }) {
             </label>
 
             <div id="authFields" className="conn-field-group two-col hidden">
+              <label id="domainField" className="field compact-field hidden">
+                <span>Domain</span>
+                <input id="domainInput" type="text" placeholder="DOMAIN" autoComplete="off" />
+              </label>
               <label id="usernameField" className="field compact-field">
                 <span>Username</span>
                 <input id="usernameInput" type="text" placeholder="sql_login" autoComplete="username" />
