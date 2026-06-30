@@ -3331,6 +3331,21 @@ window.createConsoleApp = function createConsoleApp() {
     stats.textContent = `${lines} line${lines === 1 ? '' : 's'} • ${query.length} chars`;
   }
 
+  function setProcedureScriptExpanded(expanded) {
+    const isExpanded = Boolean(expanded);
+    const shell = document.querySelector('.app-shell');
+    shell?.classList.toggle('procedure-script-expanded', isExpanded);
+    const button = $('toggleProcedureScriptExpandBtn');
+    if (button) {
+      button.textContent = isExpanded ? 'Collapse editor' : 'Expand editor';
+      button.setAttribute('aria-pressed', isExpanded ? 'true' : 'false');
+    }
+  }
+
+  function toggleProcedureScriptExpanded() {
+    setProcedureScriptExpanded(!document.querySelector('.app-shell')?.classList.contains('procedure-script-expanded'));
+  }
+
   function setProcedureScriptQuery(query) {
     const panel = $('procedureScriptPanel');
     const editor = $('procedureScriptEditor');
@@ -3339,6 +3354,7 @@ window.createConsoleApp = function createConsoleApp() {
     }
     editor.value = String(query || '');
     panel.classList.remove('hidden');
+    setProcedureScriptExpanded(true);
     updateProcedureScriptStats();
   }
 
@@ -3350,10 +3366,11 @@ window.createConsoleApp = function createConsoleApp() {
       updateProcedureScriptStats();
     }
     panel?.classList.add('hidden');
+    setProcedureScriptExpanded(false);
   }
 
   function clearProcedureScriptQuery() {
-    setProcedureScriptQuery('');
+    hideProcedureScriptQuery({ clear: true });
     setStatus('neutral', 'Procedure script cleared.');
   }
 
@@ -5979,6 +5996,9 @@ window.createConsoleApp = function createConsoleApp() {
     $('runProcedureBtn').onclick = () => runProcedure().catch((error) => setStatus('error', error.message));
     if ($('procedureScriptEditor')) {
       $('procedureScriptEditor').oninput = updateProcedureScriptStats;
+    }
+    if ($('toggleProcedureScriptExpandBtn')) {
+      $('toggleProcedureScriptExpandBtn').onclick = toggleProcedureScriptExpanded;
     }
     if ($('copyProcedureScriptBtn')) {
       $('copyProcedureScriptBtn').onclick = () => copyText(getProcedureScriptQuery(), 'Procedure script copied to clipboard.');

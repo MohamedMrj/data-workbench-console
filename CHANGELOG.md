@@ -5,6 +5,24 @@ All notable Data Workbench Console changes are tracked here.
 The in-app version is read from `package.json` and exposed through `/api/version`
 together with the current git commit and build information.
 
+## 1.4.4 - 2026-06-30
+
+Procedure script editor usability patch.
+
+### Changed
+
+- Procedure scripts now open in an expanded Procedure Runner editor workspace
+  instead of staying trapped in the narrow runner column.
+- Added an `Expand editor` / `Collapse editor` control for switching between
+  large-script editing and the normal parameter/results layout.
+- Increased the procedure script editor working height for long stored
+  procedure definitions.
+
+### Verification
+
+- Added UI smoke coverage for automatic procedure script expansion and manual
+  collapse/expand behavior.
+
 ## 1.4.3 - 2026-06-30
 
 Stored procedure scripting workflow patch.

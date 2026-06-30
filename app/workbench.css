@@ -1304,7 +1304,7 @@
 
 .procedure-script-editor {
   width: 100%;
-  min-height: 260px;
+  min-height: clamp(360px, 45vh, 620px);
   resize: vertical;
   margin-top: 10px;
   padding: 14px;
@@ -1317,6 +1317,37 @@
   line-height: 1.55;
   white-space: pre;
   overflow: auto;
+}
+
+.app-shell.procedure-script-expanded .procedure-studio-grid {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas: 'procedure';
+}
+
+.app-shell.procedure-script-expanded .procedure-studio-grid > [data-resize-handle="procedure"],
+.app-shell.procedure-script-expanded .procedure-studio-grid > .results-card {
+  display: none;
+}
+
+.app-shell.procedure-script-expanded .studio-panel-procedure {
+  min-height: calc(100vh - 230px);
+}
+
+.app-shell.procedure-script-expanded #procedureParametersPanel {
+  display: none;
+}
+
+.app-shell.procedure-script-expanded .procedure-summary {
+  margin-bottom: 8px;
+}
+
+.app-shell.procedure-script-expanded .procedure-script-panel {
+  margin-top: 10px;
+  padding: 14px;
+}
+
+.app-shell.procedure-script-expanded .procedure-script-editor {
+  min-height: clamp(560px, 70vh, 980px);
 }
 
 .procedure-script-editor:hover {

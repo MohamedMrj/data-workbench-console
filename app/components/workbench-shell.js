@@ -258,6 +258,7 @@ function ProcedureWorkspace({ hidden = false }) {
             <p className="section-subtitle">Review CREATE or ALTER text here. Running the script uses the normal SQL confirmation path.</p>
           </div>
           <div className="button-row wrap right">
+            <button id="toggleProcedureScriptExpandBtn" className="ghost-btn small" type="button" aria-pressed="false">Expand editor</button>
             <button id="copyProcedureScriptBtn" className="ghost-btn small" type="button">Copy</button>
             <button id="clearProcedureScriptBtn" className="ghost-btn small" type="button">Clear</button>
             <button id="runProcedureScriptBtn" className="primary-btn small" type="button">Run script</button>

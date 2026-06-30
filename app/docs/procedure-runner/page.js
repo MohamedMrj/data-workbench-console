@@ -136,6 +136,7 @@ export default function ProcedureRunnerDocsPage() {
           <div><strong>Refresh params</strong><span>Reloads parameter metadata for the selected procedure. Use it after procedure changes, permission changes, or when parameter details look stale.</span></div>
           <div><strong>Script CREATE</strong><span>Loads the procedure CREATE definition into the Procedure Runner script editor when the source exposes module text and the login can view definitions.</span></div>
           <div><strong>Script ALTER/Edit</strong><span>Loads an editable ALTER-style procedure definition into the Procedure Runner script editor. It is not executed automatically.</span></div>
+          <div><strong>Expand editor</strong><span>Procedure scripts open in a wide editor mode by default. Collapse it when you need the normal parameter/result layout again.</span></div>
           <div><strong>Run script</strong><span>Runs the loaded CREATE/ALTER procedure script through the existing SQL confirmation path. This is for changing procedure definition text, not for executing the procedure with parameters.</span></div>
           <div><strong>Run procedure</strong><span>Prepares the selected procedure and current parameter values for confirmation. Requires a selected procedure and a valid connection.</span></div>
           <div><strong>Blank field</strong><span>The parameter is omitted. If the procedure has a database default, the default can be used.</span></div>

@@ -1218,6 +1218,19 @@ await flush();
 if (procedureWindow.document.getElementById('procedureScriptPanel').classList.contains('hidden')) {
   throw new Error('Procedure ALTER script did not open the Procedure Runner script editor.');
 }
+if (!procedureWindow.document.querySelector('.app-shell').classList.contains('procedure-script-expanded')) {
+  throw new Error('Procedure script loading should expand the editor workspace.');
+}
+if (!procedureWindow.document.getElementById('toggleProcedureScriptExpandBtn').textContent.includes('Collapse')) {
+  throw new Error('Expanded procedure script editor should show a collapse action.');
+}
+procedureWindow.document.getElementById('toggleProcedureScriptExpandBtn').click();
+await flush();
+if (procedureWindow.document.querySelector('.app-shell').classList.contains('procedure-script-expanded')) {
+  throw new Error('Procedure script collapse action did not restore the normal runner layout.');
+}
+procedureWindow.document.getElementById('toggleProcedureScriptExpandBtn').click();
+await flush();
 if (!procedureWindow.document.getElementById('procedureScriptEditor').value.includes('ALTER PROCEDURE dbo.usp_ProcessAlert')) {
   throw new Error('Procedure ALTER script was not loaded into the Procedure Runner script editor.');
 }
