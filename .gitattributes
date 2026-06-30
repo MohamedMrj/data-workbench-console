@@ -1,0 +1,9 @@
+# Normalize line endings in the repository to LF so that a machine with a
+# different core.autocrlf setting cannot commit CRLF and dirty other checkouts.
+# Working-tree endings still follow each machine's git config; the self-update
+# hard-reset makes working-tree drift irrelevant regardless.
+* text=auto
+
+# Treat binary assets as binary so they are never line-ending normalized.
+*.png binary
+*.ico binary
