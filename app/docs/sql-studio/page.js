@@ -83,18 +83,24 @@ export default function SqlStudioDocsPage() {
       </DocsSection>
 
       <DocsSection id="connection" title="Connect To A Source" intro="The connection rail defines where catalog loads and queries run. Saved profiles fill in fields, but they do not automatically connect or execute anything.">
-        <div className="docs-table">
-          <div><strong>Source type</strong><span>Choose Fabric SQL endpoint, Fabric Lakehouse SQL endpoint, or SQL Server.</span></div>
-          <div><strong>Authentication</strong><span>Fabric uses Azure service principal settings from the server environment. SQL Server can use SQL login, Windows authentication, or service principal where supported.</span></div>
-          <div><strong>Server</strong><span>Use only the host name, for example <code>workspace.datawarehouse.fabric.microsoft.com</code>. Do not paste a full connection string.</span></div>
-          <div><strong>Port</strong><span>Use the default SQL port unless your SQL Server connection requires a custom port.</span></div>
-          <div><strong>Database</strong><span>The database or SQL endpoint database where catalog metadata and SQL execution should happen.</span></div>
-          <div><strong>Credential fields</strong><span>SQL login asks for username and password. Windows authentication asks for domain, Windows username, and password. Passwords are used for the current session and are not saved in profiles.</span></div>
-          <div><strong>Trust certificate</strong><span>SQL Server can show a trust-server-certificate toggle when that environment requires it.</span></div>
-          <div><strong>Test connection</strong><span>Verifies server, database, authentication mode, and credentials before you load metadata.</span></div>
-          <div><strong>Load catalog</strong><span>Loads tables, views, and procedures when the selected source supports them. Required before object selection, scripting, profiling, dependency view, pins/recent filtering, and most advanced operations.</span></div>
-          <div><strong>Saved profiles</strong><span>Save reusable source, auth mode, server, port, database, domain where relevant, username, and trust settings. Secrets are not stored. Clicking a saved profile loads its catalog automatically when the profile has enough connection information.</span></div>
-        </div>
+        <DocsMiniSection title="Fill in the connection">
+          <div className="docs-table">
+            <div><strong>Source type</strong><span>Choose Fabric SQL endpoint, Fabric Lakehouse SQL endpoint, or SQL Server.</span></div>
+            <div><strong>Authentication</strong><span>Fabric uses Azure service principal settings from the server environment. SQL Server can use SQL login, Windows authentication, or service principal where supported.</span></div>
+            <div><strong>Server</strong><span>Use only the host name, for example <code>workspace.datawarehouse.fabric.microsoft.com</code>. Do not paste a full connection string.</span></div>
+            <div><strong>Port</strong><span>Use the default SQL port unless your SQL Server connection requires a custom port.</span></div>
+            <div><strong>Database</strong><span>The database or SQL endpoint database where catalog metadata and SQL execution should happen.</span></div>
+            <div><strong>Credential fields</strong><span>SQL login asks for username and password. Windows authentication asks for domain, Windows username, and password. Passwords are used for the current session and are not saved in profiles.</span></div>
+            <div><strong>Trust certificate</strong><span>SQL Server can show a trust-server-certificate toggle when that environment requires it.</span></div>
+          </div>
+        </DocsMiniSection>
+        <DocsMiniSection title="Connect and reuse">
+          <div className="docs-table">
+            <div><strong>Test connection</strong><span>Verifies server, database, authentication mode, and credentials before you load metadata.</span></div>
+            <div><strong>Load catalog</strong><span>Loads tables, views, and procedures when the selected source supports them. Required before object selection, scripting, profiling, dependency view, pins/recent filtering, and most advanced operations.</span></div>
+            <div><strong>Saved profiles</strong><span>Save reusable source, auth mode, server, port, database, domain where relevant, username, and trust settings. Secrets are not stored. Clicking a saved profile loads its catalog automatically when the profile has enough connection information.</span></div>
+          </div>
+        </DocsMiniSection>
         <DocsExample title="Good connection flow">
           <ol>
             <li>Choose <strong>Fabric SQL endpoint</strong>.</li>
@@ -121,25 +127,39 @@ export default function SqlStudioDocsPage() {
       </DocsSection>
 
       <DocsSection id="builder" title="Query Builder" intro="The builder turns the selected object and columns into editable SQL. Generated SQL is a starting point, not a locked query.">
-        <div className="docs-table">
-          <div><strong>Preview rows</strong><span>Switches to Select mode, sets TOP rows to 100, and regenerates a read query. Requires an active table or view.</span></div>
-          <div><strong>Count rows</strong><span>Loads a <code>COUNT_BIG(*)</code> query into the editor for the active object. Requires an active table or view.</span></div>
-          <div><strong>Reset</strong><span>Clears selected columns, filters, sort, TOP, and DISTINCT back to defaults. Use it when builder state no longer matches the query you want.</span></div>
-          <div><strong>Select</strong><span>Builds a read query with selected columns, filters, sort, TOP rows, and DISTINCT.</span></div>
-          <div><strong>Insert</strong><span>Creates an INSERT template. Review values before running.</span></div>
-          <div><strong>Update</strong><span>Creates an UPDATE template. A WHERE clause is required before execution.</span></div>
-          <div><strong>Delete</strong><span>Creates a DELETE template. A WHERE clause is required before execution.</span></div>
-          <div><strong>All / Clear columns</strong><span>Selects all loaded columns or clears explicit column choices. Clear means the generated SELECT returns the default/all column set.</span></div>
-          <div><strong>Filters</strong><span>Add one or more conditions. Supported operators include comparisons, LIKE, IS NULL, and IS NOT NULL.</span></div>
-          <div><strong>Add filter</strong><span>Adds a filter row. Pick a column, operator, and value before generating or inserting a usable WHERE clause.</span></div>
-          <div><strong>Sort and limit</strong><span>Choose sort column, direction, TOP rows, and DISTINCT for generated reads.</span></div>
-          <div><strong>Refresh SQL</strong><span>Rebuilds the editor text from the current builder selections when you want to discard manual edits and return to the generated template.</span></div>
-          <div><strong>Script CREATE</strong><span>Loads a CREATE script for the active table, view, or procedure into the SQL editor for review.</span></div>
-          <div><strong>Script ALTER/Edit</strong><span>Loads an editable ALTER-style script where the source supports it. The script is not executed automatically.</span></div>
-          <div><strong>Insert WHERE</strong><span>Inserts or rebuilds a WHERE clause from completed filter rows. Requires at least one complete filter.</span></div>
-          <div><strong>Insert ORDER BY</strong><span>Inserts an ORDER BY clause from the selected sort column and direction. If no sort column is selected, it inserts a placeholder.</span></div>
-          <div><strong>Join note</strong><span>Inserts a comment template for documenting an intended join. Use it as a reminder before manually writing joins.</span></div>
-        </div>
+        <DocsMiniSection title="Quick actions">
+          <div className="docs-table">
+            <div><strong>Preview rows</strong><span>Switches to Select mode, sets TOP rows to 100, and regenerates a read query. Requires an active table or view.</span></div>
+            <div><strong>Count rows</strong><span>Loads a <code>COUNT_BIG(*)</code> query into the editor for the active object. Requires an active table or view.</span></div>
+            <div><strong>Reset</strong><span>Clears selected columns, filters, sort, TOP, and DISTINCT back to defaults. Use it when builder state no longer matches the query you want.</span></div>
+          </div>
+        </DocsMiniSection>
+        <DocsMiniSection title="Choose what the query does">
+          <div className="docs-table">
+            <div><strong>Select</strong><span>Builds a read query with selected columns, filters, sort, TOP rows, and DISTINCT.</span></div>
+            <div><strong>Insert</strong><span>Creates an INSERT template. Review values before running.</span></div>
+            <div><strong>Update</strong><span>Creates an UPDATE template. A WHERE clause is required before execution.</span></div>
+            <div><strong>Delete</strong><span>Creates a DELETE template. A WHERE clause is required before execution.</span></div>
+          </div>
+        </DocsMiniSection>
+        <DocsMiniSection title="Shape the query">
+          <div className="docs-table">
+            <div><strong>All / Clear columns</strong><span>Selects all loaded columns or clears explicit column choices. Clear means the generated SELECT returns the default/all column set.</span></div>
+            <div><strong>Filters</strong><span>Add one or more conditions. Supported operators include comparisons, LIKE, IS NULL, and IS NOT NULL.</span></div>
+            <div><strong>Add filter</strong><span>Adds a filter row. Pick a column, operator, and value before generating or inserting a usable WHERE clause.</span></div>
+            <div><strong>Sort and limit</strong><span>Choose sort column, direction, TOP rows, and DISTINCT for generated reads.</span></div>
+          </div>
+        </DocsMiniSection>
+        <DocsMiniSection title="Insert clauses and scripts into the editor">
+          <div className="docs-table">
+            <div><strong>Refresh SQL</strong><span>Rebuilds the editor text from the current builder selections when you want to discard manual edits and return to the generated template.</span></div>
+            <div><strong>Script CREATE</strong><span>Loads a CREATE script for the active table, view, or procedure into the SQL editor for review.</span></div>
+            <div><strong>Script ALTER/Edit</strong><span>Loads an editable ALTER-style script where the source supports it. The script is not executed automatically.</span></div>
+            <div><strong>Insert WHERE</strong><span>Inserts or rebuilds a WHERE clause from completed filter rows. Requires at least one complete filter.</span></div>
+            <div><strong>Insert ORDER BY</strong><span>Inserts an ORDER BY clause from the selected sort column and direction. If no sort column is selected, it inserts a placeholder.</span></div>
+            <div><strong>Join note</strong><span>Inserts a comment template for documenting an intended join. Use it as a reminder before manually writing joins.</span></div>
+          </div>
+        </DocsMiniSection>
         <DocsExample title="Example generated read">
           <pre>{`SELECT TOP (100)
        [AlertId],
@@ -191,23 +211,33 @@ ORDER BY [CreatedUtc] DESC;`}</pre>
         <DocsMiniSection title="Template context requirements">
           <p>Advanced templates require an active target object from Object Explorer. For cross-object templates, load the catalog, choose a source object in Template Context, choose a target key, and confirm or edit the source key. Profile sample rows controls how many rows read-only profiling should sample.</p>
         </DocsMiniSection>
-        <div className="docs-table">
-          <div><strong>Hide / Show advanced</strong><span>Collapses or expands the Advanced Operations panel. The preference is saved locally.</span></div>
-          <div><strong>Source object</strong><span>The companion object used by Insert SELECT, Update JOIN, MERGE preview, and Schema compare. Requires catalog metadata.</span></div>
-          <div><strong>Profile sample rows</strong><span>Maximum sample size used by Sample profile. Use smaller values for large or sensitive tables.</span></div>
-          <div><strong>Target key</strong><span>Column on the active object used as the join key in generated cross-object templates.</span></div>
-          <div><strong>Source key</strong><span>Column or expression on the source object. Defaults to the target key name when possible, but should always be reviewed.</span></div>
-          <div><strong>Insert SELECT</strong><span>Creates an INSERT...SELECT review template for loading the active target object from a source object. Requires active target, source object, and column metadata.</span></div>
-          <div><strong>Update JOIN</strong><span>Creates an UPDATE...FROM JOIN review template. Requires target key/source key and should be scoped before execution.</span></div>
-          <div><strong>MERGE preview</strong><span>Creates a MERGE review template in the editor. MERGE can be executed through the normal confirmation path, where it is treated as high-risk and requires typing <code>EXECUTE MERGE</code>. Review the template carefully first.</span></div>
-          <div><strong>Sample profile</strong><span>Runs a read-only profile for the active object, using the sample-row setting. Use it to inspect nulls, completeness, and simple column characteristics before writing SQL.</span></div>
-          <div><strong>Dependency view</strong><span>Loads dependency rows plus graph-friendly upstream/downstream metadata where the source exposes dependencies. Best for views/procedures and SQL Server/Fabric SQL metadata.</span></div>
-          <div><strong>Row count</strong><span>Loads metadata row counts where available. If the source does not expose row-count metadata, the button falls back to an exact <code>COUNT_BIG(*)</code>, which can read the object.</span></div>
-          <div><strong>Top values</strong><span>Groups selected or relevant columns and returns common values, null counts, and blanks where supported. Use it to understand categorical fields.</span></div>
-          <div><strong>Schema compare</strong><span>Compares columns and supported constraints/index metadata between active and source objects. Use it before copying data or creating migration SQL.</span></div>
-          <div><strong>Result shape</strong><span>Describes read-query output columns without executing the full query where supported. Requires a readable SQL statement in the editor.</span></div>
-          <div><strong>Estimated plan</strong><span>Requests a non-executing estimated plan for read statements. Requires source support and SHOWPLAN-style permission.</span></div>
-        </div>
+        <DocsMiniSection title="Set up the context">
+          <div className="docs-table">
+            <div><strong>Hide / Show advanced</strong><span>Collapses or expands the Advanced Operations panel. The preference is saved locally.</span></div>
+            <div><strong>Source object</strong><span>The companion object used by Insert SELECT, Update JOIN, MERGE preview, and Schema compare. Requires catalog metadata.</span></div>
+            <div><strong>Profile sample rows</strong><span>Maximum sample size used by Sample profile. Use smaller values for large or sensitive tables.</span></div>
+            <div><strong>Target key</strong><span>Column on the active object used as the join key in generated cross-object templates.</span></div>
+            <div><strong>Source key</strong><span>Column or expression on the source object. Defaults to the target key name when possible, but should always be reviewed.</span></div>
+          </div>
+        </DocsMiniSection>
+        <DocsMiniSection title="Generate cross-object templates">
+          <div className="docs-table">
+            <div><strong>Insert SELECT</strong><span>Creates an INSERT...SELECT review template for loading the active target object from a source object. Requires active target, source object, and column metadata.</span></div>
+            <div><strong>Update JOIN</strong><span>Creates an UPDATE...FROM JOIN review template. Requires target key/source key and should be scoped before execution.</span></div>
+            <div><strong>MERGE preview</strong><span>Creates a MERGE review template in the editor. MERGE can be executed through the normal confirmation path, where it is treated as high-risk and requires typing <code>EXECUTE MERGE</code>. Review the template carefully first.</span></div>
+          </div>
+        </DocsMiniSection>
+        <DocsMiniSection title="Read-only object analysis">
+          <div className="docs-table">
+            <div><strong>Sample profile</strong><span>Runs a read-only profile for the active object, using the sample-row setting. Use it to inspect nulls, completeness, and simple column characteristics before writing SQL.</span></div>
+            <div><strong>Dependency view</strong><span>Loads dependency rows plus graph-friendly upstream/downstream metadata where the source exposes dependencies. Best for views/procedures and SQL Server/Fabric SQL metadata.</span></div>
+            <div><strong>Row count</strong><span>Loads metadata row counts where available. If the source does not expose row-count metadata, the button falls back to an exact <code>COUNT_BIG(*)</code>, which can read the object.</span></div>
+            <div><strong>Top values</strong><span>Groups selected or relevant columns and returns common values, null counts, and blanks where supported. Use it to understand categorical fields.</span></div>
+            <div><strong>Schema compare</strong><span>Compares columns and supported constraints/index metadata between active and source objects. Use it before copying data or creating migration SQL.</span></div>
+            <div><strong>Result shape</strong><span>Describes read-query output columns without executing the full query where supported. Requires a readable SQL statement in the editor.</span></div>
+            <div><strong>Estimated plan</strong><span>Requests a non-executing estimated plan for read statements. Requires source support and SHOWPLAN-style permission.</span></div>
+          </div>
+        </DocsMiniSection>
         <DocsExample title="Example UPDATE JOIN template">
           <pre>{`UPDATE tgt
 SET tgt.[Status] = src.[Status]

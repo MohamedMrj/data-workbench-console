@@ -83,19 +83,25 @@ export default function ProcedureRunnerDocsPage() {
       </DocsSection>
 
       <DocsSection id="connection" title="Connect And Load Metadata" intro="Procedure Runner uses the same connection rail as SQL Studio. The selected source, server, database, and authentication mode decide which procedures can be discovered and executed.">
-        <div className="docs-table">
-          <div><strong>Source type</strong><span>Choose Fabric SQL endpoint or SQL Server when you need stored procedure support.</span></div>
-          <div><strong>Authentication</strong><span>Fabric uses service principal settings from the server environment. SQL Server can use SQL login, Windows authentication, or service principal where supported.</span></div>
-          <div><strong>Server</strong><span>Use the host name for the endpoint or SQL Server. Avoid full connection strings in the server field.</span></div>
-          <div><strong>Port</strong><span>Use the default SQL port unless your SQL Server procedure connection requires a custom port.</span></div>
-          <div><strong>Database</strong><span>The database where the procedure exists and where execution should happen.</span></div>
-          <div><strong>Credential fields</strong><span>SQL login asks for username and password. Windows authentication asks for domain, Windows username, and password. Passwords are not saved in connection profiles.</span></div>
-          <div><strong>Trust certificate</strong><span>SQL Server can show a trust-server-certificate toggle when your environment needs it.</span></div>
-          <div><strong>Test connection</strong><span>Confirms the app can authenticate before metadata or execution calls are made.</span></div>
-          <div><strong>Load catalog</strong><span>Loads procedure names and related metadata where the source supports it. Required before selecting procedures, refreshing parameters, scripting definitions, pins/recent filtering, and execution.</span></div>
-          <div><strong>Saved profiles</strong><span>Profiles restore source, auth mode, server, port, database, domain where relevant, username, and trust settings without storing secrets.</span></div>
-          <div><strong>Refresh params</strong><span>Reloads the selected procedure parameter list after database changes or permission updates.</span></div>
-        </div>
+        <DocsMiniSection title="Fill in the connection">
+          <div className="docs-table">
+            <div><strong>Source type</strong><span>Choose Fabric SQL endpoint or SQL Server when you need stored procedure support.</span></div>
+            <div><strong>Authentication</strong><span>Fabric uses service principal settings from the server environment. SQL Server can use SQL login, Windows authentication, or service principal where supported.</span></div>
+            <div><strong>Server</strong><span>Use the host name for the endpoint or SQL Server. Avoid full connection strings in the server field.</span></div>
+            <div><strong>Port</strong><span>Use the default SQL port unless your SQL Server procedure connection requires a custom port.</span></div>
+            <div><strong>Database</strong><span>The database where the procedure exists and where execution should happen.</span></div>
+            <div><strong>Credential fields</strong><span>SQL login asks for username and password. Windows authentication asks for domain, Windows username, and password. Passwords are not saved in connection profiles.</span></div>
+            <div><strong>Trust certificate</strong><span>SQL Server can show a trust-server-certificate toggle when your environment needs it.</span></div>
+          </div>
+        </DocsMiniSection>
+        <DocsMiniSection title="Connect and load">
+          <div className="docs-table">
+            <div><strong>Test connection</strong><span>Confirms the app can authenticate before metadata or execution calls are made.</span></div>
+            <div><strong>Load catalog</strong><span>Loads procedure names and related metadata where the source supports it. Required before selecting procedures, refreshing parameters, scripting definitions, pins/recent filtering, and execution.</span></div>
+            <div><strong>Saved profiles</strong><span>Profiles restore source, auth mode, server, port, database, domain where relevant, username, and trust settings without storing secrets.</span></div>
+            <div><strong>Refresh params</strong><span>Reloads the selected procedure parameter list after database changes or permission updates.</span></div>
+          </div>
+        </DocsMiniSection>
         <DocsExample title="Good preparation flow">
           <ol>
             <li>Choose the same source and database that owns the procedure.</li>
@@ -132,22 +138,31 @@ export default function ProcedureRunnerDocsPage() {
       </DocsSection>
 
       <DocsSection id="parameters" title="Parameter Entry" intro="The parameter panel shows the values that will be sent to the selected stored procedure. Treat this as the main review surface before execution.">
-        <div className="docs-table">
-          <div><strong>Refresh params</strong><span>Reloads parameter metadata for the selected procedure. Use it after procedure changes, permission changes, or when parameter details look stale.</span></div>
-          <div><strong>Script CREATE</strong><span>Loads the procedure CREATE definition into the Procedure Runner script editor when the source exposes module text and the login can view definitions.</span></div>
-          <div><strong>Script ALTER/Edit</strong><span>Loads an editable ALTER-style procedure definition into the Procedure Runner script editor. It is not executed automatically.</span></div>
-          <div><strong>Expand editor</strong><span>Procedure scripts open in a wide editor mode by default. Collapse it when you need the normal parameter/result layout again.</span></div>
-          <div><strong>Run script</strong><span>Runs the loaded CREATE/ALTER procedure definition through the existing SQL confirmation path. Because it changes a procedure definition, it is treated as high-risk: after preview you must type <code>EXECUTE CREATE</code> or <code>EXECUTE ALTER</code>. This changes the procedure text, it does not execute the procedure with parameters.</span></div>
-          <div><strong>Run procedure</strong><span>Prepares the selected procedure and current parameter values for confirmation. Confirmation is a single review-and-click step — there is no phrase to type, unlike Run script. Requires a selected procedure and a valid connection.</span></div>
-          <div><strong>Blank field</strong><span>The parameter is omitted. If the procedure has a database default, the default can be used.</span></div>
-          <div><strong>NULL</strong><span>Type <code>NULL</code> to send a real null value instead of an empty string.</span></div>
-          <div><strong>Text</strong><span>Enter text without wrapping quotes unless the UI specifically asks for a quoted literal.</span></div>
-          <div><strong>Numbers</strong><span>Use plain numeric values such as <code>42</code>, <code>0</code>, or <code>19.95</code>.</span></div>
-          <div><strong>Dates</strong><span>Use clear ISO-style values such as <code>2026-06-05</code> or <code>2026-06-05T14:30:00</code>.</span></div>
-          <div><strong>Boolean values</strong><span>Use values accepted by the procedure, commonly <code>1</code>/<code>0</code> or <code>true</code>/<code>false</code>.</span></div>
-          <div><strong>Output parameters</strong><span>Output parameters are returned after execution. They usually do not need input values before the run.</span></div>
-          <div><strong>Validation</strong><span>The app validates common types when metadata is available, but the procedure can still reject values with its own rules.</span></div>
-        </div>
+        <DocsMiniSection title="Buttons in the parameter panel">
+          <div className="docs-table">
+            <div><strong>Refresh params</strong><span>Reloads parameter metadata for the selected procedure. Use it after procedure changes, permission changes, or when parameter details look stale.</span></div>
+            <div><strong>Script CREATE</strong><span>Loads the procedure CREATE definition into the script editor when the source exposes module text and the login can view definitions.</span></div>
+            <div><strong>Script ALTER/Edit</strong><span>Loads an editable ALTER-style procedure definition into the script editor. It is not executed automatically.</span></div>
+            <div><strong>Expand / Collapse editor</strong><span>Procedure scripts open in a wide editor mode by default. Collapse it when you want the normal parameter/result layout back.</span></div>
+            <div><strong>Run script</strong><span>Saves a procedure definition change (CREATE/ALTER). It is high-risk SQL, so after preview you type <code>EXECUTE CREATE</code> or <code>EXECUTE ALTER</code>. It does not run the procedure with parameters.</span></div>
+            <div><strong>Run procedure</strong><span>Runs the selected procedure with the current values. Confirmation is a single review-and-click step with no phrase to type. Requires a selected procedure and a valid connection.</span></div>
+          </div>
+        </DocsMiniSection>
+        <DocsMiniSection title="How to enter each value">
+          <p>Type values exactly as the procedure expects them. The field stays as plain text — there is no need to add quotes unless a quoted literal is genuinely part of the value.</p>
+          <div className="docs-table">
+            <div><strong>Leave blank</strong><span>The parameter is omitted, so the procedure can fall back to its database default if it has one.</span></div>
+            <div><strong>NULL</strong><span>Type <code>NULL</code> to send a real null value instead of an empty string.</span></div>
+            <div><strong>Text</strong><span>Enter text without wrapping quotes unless the UI specifically asks for a quoted literal.</span></div>
+            <div><strong>Numbers</strong><span>Use plain numeric values such as <code>42</code>, <code>0</code>, or <code>19.95</code>.</span></div>
+            <div><strong>Dates</strong><span>Use clear ISO-style values such as <code>2026-06-05</code> or <code>2026-06-05T14:30:00</code>.</span></div>
+            <div><strong>Booleans</strong><span>Use values the procedure accepts, commonly <code>1</code>/<code>0</code> or <code>true</code>/<code>false</code>.</span></div>
+            <div><strong>Output parameters</strong><span>Returned after execution, so they usually need no value before the run.</span></div>
+          </div>
+          <div className="docs-callout docs-callout-info">
+            The app validates common types when metadata is available, but the procedure can still reject a value with its own rules. If a value is refused, check the expected type and format first.
+          </div>
+        </DocsMiniSection>
         <DocsExample title="Example parameter set">
           <pre>{`Procedure: [dbo].[spQueueJob]
 
