@@ -5,6 +5,22 @@ All notable Data Workbench Console changes are tracked here.
 The in-app version is read from `package.json` and exposed through `/api/version`
 together with the current git commit and build information.
 
+## 1.4.6 - 2026-06-30
+
+Connection panel resize stability patch.
+
+### Fixed
+
+- Fixed a connection-panel layout edge case where dragging the left rail wider
+  could create a large blank gap below the `Connection` heading.
+- Locked the connection form rows to content-sized layout inside the resizable
+  rail so restored widths, browser zoom, and breakpoint changes do not stretch
+  the form vertically.
+
+### Verification
+
+- Added UI smoke coverage for the resized connection rail heading-to-field gap.
+
 ## 1.4.5 - 2026-06-30
 
 Procedure script editor visual polish.

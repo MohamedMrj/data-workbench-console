@@ -298,6 +298,21 @@
   overscroll-behavior: contain;
 }
 
+.control-rail .connection-section {
+  flex: 0 0 auto;
+  justify-content: flex-start;
+  align-content: flex-start;
+}
+
+.control-rail .connection-section > * {
+  flex: 0 0 auto;
+}
+
+.control-rail .connection-section .conn-field-group {
+  align-content: start;
+  grid-auto-rows: max-content;
+}
+
 .section-title-row {
   display: flex;
   justify-content: space-between;

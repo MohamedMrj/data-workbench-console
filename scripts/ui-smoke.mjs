@@ -777,6 +777,14 @@ dragHandle(sqlWindow, 'controlRail', { x: 320, y: 120 }, { x: 370, y: 120 });
 if (sqlWindow.document.querySelector('.app-shell').style.getPropertyValue('--control-rail-width') !== '390px') {
   throw new Error('Control rail resize did not update the persisted width.');
 }
+{
+  const title = sqlWindow.document.querySelector('.connection-section .section-title-row')?.getBoundingClientRect();
+  const firstFieldGroup = sqlWindow.document.querySelector('.connection-section .conn-field-group')?.getBoundingClientRect();
+  const gap = firstFieldGroup && title ? firstFieldGroup.top - title.bottom : 999;
+  if (gap > 24) {
+    throw new Error(`Connection panel opened a large blank gap below the Connection heading after resize: ${gap}px.`);
+  }
+}
 
 dragHandle(sqlWindow, 'explorer', { x: 480, y: 180 }, { x: 540, y: 180 });
 if (sqlWindow.document.querySelector('.app-shell').style.getPropertyValue('--explorer-width') !== '360px') {
