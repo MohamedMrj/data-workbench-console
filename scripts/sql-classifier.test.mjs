@@ -205,6 +205,59 @@ test('MERGE is classified as directConfirmOnly write', () => {
   assert.equal(result.directConfirmOnly, true);
 });
 
+test('CREATE PROCEDURE body with internal semicolons is direct-confirm DDL', () => {
+  const result = classifyQuery(`
+CREATE PROCEDURE dbo.usp_Test
+AS
+BEGIN
+  SELECT 1;
+  SELECT 2;
+END
+`);
+  assert.equal(result.kind, 'write');
+  assert.equal(result.action, 'CREATE');
+  assert.equal(result.directConfirmOnly, true);
+});
+
+test('ALTER PROC body with internal semicolons is direct-confirm DDL', () => {
+  const result = classifyQuery(`
+ALTER PROC dbo.usp_Test
+AS
+BEGIN
+  UPDATE dbo.T SET Value = 1 WHERE Id = 1;
+END
+`);
+  assert.equal(result.kind, 'write');
+  assert.equal(result.action, 'ALTER');
+  assert.equal(result.directConfirmOnly, true);
+});
+
+test('CREATE OR ALTER PROCEDURE body is direct-confirm DDL', () => {
+  const result = classifyQuery(`
+CREATE OR ALTER PROCEDURE dbo.usp_Test
+AS
+BEGIN
+  SELECT 1;
+END
+`);
+  assert.equal(result.kind, 'write');
+  assert.equal(result.action, 'CREATE');
+  assert.equal(result.directConfirmOnly, true);
+});
+
+test('CREATE PROCEDURE script with GO separator is blocked', () => {
+  const result = classifyQuery(`
+CREATE PROCEDURE dbo.usp_Test
+AS
+BEGIN
+  SELECT 1;
+END
+GO
+`);
+  assert.equal(result.kind, 'blocked');
+  assert.match(result.reason, /GO batch separators/);
+});
+
 // ─── classifyQuery — conditional writes ──────────────────────────────────────
 
 console.log('\nclassifyQuery — conditional writes');

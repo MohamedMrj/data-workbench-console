@@ -3317,6 +3317,46 @@ window.createConsoleApp = function createConsoleApp() {
     persistWorkspaceState('sql');
   }
 
+  function getProcedureScriptQuery() {
+    return $('procedureScriptEditor')?.value || '';
+  }
+
+  function updateProcedureScriptStats() {
+    const stats = $('procedureScriptStats');
+    if (!stats) {
+      return;
+    }
+    const query = getProcedureScriptQuery();
+    const lines = query ? query.split(/\r?\n/).length : 0;
+    stats.textContent = `${lines} line${lines === 1 ? '' : 's'} • ${query.length} chars`;
+  }
+
+  function setProcedureScriptQuery(query) {
+    const panel = $('procedureScriptPanel');
+    const editor = $('procedureScriptEditor');
+    if (!panel || !editor) {
+      return;
+    }
+    editor.value = String(query || '');
+    panel.classList.remove('hidden');
+    updateProcedureScriptStats();
+  }
+
+  function hideProcedureScriptQuery({ clear = false } = {}) {
+    const panel = $('procedureScriptPanel');
+    const editor = $('procedureScriptEditor');
+    if (clear && editor) {
+      editor.value = '';
+      updateProcedureScriptStats();
+    }
+    panel?.classList.add('hidden');
+  }
+
+  function clearProcedureScriptQuery() {
+    setProcedureScriptQuery('');
+    setStatus('neutral', 'Procedure script cleared.');
+  }
+
   function hasReadyConnection() {
     const current = connection();
     return Boolean(current.server && current.database);
@@ -4258,7 +4298,12 @@ window.createConsoleApp = function createConsoleApp() {
     });
 
     const effectiveMode = payload.scriptMode || requestedMode;
-    setQuery(payload.definition || '');
+    const definition = payload.definition || '';
+    const loadInProcedurePage = normalizedType === 'procedure' && currentPageMode() === 'procedures';
+    setQuery(definition);
+    if (loadInProcedurePage) {
+      setProcedureScriptQuery(definition);
+    }
     persistWorkspaceState('sql');
     persistCatalogState();
 
@@ -4299,13 +4344,14 @@ window.createConsoleApp = function createConsoleApp() {
       setExplorer('objects');
     }
 
+    if (loadInProcedurePage) {
+      setWorkspace('procedure');
+      setStatus('success', `${message} Edit it here, then use Run script when ready.`);
+      return;
+    }
+
     setWorkspace('sql');
     setStatus('success', message);
-
-    if (currentPageMode() === 'procedures') {
-      persistWorkspaceState('sql');
-      window.location.href = '/';
-    }
   }
 
   async function scriptActiveDefinition(scriptMode = 'alter') {
@@ -4366,6 +4412,7 @@ window.createConsoleApp = function createConsoleApp() {
     if (!state.activeProcedure) {
       $('procedureSummary').innerHTML = 'Select a stored procedure from the explorer to inspect its parameters.';
       $('procedureParametersPanel').innerHTML = 'Procedure parameters will appear here.';
+      hideProcedureScriptQuery({ clear: true });
       return;
     }
     const hasOutput = state.procedureParameters.some((parameter) => /OUT/i.test(parameter.mode));
@@ -4394,6 +4441,7 @@ window.createConsoleApp = function createConsoleApp() {
       return;
     }
     setStatus('loading', `Loading parameters for ${fullName}...`);
+    hideProcedureScriptQuery({ clear: true });
     const payload = await api('/api/procedure-parameters', { method: 'POST', data: requestConnection({ procedure: fullName }) });
     resetActiveObject();
     state.activeProcedure = fullName;
@@ -5572,7 +5620,7 @@ window.createConsoleApp = function createConsoleApp() {
             { label: 'Server', value: current.server },
             { label: 'Database', value: current.database },
             { label: 'Detected risk', value: actionSummary.risk },
-            { label: 'Active object', value: state.activeObject || 'not selected' },
+            { label: 'Active target', value: state.activeObject || state.activeProcedure || 'not selected' },
             { label: 'SQL size', value: `${actionSummary.lines} lines / ${actionSummary.chars} chars` },
             { label: 'Execution path', value: '/api/query confirmation token' }
           ],
@@ -5738,6 +5786,19 @@ window.createConsoleApp = function createConsoleApp() {
         operation: 'audit'
       });
     }
+  }
+
+  async function runProcedureScript() {
+    if (!ensureReadyConnection('running the procedure script')) {
+      return;
+    }
+    const query = getProcedureScriptQuery().trim();
+    if (!query) {
+      setStatus('error', 'Load or enter a procedure CREATE/ALTER script first.');
+      return;
+    }
+    setQuery(query);
+    await runQuery();
   }
 
   function openAuditFilters() {
@@ -5916,6 +5977,18 @@ window.createConsoleApp = function createConsoleApp() {
     $('scriptProcedureCreateBtn').onclick = () => scriptActiveDefinition('create').catch((error) => setStatus('error', error.message));
     $('scriptProcedureAlterBtn').onclick = () => scriptActiveDefinition('alter').catch((error) => setStatus('error', error.message));
     $('runProcedureBtn').onclick = () => runProcedure().catch((error) => setStatus('error', error.message));
+    if ($('procedureScriptEditor')) {
+      $('procedureScriptEditor').oninput = updateProcedureScriptStats;
+    }
+    if ($('copyProcedureScriptBtn')) {
+      $('copyProcedureScriptBtn').onclick = () => copyText(getProcedureScriptQuery(), 'Procedure script copied to clipboard.');
+    }
+    if ($('clearProcedureScriptBtn')) {
+      $('clearProcedureScriptBtn').onclick = clearProcedureScriptQuery;
+    }
+    if ($('runProcedureScriptBtn')) {
+      $('runProcedureScriptBtn').onclick = () => runProcedureScript().catch((error) => setStatus('error', error.message));
+    }
     $('copyResultsBtn').onclick = copyResults;
     $('decreaseResultsTextBtn').onclick = () => changeResultsTextSize(-0.04);
     $('increaseResultsTextBtn').onclick = () => changeResultsTextSize(0.04);
@@ -6127,7 +6200,9 @@ window.createConsoleApp = function createConsoleApp() {
       }
       if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
         event.preventDefault();
-        if (state.workspace === 'procedure') runProcedure().catch((error) => setStatus('error', error.message));
+        if (document.activeElement?.id === 'procedureScriptEditor') {
+          runProcedureScript().catch((error) => setStatus('error', error.message));
+        } else if (state.workspace === 'procedure') runProcedure().catch((error) => setStatus('error', error.message));
         else runQuery().catch((error) => setStatus('error', error.message));
         return;
       }

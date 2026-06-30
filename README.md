@@ -6,7 +6,7 @@ Production-safe internal SQL workbench for Microsoft Fabric SQL endpoints, Fabri
 
 Data Workbench Console is built for controlled operational work: browse metadata, generate SQL, run read queries, preview writes before execution, run stored procedures from a dedicated flow, and keep an audit trail of important actions.
 
-Current app version: `1.4.2`. See [CHANGELOG.md](CHANGELOG.md) for release notes.
+Current app version: `1.4.3`. See [CHANGELOG.md](CHANGELOG.md) for release notes.
 
 <p>
   <img alt="Next.js" src="https://img.shields.io/badge/Next.js-15-111827?style=for-the-badge&logo=nextdotjs" />
@@ -1097,7 +1097,9 @@ Verification helpers:
 - service principal secrets are never persisted in saved profiles
 - saved connections restore connection details, not an already-open live connection
 - procedures must be executed from the dedicated procedure workflow
-- object scripts are loaded to the SQL editor only and are never auto-executed
+- object scripts are loaded to an editor only and are never auto-executed
+- Procedure Runner can edit CREATE/ALTER procedure scripts on-page and run them through the existing SQL confirmation path
+- `GO` batch separators are not supported in procedure scripts; run one CREATE/ALTER PROCEDURE definition at a time
 - SQL Server/Fabric SQL table scripts are generated from catalog metadata, not exact original source text
 - estimated query plans require source support and sufficient permissions
 - `MERGE` generation is supported only as a review template, not as an executable statement

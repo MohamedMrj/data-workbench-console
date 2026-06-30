@@ -385,12 +385,17 @@ function attachMocks(window) {
     }
 
     if (String(url).includes('/api/object-definition')) {
+      const objectType = body.objectType || 'table';
+      const mode = String(body.scriptMode || 'alter').toUpperCase();
+      const definition = objectType === 'procedure'
+        ? `${mode} PROCEDURE ${body.object || 'dbo.usp_ProcessAlert'}\nAS\nBEGIN\n    SELECT 1 AS SmokeValue;\nEND`
+        : `${mode} TABLE [dbo].[Alerts]\n(\n    [AlertId] INT NOT NULL,\n    [Status] VARCHAR(50) NULL\n);`;
       return new Response(JSON.stringify({
         success: true,
         object: body.object || 'dbo.Alerts',
-        objectType: body.objectType || 'table',
+        objectType,
         scriptMode: body.scriptMode || 'alter',
-        definition: `${String(body.scriptMode || 'alter').toUpperCase()} TABLE [dbo].[Alerts]\n(\n    [AlertId] INT NOT NULL,\n    [Status] VARCHAR(50) NULL\n);`,
+        definition,
         generated: body.scriptMode === 'create',
         editable: body.scriptMode !== 'create',
         definitionSource: body.scriptMode === 'create' ? 'generated_catalog_metadata' : 'exact_source_metadata',
@@ -434,6 +439,36 @@ function attachMocks(window) {
     }
 
     if (String(url).includes('/api/query')) {
+      const queryText = String(body.query || '');
+      if (/^\s*(CREATE|ALTER)\b/i.test(queryText) && !body.confirmToken) {
+        return new Response(JSON.stringify({
+          success: true,
+          mode: 'write-review',
+          requiresConfirmation: true,
+          confirmationToken: 'query-write-token',
+          rowsAffected: null,
+          action: queryText.trim().toUpperCase().startsWith('CREATE') ? 'CREATE' : 'ALTER',
+          heightened: true,
+          reviewRequired: true,
+          warnings: [],
+          message: 'DDL is ready to run. Review it carefully, then click Continue to execute.'
+        }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
+      if (body.confirmToken) {
+        return new Response(JSON.stringify({
+          success: true,
+          mode: 'write',
+          executed: true,
+          rowsAffected: 0,
+          message: 'DDL completed successfully.'
+        }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
       return new Response(JSON.stringify({
         success: true,
         columns: ['AlertId', 'Status', 'JsonPayload'],
@@ -1176,6 +1211,29 @@ if (procedureWindow.document.querySelector('[data-pin-procedure="dbo.usp_Process
 if (!procedureWindow.document.getElementById('procedureSummary').textContent.includes('dbo.usp_ProcessAlert')) {
   throw new Error('Selecting a procedure did not update the procedure summary.');
 }
+
+procedureWindow.document.getElementById('scriptProcedureAlterBtn').click();
+await flush();
+await flush();
+if (procedureWindow.document.getElementById('procedureScriptPanel').classList.contains('hidden')) {
+  throw new Error('Procedure ALTER script did not open the Procedure Runner script editor.');
+}
+if (!procedureWindow.document.getElementById('procedureScriptEditor').value.includes('ALTER PROCEDURE dbo.usp_ProcessAlert')) {
+  throw new Error('Procedure ALTER script was not loaded into the Procedure Runner script editor.');
+}
+if (!procedureWindow.document.getElementById('activeTarget').textContent.includes('dbo.usp_ProcessAlert')) {
+  throw new Error('Procedure script loading should keep the active procedure on the Procedure Runner page.');
+}
+procedureWindow.document.getElementById('runProcedureScriptBtn').click();
+await flush();
+if (procedureWindow.document.getElementById('confirmModal').classList.contains('hidden')) {
+  throw new Error('Running a procedure script did not open the existing SQL confirmation modal.');
+}
+if (!procedureWindow.document.getElementById('modalReview').textContent.includes('/api/query confirmation token')) {
+  throw new Error('Procedure script confirmation should use the existing /api/query confirmation path.');
+}
+procedureWindow.document.getElementById('cancelModalBtn').click();
+await flush();
 
 const paramInput = procedureWindow.document.querySelector('[data-procedure-param="AlertId"]');
 if (!paramInput) {

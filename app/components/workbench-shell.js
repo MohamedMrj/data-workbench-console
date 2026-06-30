@@ -250,6 +250,25 @@ function ProcedureWorkspace({ hidden = false }) {
       </div>
       <div id="procedureSummary" className="procedure-summary empty-state">Select a stored procedure from the explorer to inspect its parameters.</div>
       <div id="procedureParametersPanel" className="procedure-parameters empty-state">Procedure parameters will appear here.</div>
+      <div id="procedureScriptPanel" className="procedure-script-panel hidden">
+        <div className="section-title-row tight">
+          <div>
+            <div className="eyebrow">DDL editor</div>
+            <h3>Procedure script</h3>
+            <p className="section-subtitle">Review CREATE or ALTER text here. Running the script uses the normal SQL confirmation path.</p>
+          </div>
+          <div className="button-row wrap right">
+            <button id="copyProcedureScriptBtn" className="ghost-btn small" type="button">Copy</button>
+            <button id="clearProcedureScriptBtn" className="ghost-btn small" type="button">Clear</button>
+            <button id="runProcedureScriptBtn" className="primary-btn small" type="button">Run script</button>
+          </div>
+        </div>
+        <textarea id="procedureScriptEditor" className="procedure-script-editor" spellCheck="false" placeholder="Load Script CREATE or Script ALTER/Edit for a stored procedure." />
+        <div className="helper-row">
+          <span>CREATE/ALTER scripts require confirmation before execution. GO batch separators are not supported.</span>
+          <span id="procedureScriptStats">0 lines • 0 chars</span>
+        </div>
+      </div>
     </section>
   );
 }

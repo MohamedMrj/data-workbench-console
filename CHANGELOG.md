@@ -5,6 +5,34 @@ All notable Data Workbench Console changes are tracked here.
 The in-app version is read from `package.json` and exposed through `/api/version`
 together with the current git commit and build information.
 
+## 1.4.3 - 2026-06-30
+
+Stored procedure scripting workflow patch.
+
+### Added
+
+- Added an on-page Procedure Runner script editor for CREATE and ALTER/Edit
+  procedure scripts.
+- Added a `Run script` action for loaded procedure DDL that reuses the existing
+  `/api/query` write confirmation path.
+- Added classifier support for single `CREATE PROCEDURE`, `ALTER PROCEDURE`,
+  and `CREATE OR ALTER PROCEDURE` definitions with internal semicolons.
+
+### Changed
+
+- Procedure script buttons now keep users on the Procedure Runner page instead
+  of redirecting to SQL Studio.
+- Confirmation review now labels the active procedure as the active target when
+  running procedure DDL.
+- `GO` batch separators remain blocked with a clear error because they are
+  client-side batch separators, not executable T-SQL.
+
+### Verification
+
+- Added classifier and UI smoke coverage for procedure DDL scripts, internal
+  semicolons, blocked `GO`, on-page script loading, and `/api/query`
+  confirmation from Procedure Runner.
+
 ## 1.4.2 - 2026-06-29
 
 SQL Server authentication expansion patch.

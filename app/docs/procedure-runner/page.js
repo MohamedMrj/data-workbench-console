@@ -134,8 +134,9 @@ export default function ProcedureRunnerDocsPage() {
       <DocsSection id="parameters" title="Parameter Entry" intro="The parameter panel shows the values that will be sent to the selected stored procedure. Treat this as the main review surface before execution.">
         <div className="docs-table">
           <div><strong>Refresh params</strong><span>Reloads parameter metadata for the selected procedure. Use it after procedure changes, permission changes, or when parameter details look stale.</span></div>
-          <div><strong>Script CREATE</strong><span>Loads the procedure CREATE definition into SQL Studio when the source exposes module text and the login can view definitions.</span></div>
-          <div><strong>Script ALTER/Edit</strong><span>Loads an editable ALTER-style procedure definition into SQL Studio. It is not executed automatically.</span></div>
+          <div><strong>Script CREATE</strong><span>Loads the procedure CREATE definition into the Procedure Runner script editor when the source exposes module text and the login can view definitions.</span></div>
+          <div><strong>Script ALTER/Edit</strong><span>Loads an editable ALTER-style procedure definition into the Procedure Runner script editor. It is not executed automatically.</span></div>
+          <div><strong>Run script</strong><span>Runs the loaded CREATE/ALTER procedure script through the existing SQL confirmation path. This is for changing procedure definition text, not for executing the procedure with parameters.</span></div>
           <div><strong>Run procedure</strong><span>Prepares the selected procedure and current parameter values for confirmation. Requires a selected procedure and a valid connection.</span></div>
           <div><strong>Blank field</strong><span>The parameter is omitted. If the procedure has a database default, the default can be used.</span></div>
           <div><strong>NULL</strong><span>Type <code>NULL</code> to send a real null value instead of an empty string.</span></div>
@@ -168,7 +169,10 @@ export default function ProcedureRunnerDocsPage() {
           A prepared run can expire. If confirmation takes too long, click <strong>Run procedure</strong> again so the app can prepare a fresh request.
         </div>
         <DocsMiniSection title="Script instead of run">
-          <p>Use <strong>Script CREATE</strong> or <strong>Script ALTER/Edit</strong> to load a procedure definition into SQL Studio. The app does not auto-execute the script; any execution still uses the SQL editor confirmation path.</p>
+          <p>Use <strong>Script CREATE</strong> or <strong>Script ALTER/Edit</strong> to load a procedure definition into the Procedure Runner script editor. Edit the text, then use <strong>Run script</strong> only when you want to create or alter the procedure definition. The app does not auto-execute the script; execution still uses the SQL confirmation path.</p>
+        </DocsMiniSection>
+        <DocsMiniSection title="Batch limits">
+          <p>Procedure CREATE/ALTER bodies can contain normal internal semicolons. <code>GO</code> batch separators are not supported, and the app still blocks unrelated multi-statement SQL outside a single procedure definition.</p>
         </DocsMiniSection>
       </DocsSection>
 

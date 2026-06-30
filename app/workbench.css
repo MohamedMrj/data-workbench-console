@@ -1293,6 +1293,42 @@
   gap: 10px;
 }
 
+.procedure-script-panel {
+  margin-top: 12px;
+  padding: 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  background: var(--surface-raised);
+  min-width: 0;
+}
+
+.procedure-script-editor {
+  width: 100%;
+  min-height: 260px;
+  resize: vertical;
+  margin-top: 10px;
+  padding: 14px;
+  border: 1px solid var(--input-border);
+  border-radius: 8px;
+  background: var(--editor-bg, var(--input-bg));
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: calc(0.9rem * var(--editor-text-scale, 1));
+  line-height: 1.55;
+  white-space: pre;
+  overflow: auto;
+}
+
+.procedure-script-editor:hover {
+  border-color: var(--input-hover-border);
+}
+
+.procedure-script-editor:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--input-focus-ring);
+}
+
 .filter-row {
   display: grid;
   grid-template-columns: minmax(0, 1.5fr) minmax(0, 0.8fr) auto;
@@ -3419,6 +3455,7 @@
 #resultsMeta,
 #procedureSummary,
 #procedureParametersPanel,
+#procedureScriptPanel,
 .connection-test-panel,
 .tiny-note,
 #editorHint,
