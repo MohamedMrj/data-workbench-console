@@ -1234,6 +1234,9 @@ await flush();
 if (!procedureWindow.document.getElementById('procedureScriptEditor').value.includes('ALTER PROCEDURE dbo.usp_ProcessAlert')) {
   throw new Error('Procedure ALTER script was not loaded into the Procedure Runner script editor.');
 }
+if (!procedureWindow.document.getElementById('procedureScriptEditorBackdrop').innerHTML.includes('sql-keyword')) {
+  throw new Error('Procedure script editor did not render SQL syntax highlighting.');
+}
 if (!procedureWindow.document.getElementById('activeTarget').textContent.includes('dbo.usp_ProcessAlert')) {
   throw new Error('Procedure script loading should keep the active procedure on the Procedure Runner page.');
 }

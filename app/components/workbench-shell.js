@@ -264,7 +264,10 @@ function ProcedureWorkspace({ hidden = false }) {
             <button id="runProcedureScriptBtn" className="primary-btn small" type="button">Run script</button>
           </div>
         </div>
-        <textarea id="procedureScriptEditor" className="procedure-script-editor" spellCheck="false" placeholder="Load Script CREATE or Script ALTER/Edit for a stored procedure." />
+        <div id="procedureScriptEditorContainer" className="editor-container procedure-script-editor-container">
+          <div id="procedureScriptEditorBackdrop" className="editor-backdrop" aria-hidden="true"></div>
+          <textarea id="procedureScriptEditor" className="procedure-script-editor" spellCheck="false" placeholder="Load Script CREATE or Script ALTER/Edit for a stored procedure." />
+        </div>
         <div className="helper-row">
           <span>CREATE/ALTER scripts require confirmation before execution. GO batch separators are not supported.</span>
           <span id="procedureScriptStats">0 lines • 0 chars</span>

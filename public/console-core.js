@@ -3321,6 +3321,15 @@ window.createConsoleApp = function createConsoleApp() {
     return $('procedureScriptEditor')?.value || '';
   }
 
+  function syncProcedureScriptBackdrop() {
+    const editor = $('procedureScriptEditor');
+    const backdrop = $('procedureScriptEditorBackdrop');
+    if (!editor || !backdrop) return;
+    backdrop.innerHTML = highlightSql(editor.value) + '<br/>';
+    backdrop.scrollTop = editor.scrollTop;
+    backdrop.scrollLeft = editor.scrollLeft;
+  }
+
   function updateProcedureScriptStats() {
     const stats = $('procedureScriptStats');
     if (!stats) {
@@ -3355,6 +3364,7 @@ window.createConsoleApp = function createConsoleApp() {
     editor.value = String(query || '');
     panel.classList.remove('hidden');
     setProcedureScriptExpanded(true);
+    syncProcedureScriptBackdrop();
     updateProcedureScriptStats();
   }
 
@@ -3363,6 +3373,7 @@ window.createConsoleApp = function createConsoleApp() {
     const editor = $('procedureScriptEditor');
     if (clear && editor) {
       editor.value = '';
+      syncProcedureScriptBackdrop();
       updateProcedureScriptStats();
     }
     panel?.classList.add('hidden');
@@ -5995,7 +6006,18 @@ window.createConsoleApp = function createConsoleApp() {
     $('scriptProcedureAlterBtn').onclick = () => scriptActiveDefinition('alter').catch((error) => setStatus('error', error.message));
     $('runProcedureBtn').onclick = () => runProcedure().catch((error) => setStatus('error', error.message));
     if ($('procedureScriptEditor')) {
-      $('procedureScriptEditor').oninput = updateProcedureScriptStats;
+      $('procedureScriptEditor').oninput = () => {
+        syncProcedureScriptBackdrop();
+        updateProcedureScriptStats();
+      };
+      $('procedureScriptEditor').onscroll = () => {
+        const backdrop = $('procedureScriptEditorBackdrop');
+        const editor = $('procedureScriptEditor');
+        if (backdrop && editor) {
+          backdrop.scrollTop = editor.scrollTop;
+          backdrop.scrollLeft = editor.scrollLeft;
+        }
+      };
     }
     if ($('toggleProcedureScriptExpandBtn')) {
       $('toggleProcedureScriptExpandBtn').onclick = toggleProcedureScriptExpanded;

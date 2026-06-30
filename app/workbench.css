@@ -1302,21 +1302,15 @@
   min-width: 0;
 }
 
+.procedure-script-editor-container {
+  margin-top: 10px;
+  min-height: clamp(360px, 45vh, 620px);
+}
+
 .procedure-script-editor {
   width: 100%;
-  min-height: clamp(360px, 45vh, 620px);
+  min-height: 100%;
   resize: vertical;
-  margin-top: 10px;
-  padding: 14px;
-  border: 1px solid var(--input-border);
-  border-radius: 8px;
-  background: var(--editor-bg, var(--input-bg));
-  color: var(--text);
-  font-family: var(--mono);
-  font-size: calc(0.9rem * var(--editor-text-scale, 1));
-  line-height: 1.55;
-  white-space: pre;
-  overflow: auto;
 }
 
 .app-shell.procedure-script-expanded .procedure-studio-grid {
@@ -1346,18 +1340,8 @@
   padding: 14px;
 }
 
-.app-shell.procedure-script-expanded .procedure-script-editor {
+.app-shell.procedure-script-expanded .procedure-script-editor-container {
   min-height: clamp(560px, 70vh, 980px);
-}
-
-.procedure-script-editor:hover {
-  border-color: var(--input-hover-border);
-}
-
-.procedure-script-editor:focus {
-  outline: none;
-  border-color: var(--accent);
-  box-shadow: 0 0 0 3px var(--input-focus-ring);
 }
 
 .filter-row {
@@ -3821,7 +3805,8 @@ body {
   overflow: hidden;
 }
 
-#queryEditor {
+#queryEditor,
+#procedureScriptEditor {
   position: relative;
   z-index: 2;
   background: transparent;
@@ -3830,14 +3815,24 @@ body {
   caret-color: var(--text);
   margin: 0;
   flex: 1 1 auto;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: var(--sql-editor-font-size);
+  line-height: 1.6;
+  padding: 12px 14px;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
 }
 
 #queryEditor:hover,
-#queryEditor:focus {
+#queryEditor:focus,
+#procedureScriptEditor:hover,
+#procedureScriptEditor:focus {
   box-shadow: none;
+  outline: none;
 }
 
-#queryEditor::selection {
+#queryEditor::selection,
+#procedureScriptEditor::selection {
   background: color-mix(in srgb, var(--accent) 28%, transparent);
   color: transparent;
 }

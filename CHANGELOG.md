@@ -5,6 +5,21 @@ All notable Data Workbench Console changes are tracked here.
 The in-app version is read from `package.json` and exposed through `/api/version`
 together with the current git commit and build information.
 
+## 1.4.5 - 2026-06-30
+
+Procedure script editor visual polish.
+
+### Changed
+
+- Procedure Runner script editor now uses the same highlighted SQL editor
+  surface as SQL Studio instead of a plain textarea.
+- Procedure script scroll/input behavior now synchronizes with a highlighted
+  backdrop for theme-aware SQL keyword, string, number, and function coloring.
+
+### Verification
+
+- Added UI smoke coverage for procedure script syntax highlighting.
+
 ## 1.4.4 - 2026-06-30
 
 Procedure script editor usability patch.
