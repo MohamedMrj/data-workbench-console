@@ -115,6 +115,11 @@
   overscroll-behavior: contain;
 }
 
+.control-rail > .panel-section {
+  flex: 0 0 auto;
+  align-self: stretch;
+}
+
 .control-rail > .panel-section + .panel-section {
   padding-top: 10px;
   border-top: 1px solid color-mix(in srgb, var(--line) 60%, transparent);
@@ -283,13 +288,16 @@
 }
 
 .control-rail .grow-section {
-  display: flex;
+  display: grid;
   flex: 0 0 auto;
-  flex-direction: column;
+  grid-auto-rows: max-content;
+  align-content: start;
+  justify-content: stretch;
 }
 
 .control-rail .grow-section .saved-connections {
-  flex: 0 1 auto;
+  flex: none;
+  align-self: start;
   max-height: clamp(220px, 34vh, 520px);
   overflow-y: auto;
   overflow-x: hidden;
@@ -299,13 +307,34 @@
 }
 
 .control-rail .connection-section {
+  display: grid;
   flex: 0 0 auto;
-  justify-content: flex-start;
-  align-content: flex-start;
+  grid-auto-rows: max-content;
+  align-content: start;
+  justify-content: stretch;
 }
 
 .control-rail .connection-section > * {
   flex: 0 0 auto;
+}
+
+.control-rail .connection-section > .section-title-row,
+.control-rail .grow-section > .section-title-row {
+  min-height: 0;
+  height: auto;
+  align-content: start;
+}
+
+.control-rail .grow-section > .section-title-row {
+  display: grid;
+  grid-template-columns: 1fr;
+  justify-content: stretch;
+}
+
+.control-rail .grow-section > .section-title-row > :first-child,
+.control-rail .grow-section > .section-title-row > :last-child {
+  flex: none;
+  width: 100%;
 }
 
 .control-rail .connection-section .conn-field-group {

@@ -392,6 +392,38 @@ async function inspectViewport(page) {
       }
     }
 
+    const controlRail = document.querySelector('.control-rail');
+    const controlRailVisible = controlRail &&
+      !shell?.classList.contains('control-rail-collapsed') &&
+      getComputedStyle(controlRail).display !== 'none';
+    if (controlRailVisible) {
+      const connectionTitle = document.querySelector('.connection-section .section-title-row')?.getBoundingClientRect();
+      const firstConnectionField = document.querySelector('.connection-section .conn-field-group')?.getBoundingClientRect();
+      const savedTitle = document.querySelector('.control-rail .grow-section > .section-title-row')?.getBoundingClientRect();
+      const savedList = document.querySelector('#savedConnections')?.getBoundingClientRect();
+      const connectionGap = connectionTitle && firstConnectionField ? firstConnectionField.top - connectionTitle.bottom : 0;
+      const savedGap = savedTitle && savedList ? savedList.top - savedTitle.bottom : 0;
+
+      if (connectionGap > 28) {
+        problems.push({
+          type: 'control-rail-connection-gap',
+          gap: Math.round(connectionGap),
+          titleBottom: Math.round(connectionTitle.bottom),
+          firstFieldTop: Math.round(firstConnectionField.top)
+        });
+      }
+
+      if (savedGap > 28 || (savedTitle && savedTitle.height > 96)) {
+        problems.push({
+          type: 'control-rail-saved-profiles-gap',
+          gap: Math.round(savedGap),
+          titleHeight: Math.round(savedTitle?.height || 0),
+          titleBottom: Math.round(savedTitle?.bottom || 0),
+          listTop: Math.round(savedList?.top || 0)
+        });
+      }
+    }
+
     const builder = document.querySelector('.builder-primary-grid');
     const operationPanel = document.querySelector('.builder-panel-operation');
     const columnsPanel = document.querySelector('.builder-panel-columns');
@@ -552,6 +584,13 @@ async function runCase(browser, routePath, width, options = {}) {
     await populateProcedurePage(page);
   }
 
+  if (options.controlRailWidth) {
+    await page.evaluate((width) => {
+      document.querySelector('.app-shell')?.style.setProperty('--control-rail-width', `${width}px`);
+    }, options.controlRailWidth);
+    await page.waitForTimeout(100);
+  }
+
   if (options.hidePanels) {
     await page.locator('#toggleControlRailBtn').click().catch(() => {});
     await page.locator('#toggleActivityPanelBtn').click().catch(() => {});
@@ -589,6 +628,8 @@ try {
   for (const theme of themes) {
     results.push(await runCase(browser, '/', 1200, { theme, screenshot: true }));
   }
+
+  results.push(await runCase(browser, '/', 1920, { controlRailWidth: 420, screenshot: true }));
 
   for (const routePath of ['/', '/procedures']) {
     results.push(await runCase(browser, routePath, 1200, { hidePanels: true, screenshot: true }));

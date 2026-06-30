@@ -5,6 +5,26 @@ All notable Data Workbench Console changes are tracked here.
 The in-app version is read from `package.json` and exposed through `/api/version`
 together with the current git commit and build information.
 
+## 1.4.8 - 2026-06-30
+
+Connection rail layout hardening.
+
+### Fixed
+
+- Fixed the left connection panel so `Connection` fields and `Saved Profiles`
+  stay directly under their headings when the rail is resized wider or the title
+  row wraps.
+- Hardened the control rail section sizing so saved profiles, connection
+  controls, and policy cards remain content-sized instead of stretching empty
+  vertical space.
+- Updated the advanced `MERGE` helper text to match the current confirmed
+  execution behavior.
+
+### Verification
+
+- Extended the responsive audit with direct gap checks for the connection rail
+  and a wide resized-rail scenario.
+
 ## 1.4.7 - 2026-06-30
 
 Confirmed batch and high-risk SQL execution.

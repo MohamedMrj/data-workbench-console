@@ -88,7 +88,7 @@ function SqlWorkspace({ hidden = false }) {
                       <button id="mergePreviewBtn" className="ghost-btn">MERGE preview</button>
                     </div>
                     <div className="summary-text">
-                      `MERGE` stays blocked for execution in this app. The template is generated for review only.
+                      `MERGE` is high risk. Running the generated template uses the normal SQL confirmation path.
                     </div>
                   </div>
 
