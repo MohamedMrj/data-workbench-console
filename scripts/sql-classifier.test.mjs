@@ -209,6 +209,25 @@ test('MERGE is classified as directConfirmOnly write', () => {
   assert.equal(result.requiresAcknowledgement, true);
 });
 
+test('INSERT ... EXEC escalates to typed acknowledgement (embedded high-risk)', () => {
+  const result = classifyQuery('INSERT INTO dbo.Target EXEC dbo.MyProc @p = 1');
+  assert.equal(result.kind, 'write');
+  assert.equal(result.directConfirmOnly, true);
+  assert.equal(result.requiresAcknowledgement, true);
+});
+
+test('plain INSERT does not require typed acknowledgement', () => {
+  const result = classifyQuery("INSERT INTO dbo.Target (Id, Name) VALUES (1, 'ok')");
+  assert.equal(result.kind, 'write');
+  assert.equal(result.directConfirmOnly, false);
+  assert.equal(result.requiresAcknowledgement, false);
+});
+
+test('SELECT referencing a high-risk word in a string stays a read', () => {
+  const result = classifyQuery("SELECT 'please DROP this' AS note FROM dbo.T WHERE Id = 1");
+  assert.equal(result.kind, 'read');
+});
+
 test('CREATE PROCEDURE body with internal semicolons is direct-confirm DDL', () => {
   const result = classifyQuery(`
 CREATE PROCEDURE dbo.usp_Test

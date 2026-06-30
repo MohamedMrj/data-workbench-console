@@ -50,7 +50,15 @@ async function getBuildInfo() {
   }
 }
 
-export async function GET() {
+// Computing this spawns several git child processes plus a network `ls-remote`.
+// Cache the result for a short window and de-duplicate concurrent computations so
+// rapid polling cannot turn this unauthenticated GET into a process/connection
+// exhaustion vector.
+const VERSION_CACHE_TTL_MS = Math.max(0, Number(process.env.VERSION_CACHE_TTL_MS || 30_000));
+let versionCache = { expiresAt: 0, payload: null };
+let versionInFlight = null;
+
+async function computeVersionPayload() {
   const packageJson = await readJson(path.join(process.cwd(), 'package.json'));
   const [localCommit, branch, remoteCommit, build] = await Promise.all([
     runGit(['rev-parse', 'HEAD']),
@@ -62,7 +70,7 @@ export async function GET() {
   const latestCommit = remoteCommit.split(/\s+/)[0] || '';
   const updateAvailable = Boolean(localCommit && latestCommit && localCommit !== latestCommit);
 
-  return NextResponse.json({
+  return {
     success: true,
     version: packageJson.version || '0.0.0',
     branch,
@@ -73,7 +81,27 @@ export async function GET() {
     updateAvailable,
     updateCheckAvailable: Boolean(latestCommit),
     build
-  }, {
+  };
+}
+
+export async function GET() {
+  const now = Date.now();
+
+  if (!(versionCache.payload && versionCache.expiresAt > now)) {
+    if (!versionInFlight) {
+      versionInFlight = computeVersionPayload()
+        .then((payload) => {
+          versionCache = { expiresAt: Date.now() + VERSION_CACHE_TTL_MS, payload };
+          return payload;
+        })
+        .finally(() => {
+          versionInFlight = null;
+        });
+    }
+    await versionInFlight;
+  }
+
+  return NextResponse.json(versionCache.payload, {
     headers: {
       'Cache-Control': 'no-store'
     }

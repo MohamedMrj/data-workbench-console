@@ -1,5 +1,5 @@
 import assert from 'assert/strict';
-import { loadObjectDependencies, loadObjectRowCount, loadSchemaCompare, renderCreateTableFromSnapshot } from '../lib/server/sql-metadata.js';
+import { loadObjectDependencies, loadObjectRowCount, loadSchemaCompare, parseQualifiedObjectName, renderCreateTableFromSnapshot } from '../lib/server/sql-metadata.js';
 
 const snapshot = {
   object: 'dbo.Customer',
@@ -277,5 +277,34 @@ assert.equal(compareRichFallback.success, true);
 assert.equal(compareRichFallback.differences[0].field, 'type');
 assert.match(compareRichFallback.warnings.join(' '), /INFORMATION_SCHEMA column metadata only/);
 assert.equal(observedRichFallbackQueries.some((query) => /INFORMATION_SCHEMA\.COLUMNS/i.test(query)), true);
+
+// parseQualifiedObjectName: simple names unchanged, and bracketed/dotted
+// identifiers are preserved instead of being mangled by bracket-stripping.
+assert.deepEqual(
+  parseQualifiedObjectName('dbo.Customer'),
+  { schemaName: 'dbo', objectName: 'Customer', fullName: 'dbo.Customer' }
+);
+assert.deepEqual(
+  parseQualifiedObjectName('Customer'),
+  { schemaName: 'dbo', objectName: 'Customer', fullName: 'dbo.Customer' }
+);
+assert.deepEqual(
+  parseQualifiedObjectName('[dbo].[Customer]'),
+  { schemaName: 'dbo', objectName: 'Customer', fullName: 'dbo.Customer' }
+);
+// A single identifier that legitimately contains a dot must stay intact.
+assert.deepEqual(
+  parseQualifiedObjectName('[My.Table]'),
+  { schemaName: 'dbo', objectName: 'My.Table', fullName: 'dbo.My.Table' }
+);
+assert.deepEqual(
+  parseQualifiedObjectName('[sales].[My.Report]'),
+  { schemaName: 'sales', objectName: 'My.Report', fullName: 'sales.My.Report' }
+);
+// An escaped closing bracket (]]) resolves to a single ] in the identifier.
+assert.deepEqual(
+  parseQualifiedObjectName('[wei]]rd]'),
+  { schemaName: 'dbo', objectName: 'wei]rd', fullName: 'dbo.wei]rd' }
+);
 
 console.log('SQL metadata tests passed.');

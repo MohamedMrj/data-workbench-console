@@ -5,6 +5,56 @@ All notable Data Workbench Console changes are tracked here.
 The in-app version is read from `package.json` and exposed through `/api/version`
 together with the current git commit and build information.
 
+## 1.4.9 - 2026-06-30
+
+Security and reliability hardening across the SQL safety, metadata, and result paths.
+
+### Security
+
+- Stopped persisting the database password in the pending-confirmation store on
+  disk. The stored connection is never used at execution time (the request
+  re-supplies it), so the secret is now stripped before the record is written.
+- Made confirmation-token consumption atomic so a double-click or two concurrent
+  confirmations can no longer execute the same write or procedure twice.
+- Neutralized spreadsheet formula injection in CSV export and copy-as-CSV. Cells
+  beginning with `= + - @` (or tab/CR) are escaped, while plain numbers are left
+  intact, and the header row is now quoted/escaped per RFC 4180.
+- Stopped trusting the client-supplied `X-Forwarded-For`/`X-Real-IP` headers for
+  rate limiting unless `TRUST_PROXY_HEADERS=true`, and capped the rate-limit
+  bucket map so it can no longer grow without bound.
+- Cached and de-duplicated the `/api/version` git and remote checks so rapid
+  polling can no longer spawn repeated subprocesses and network calls.
+- Writes that embed a high-risk operation behind a benign leading keyword (for
+  example `INSERT ... EXEC`) now require the typed acknowledgement instead of a
+  plain button confirmation.
+
+### Fixed
+
+- Reworked qualified-object-name parsing so identifiers that legitimately contain
+  `.` or `]` (for example `[My.Table]`) are no longer mangled, which previously
+  pointed metadata actions at the wrong object.
+- Removed an audit-log write race in which a size-triggered rewrite could
+  duplicate or drop the newest entries under concurrent activity.
+- Preserved `BIGINT` identity seed/increment precision in generated `CREATE`
+  scripts instead of corrupting values beyond 2^53.
+- Excluded the procedure return-value row from discovered parameters on the
+  `sys.parameters` fallback path.
+- Added a column-only table-definition fallback when the catalog DMVs are not
+  available (for example a Fabric Lakehouse SQL endpoint), instead of surfacing a
+  raw "not supported" error.
+- Distinguished SQL `NULL` from an empty string in the result grid so the display
+  matches copy/CSV output.
+- Stopped `Ctrl`+`Enter` from starting a new request while a confirmation dialog
+  is open; it now submits the open confirmation when it is ready.
+- Cleared the local results filter box when a new result set loads, and escaped
+  the query-history item id attribute.
+
+### Verification
+
+- Added regression tests for atomic confirmation-token claiming, bracketed and
+  dotted identifier parsing, and typed-acknowledgement escalation for embedded
+  high-risk writes (`INSERT ... EXEC`).
+
 ## 1.4.8 - 2026-06-30
 
 Connection rail layout hardening.

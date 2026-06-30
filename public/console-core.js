@@ -2552,7 +2552,7 @@ window.createConsoleApp = function createConsoleApp() {
         : '<div class="empty-note">Recent SQL will appear here.</div>';
       return;
     }
-    container.innerHTML = filtered.map((item) => `<button class="history-item" data-history-id="${item.id}" type="button" title="${esc(item.query)}"><strong>${esc((item.query.split('\n')[0] || 'Query').slice(0, 54))}</strong><span>${esc(formatTimestamp(item.timestamp))}</span></button>`).join('');
+    container.innerHTML = filtered.map((item) => `<button class="history-item" data-history-id="${esc(item.id)}" type="button" title="${esc(item.query)}"><strong>${esc((item.query.split('\n')[0] || 'Query').slice(0, 54))}</strong><span>${esc(formatTimestamp(item.timestamp))}</span></button>`).join('');
     container.querySelectorAll('[data-history-id]').forEach((button) => {
       button.onclick = () => {
         const item = state.queryHistory.find((candidate) => candidate.id === button.dataset.historyId);
@@ -4547,6 +4547,11 @@ window.createConsoleApp = function createConsoleApp() {
       visualKind: meta.visualKind || '',
       visualObject: meta.visualObject || meta.object || ''
     };
+    // Keep the visible local-filter box in sync with the freshly-reset filter
+    // state so stale filter text never lingers over a new result set.
+    if ($('localResultsFilter')) {
+      $('localResultsFilter').value = '';
+    }
     upsertResultTab(meta.tabTitle || meta.message || meta.visualKind || 'Results', state.results, {
       key: meta.tabKey || ''
     });
@@ -4769,7 +4774,10 @@ window.createConsoleApp = function createConsoleApp() {
   }
 
   function formatResultValue(value, rowIndex, column) {
-    if (value === null || value === undefined || value === '') return '<span class="result-null">NULL</span>';
+    if (value === null || value === undefined) return '<span class="result-null">NULL</span>';
+    // An empty string is distinct from SQL NULL; render it as an empty cell to
+    // match what copy/CSV export produce (NULL -> "NULL", "" -> "").
+    if (value === '') return '';
     const text = String(value);
     const formattedJson = formatJsonPlain(value);
     const isJson = Boolean(formattedJson);
@@ -5247,15 +5255,28 @@ window.createConsoleApp = function createConsoleApp() {
     copyText(lines.join('\n'), 'Result rows copied.');
   }
 
+  // Encode one CSV field: neutralize spreadsheet formula injection (a cell that
+  // starts with = + - @ tab or CR is treated as a formula by Excel/Sheets) while
+  // leaving plain numbers untouched, then quote/escape per RFC 4180.
+  function csvCell(value) {
+    let text = String(value ?? '');
+    const startsDangerous = /^[=+\-@\t\r]/.test(text);
+    const isPlainNumber = /^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$/.test(text);
+    if (startsDangerous && !isPlainNumber) {
+      text = `'${text}`;
+    }
+    return /["\n\r,]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+  }
+
   function exportCsv() {
     if (!state.results.columns.length || !state.results.rows.length) {
       setStatus('error', 'No result rows to export.');
       return;
     }
-    const csv = [state.results.columns.join(','), ...sortedRows().map((row) => state.results.columns.map((column) => {
-      const text = String(row[column] ?? '');
-      return /[",\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
-    }).join(','))].join('\n');
+    const csv = [
+      state.results.columns.map(csvCell).join(','),
+      ...sortedRows().map((row) => state.results.columns.map((column) => csvCell(row[column])).join(','))
+    ].join('\n');
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
@@ -6252,7 +6273,7 @@ window.createConsoleApp = function createConsoleApp() {
     if ($('contextCopyCsvBtn')) {
       $('contextCopyCsvBtn').onclick = () => {
         if (state.results.contextRow) {
-          const csv = state.results.columns.map(c => `"${String(state.results.contextRow[c] ?? '').replace(/"/g, '""')}"`).join(',');
+          const csv = state.results.columns.map((c) => csvCell(state.results.contextRow[c])).join(',');
           copyText(csv, 'Row copied as CSV.');
           $('resultsContextMenu')?.classList.add('hidden');
         }
@@ -6285,6 +6306,16 @@ window.createConsoleApp = function createConsoleApp() {
       }
       if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
         event.preventDefault();
+        // If a write/procedure confirmation is open, Ctrl+Enter must not start a
+        // new request (which would overwrite the pending confirmation). Submit the
+        // open confirmation instead, but only when it is ready (acknowledgement typed).
+        if (!$('confirmModal').classList.contains('hidden')) {
+          const confirmBtn = $('confirmModalBtn');
+          if (confirmBtn && !confirmBtn.disabled) {
+            confirmBtn.click();
+          }
+          return;
+        }
         if (document.activeElement?.id === 'procedureScriptEditor') {
           runProcedureScript().catch((error) => setStatus('error', error.message));
         } else if (state.workspace === 'procedure') runProcedure().catch((error) => setStatus('error', error.message));

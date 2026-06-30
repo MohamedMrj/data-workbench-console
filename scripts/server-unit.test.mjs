@@ -141,6 +141,25 @@ assert.equal((await confirmationStore.getConfirmation(confirmation.token)).hash,
 assert.equal(await confirmationStore.deleteConfirmation(confirmation.token), true);
 assert.equal(await confirmationStore.getConfirmation(confirmation.token), null);
 
+// claimConfirmation is single-use: a second claim of the same token returns null
+// (guards against the confirmation-token double-execution race).
+const claimable = await confirmationStore.createConfirmation({
+  type: 'write',
+  ownerSessionId: 'session-123456',
+  hash: confirmationHashA,
+  payload: { query: 'DELETE FROM dbo.T WHERE Id = 1' },
+  ttlMs: 60_000
+});
+const concurrentClaims = await Promise.all([
+  confirmationStore.claimConfirmation(claimable.token),
+  confirmationStore.claimConfirmation(claimable.token)
+]);
+const winners = concurrentClaims.filter(Boolean);
+assert.equal(winners.length, 1, 'exactly one concurrent claim should win');
+assert.equal(winners[0].payload.query, 'DELETE FROM dbo.T WHERE Id = 1');
+assert.equal(await confirmationStore.claimConfirmation(claimable.token), null);
+assert.equal(await confirmationStore.getConfirmation(claimable.token), null);
+
 await savedStore.initializeSavedConnectionsStore();
 const saved = await savedStore.upsertSavedConnection({
   profileName: 'Unit Test',
