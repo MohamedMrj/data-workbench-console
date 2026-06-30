@@ -5,9 +5,9 @@ All notable Data Workbench Console changes are tracked here.
 The in-app version is read from `package.json` and exposed through `/api/version`
 together with the current git commit and build information.
 
-## 1.4.9 - 2026-06-30
+## 1.4.10 - 2026-06-30
 
-Security and reliability hardening across the SQL safety, metadata, and result paths.
+Local-only network hardening and a reliable self-update path.
 
 ### Security
 
@@ -20,6 +20,24 @@ Security and reliability hardening across the SQL safety, metadata, and result p
   variants (`localhost`, `127.0.0.1`, `[::1]`) on the same scheme and port as a
   single origin, so requests are accepted whichever loopback name the browser
   uses while external origins and other ports are still rejected.
+
+### Fixed
+
+- Made the in-app self-update reliable. The updater now hard-resets the working
+  tree to the fetched `origin/main` instead of `git pull --ff-only`, which would
+  abort whenever a local checkout had drifted (line-ending churn or a stray edit)
+  and leave the app restarting the old build with the Update button still
+  showing. Untracked files (`.env`, `.data`) are preserved.
+- Added a `.gitattributes` that normalizes the repository to LF so a machine with
+  a different `core.autocrlf` setting cannot commit CRLF and dirty other
+  checkouts (the drift that broke fast-forward updates).
+
+## 1.4.9 - 2026-06-30
+
+Security and reliability hardening across the SQL safety, metadata, and result paths.
+
+### Security
+
 - Stopped persisting the database password in the pending-confirmation store on
   disk. The stored connection is never used at execution time (the request
   re-supplies it), so the secret is now stripped before the record is written.
@@ -39,11 +57,6 @@ Security and reliability hardening across the SQL safety, metadata, and result p
 
 ### Fixed
 
-- Made the in-app self-update reliable. The updater now hard-resets the working
-  tree to the fetched `origin/main` instead of `git pull --ff-only`, which would
-  abort whenever a local checkout had drifted (line-ending churn or a stray edit)
-  and leave the app restarting the old build with the Update button still
-  showing. Untracked files (`.env`, `.data`) are preserved.
 - Reworked qualified-object-name parsing so identifiers that legitimately contain
   `.` or `]` (for example `[My.Table]`) are no longer mangled, which previously
   pointed metadata actions at the wrong object.
