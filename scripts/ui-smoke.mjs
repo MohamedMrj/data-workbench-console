@@ -440,28 +440,80 @@ function attachMocks(window) {
 
     if (String(url).includes('/api/query')) {
       const queryText = String(body.query || '');
+      const statementCount = queryText.split(';').map((part) => part.trim()).filter(Boolean).length;
+      if (statementCount > 1 && !body.confirmToken) {
+        return new Response(JSON.stringify({
+          success: true,
+          mode: 'write-review',
+          requiresConfirmation: true,
+          confirmationToken: 'query-batch-token',
+          rowsAffected: null,
+          action: 'BATCH',
+          statementCount,
+          actions: ['SELECT', 'SELECT'],
+          highRiskActions: [],
+          expectedText: 'RUN BATCH',
+          heightened: true,
+          reviewRequired: true,
+          warnings: [`This batch contains ${statementCount} SQL statements. Review every statement before execution.`],
+          message: `This batch contains ${statementCount} SQL statements. Review every statement, type RUN BATCH, then click Continue to execute.`
+        }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
       if (/^\s*(CREATE|ALTER)\b/i.test(queryText) && !body.confirmToken) {
+        const action = queryText.trim().toUpperCase().startsWith('CREATE') ? 'CREATE' : 'ALTER';
         return new Response(JSON.stringify({
           success: true,
           mode: 'write-review',
           requiresConfirmation: true,
           confirmationToken: 'query-write-token',
           rowsAffected: null,
-          action: queryText.trim().toUpperCase().startsWith('CREATE') ? 'CREATE' : 'ALTER',
+          action,
+          statementCount: 1,
+          actions: [action],
+          highRiskActions: [action],
+          expectedText: `EXECUTE ${action}`,
           heightened: true,
           reviewRequired: true,
           warnings: [],
-          message: 'DDL is ready to run. Review it carefully, then click Continue to execute.'
+          message: `DDL is ready to run. Review it carefully, type EXECUTE ${action}, then click Continue to execute.`
         }), {
           status: 200,
           headers: { 'Content-Type': 'application/json' }
         });
+      }
+      if (body.confirmToken === 'query-batch-token' && String(body.acknowledgement || '').toUpperCase() !== 'RUN BATCH') {
+        return new Response(JSON.stringify({
+          success: false,
+          error: 'Type the confirmation phrase exactly before executing this operation: RUN BATCH'
+        }), {
+          status: 400,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
+      if (body.confirmToken === 'query-write-token') {
+        const expected = queryText.trim().toUpperCase().startsWith('CREATE') ? 'EXECUTE CREATE' : 'EXECUTE ALTER';
+        if (String(body.acknowledgement || '').toUpperCase() !== expected) {
+          return new Response(JSON.stringify({
+            success: false,
+            error: `Type the confirmation phrase exactly before executing this operation: ${expected}`
+          }), {
+            status: 400,
+            headers: { 'Content-Type': 'application/json' }
+          });
+        }
       }
       if (body.confirmToken) {
         return new Response(JSON.stringify({
           success: true,
           mode: 'write',
           executed: true,
+          action: body.confirmToken === 'query-batch-token' ? 'BATCH' : 'DDL',
+          columns: [],
+          rows: [],
+          totalRows: 0,
           rowsAffected: 0,
           message: 'DDL completed successfully.'
         }), {
@@ -867,7 +919,7 @@ sqlWindow.document.getElementById('mergePreviewBtn').click();
 if (!sqlWindow.document.getElementById('queryEditor').value.includes('MERGE [dbo].[Alerts] AS tgt')) {
   throw new Error('MERGE preview template was not generated.');
 }
-if (!sqlWindow.document.getElementById('queryEditor').value.includes('execution is blocked in this app')) {
+if (!sqlWindow.document.getElementById('queryEditor').value.includes('execution requires explicit confirmation')) {
   throw new Error('MERGE preview template is missing the safety warning.');
 }
 
@@ -1074,6 +1126,29 @@ await flush();
 if (!sqlWindow.__lastClipboardText.includes('\n  "severity": "low"')) {
   throw new Error(`Formatted JSON copy did not write pretty JSON. Clipboard: ${sqlWindow.__lastClipboardText}`);
 }
+
+editor.value = 'SELECT 1 AS a; SELECT 2 AS b;';
+editor.dispatchEvent(new sqlWindow.Event('input', { bubbles: true }));
+sqlWindow.document.getElementById('runQueryBtn').click();
+await flush();
+if (sqlWindow.document.getElementById('confirmModal').classList.contains('hidden')) {
+  throw new Error('Multi-statement SQL did not open the confirmation modal.');
+}
+if (!sqlWindow.document.getElementById('modalReview').textContent.includes('Operations')) {
+  throw new Error('Batch confirmation did not render detected operation context.');
+}
+if (sqlWindow.document.getElementById('confirmModalBtn').disabled !== true) {
+  throw new Error('Batch confirmation button should be disabled before acknowledgement.');
+}
+const batchConfirmInput = sqlWindow.document.getElementById('secondConfirmInput');
+batchConfirmInput.value = 'RUN BATCH';
+batchConfirmInput.dispatchEvent(new sqlWindow.Event('input', { bubbles: true }));
+if (sqlWindow.document.getElementById('confirmModalBtn').disabled) {
+  throw new Error('Batch confirmation button stayed disabled after the correct acknowledgement phrase.');
+}
+sqlWindow.document.getElementById('cancelModalBtn').click();
+await flush();
+
 sqlWindow.document.getElementById('scriptCreateBtn').click();
 await flush();
 if (!editor.value.includes('CREATE TABLE [dbo].[Alerts]')) {

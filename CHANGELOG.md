@@ -5,6 +5,31 @@ All notable Data Workbench Console changes are tracked here.
 The in-app version is read from `package.json` and exposed through `/api/version`
 together with the current git commit and build information.
 
+## 1.4.7 - 2026-06-30
+
+Confirmed batch and high-risk SQL execution.
+
+### Changed
+
+- Replaced blanket blocking for `DROP`, `TRUNCATE`, `ALTER`, `CREATE`,
+  `MERGE`, `EXEC`, `EXECUTE`, and unrestricted `UPDATE`/`DELETE` with direct
+  confirmation and typed acknowledgement through the existing `/api/query`
+  confirmation path.
+- Added support for semicolon-separated multi-statement SQL batches. Batches are
+  classified as `BATCH`, show detected operations in the review modal, and
+  require typing `RUN BATCH` before execution.
+- `GO` batch separators remain blocked with a clear explanation because they
+  are client-side script separators, not SQL Server statements accepted by the
+  Node SQL driver.
+- Confirmed writes can now return result-set metadata when SQL Server returns
+  recordsets from a confirmed batch.
+
+### Verification
+
+- Updated classifier, route contract, smoke, and UI smoke coverage for
+  confirmed batches, typed acknowledgement, high-risk SQL review, and
+  unsupported `GO` handling.
+
 ## 1.4.6 - 2026-06-30
 
 Connection panel resize stability patch.

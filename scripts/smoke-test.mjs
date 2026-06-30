@@ -45,7 +45,7 @@ try {
     fail(`Page request failed with status ${pageResponse.status}.`);
   }
 
-  const blockedResponse = await fetch(`http://127.0.0.1:${port}/api/query`, {
+  const batchResponse = await fetch(`http://127.0.0.1:${port}/api/query`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -54,12 +54,12 @@ try {
       query: 'SELECT 1; SELECT 2'
     })
   });
-  const blockedPayload = await blockedResponse.json();
-  if (blockedResponse.status !== 400) {
-    fail(`Expected blocked query status 400, received ${blockedResponse.status}.`);
+  const batchPayload = await batchResponse.json();
+  if (batchResponse.status !== 200) {
+    fail(`Expected batch review status 200, received ${batchResponse.status}.`);
   }
-  if (!/blocked|only one/i.test(blockedPayload.error || '')) {
-    fail(`Blocked query did not return the expected error message. Received: ${blockedPayload.error}`);
+  if (!batchPayload.requiresConfirmation || batchPayload.action !== 'BATCH' || batchPayload.expectedText !== 'RUN BATCH') {
+    fail(`Batch query did not return the expected confirmation response. Received: ${JSON.stringify(batchPayload)}`);
   }
 
   const auditResponse = await fetch(`http://127.0.0.1:${port}/api/audit?limit=5`);
@@ -67,8 +67,8 @@ try {
   if (!Array.isArray(audit.entries)) {
     fail('Audit endpoint did not return an entries array.');
   }
-  if (!audit.entries.some((entry) => entry?.event === 'query' && entry?.outcome === 'blocked')) {
-    fail('Audit endpoint did not include the blocked query event.');
+  if (!audit.entries.some((entry) => entry?.event === 'write_prepare' && entry?.action === 'BATCH')) {
+    fail('Audit endpoint did not include the batch write_prepare event.');
   }
 
   console.log('Smoke test passed.');

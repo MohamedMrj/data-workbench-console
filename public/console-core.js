@@ -3098,7 +3098,7 @@ window.createConsoleApp = function createConsoleApp() {
     if (!sourceObject) return '-- Choose a source object from the loaded catalog first.';
     if (!keyColumn) return '-- Choose a target key column first.';
     if (!columns.length) return '-- Select one or more columns first.';
-    return `-- MERGE execution is blocked in this app. Review this template outside the preview-first runner before use.\nMERGE ${qObject()} AS tgt\nUSING ${qObjectFromFullName(sourceObject)} AS src\n    ON tgt.${bid(keyColumn)} = src.${bid(sourceKey || keyColumn)}\nWHEN MATCHED THEN\n    UPDATE SET ${updatableColumns.length ? updatableColumns.map((column) => `tgt.${bid(column)} = src.${bid(column)}`).join(',\n               ') : '-- no non-key columns selected'}\nWHEN NOT MATCHED BY TARGET THEN\n    INSERT (\n        ${columns.map(bid).join(',\n        ')}\n    )\n    VALUES (\n        ${columns.map((column) => `src.${bid(column)}`).join(',\n        ')}\n    )\n-- WHEN NOT MATCHED BY SOURCE THEN <optional cleanup clause>\n;`;
+    return `-- MERGE is a high-risk operation. Review this template carefully; execution requires explicit confirmation.\nMERGE ${qObject()} AS tgt\nUSING ${qObjectFromFullName(sourceObject)} AS src\n    ON tgt.${bid(keyColumn)} = src.${bid(sourceKey || keyColumn)}\nWHEN MATCHED THEN\n    UPDATE SET ${updatableColumns.length ? updatableColumns.map((column) => `tgt.${bid(column)} = src.${bid(column)}`).join(',\n               ') : '-- no non-key columns selected'}\nWHEN NOT MATCHED BY TARGET THEN\n    INSERT (\n        ${columns.map(bid).join(',\n        ')}\n    )\n    VALUES (\n        ${columns.map((column) => `src.${bid(column)}`).join(',\n        ')}\n    )\n-- WHEN NOT MATCHED BY SOURCE THEN <optional cleanup clause>\n;`;
   }
 
   function currentPageMode() {
@@ -3403,9 +3403,14 @@ window.createConsoleApp = function createConsoleApp() {
       .replace(/--.*$/gm, '')
       .replace(/\/\*[\s\S]*?\*\//g, '')
       .trim();
-    const action = (clean.match(/^([a-z]+)/i)?.[1] || '').toUpperCase() || 'NONE';
+    const executableStatements = clean.split(';').map((part) => part.trim()).filter(Boolean);
+    const action = executableStatements.length > 1
+      ? 'BATCH'
+      : (clean.match(/^([a-z]+)/i)?.[1] || '').toUpperCase() || 'NONE';
     const risk = ['DROP', 'TRUNCATE', 'ALTER', 'CREATE', 'MERGE', 'EXEC', 'EXECUTE'].includes(action)
       ? 'High'
+      : action === 'BATCH'
+        ? 'Review'
       : ['INSERT', 'UPDATE', 'DELETE'].includes(action)
         ? 'Write'
         : action === 'SELECT' || action === 'WITH'
@@ -4587,12 +4592,8 @@ window.createConsoleApp = function createConsoleApp() {
     const message = String(error?.message || '');
     const sql = String(context.query || '').trim();
     const operation = String(context.operation || 'operation').toLowerCase();
-    const ifBatchHint = 'This looks like a T-SQL IF/BEGIN/END batch. SQL Studio currently blocks multi-statement batches, so no database changes were made. Put this logic in a stored procedure, or run a single reviewed INSERT/UPDATE/DELETE statement.';
-    if (/IF\/BEGIN\/END/i.test(message) || /^IF\b/i.test(sql)) {
-      return ifBatchHint;
-    }
-    if (/Only one SQL statement/i.test(message)) {
-      return 'SQL Studio currently accepts one executable statement per run. Remove extra statements or run them one at a time.';
+    if (/GO batch separators/i.test(message)) {
+      return 'GO is a client-side script separator, not a SQL Server statement. Remove GO lines and run a driver-compatible batch, or execute separate batches one at a time.';
     }
     if (/confirmation|token|expired/i.test(message)) {
       return 'The review window expired or no longer matches the request. Start the action again so the app can create a fresh confirmation.';
@@ -5280,7 +5281,7 @@ window.createConsoleApp = function createConsoleApp() {
   }
 
   function createMergePreviewTemplate() {
-    loadTemplateIntoEditor(buildMergePreviewTemplate(), 'MERGE preview template generated. Execution remains blocked in this app.');
+    loadTemplateIntoEditor(buildMergePreviewTemplate(), 'MERGE template generated. Review carefully; execution requires explicit confirmation.');
   }
 
   async function loadObjectProfile() {
@@ -5557,12 +5558,35 @@ window.createConsoleApp = function createConsoleApp() {
       review.classList.add('hidden');
     }
     $('confirmModalBtn').textContent = config.confirmLabel;
-    $('secondConfirmWrap').classList.add('hidden');
-    $('secondConfirmHint').textContent = '';
-    $('secondConfirmInput').value = '';
+    const confirmButton = $('confirmModalBtn');
+    const secondWrap = $('secondConfirmWrap');
+    const secondHint = $('secondConfirmHint');
+    const secondInput = $('secondConfirmInput');
+    const expectedText = String(config.expectedText || '').trim();
+    if (secondInput) {
+      secondInput.oninput = null;
+      secondInput.value = '';
+    }
+    if (expectedText && secondWrap && secondHint && secondInput && confirmButton) {
+      secondWrap.classList.remove('hidden');
+      secondHint.textContent = `Type ${expectedText} exactly to acknowledge that you reviewed this operation.`;
+      secondInput.placeholder = expectedText;
+      confirmButton.disabled = true;
+      secondInput.oninput = () => {
+        confirmButton.disabled = secondInput.value.trim().toUpperCase() !== expectedText.toUpperCase();
+      };
+    } else {
+      secondWrap?.classList.add('hidden');
+      if (secondHint) secondHint.textContent = '';
+      if (confirmButton) confirmButton.disabled = false;
+    }
     $('confirmModal').classList.remove('hidden');
     $('confirmModal').setAttribute('aria-hidden', 'false');
-    $('confirmModalBtn').focus();
+    if (expectedText && secondInput) {
+      secondInput.focus();
+    } else {
+      $('confirmModalBtn').focus();
+    }
 
     // TTL countdown — read from health endpoint, fall back to 5 minutes.
     if (state.confirmCountdownTimer) {
@@ -5610,6 +5634,8 @@ window.createConsoleApp = function createConsoleApp() {
       review.classList.add('hidden');
     }
     $('secondConfirmInput').value = '';
+    $('secondConfirmInput').oninput = null;
+    $('confirmModalBtn').disabled = false;
     if (state.lastFocusedElement?.focus) {
       state.lastFocusedElement.focus();
     }
@@ -5632,6 +5658,10 @@ window.createConsoleApp = function createConsoleApp() {
       if (payload.requiresConfirmation) {
         const actionSummary = currentActionSummary(query);
         const current = connection();
+        const statements = Number(payload.statementCount || 1);
+        const operations = Array.isArray(payload.actions) && payload.actions.length ? payload.actions.join(', ') : (payload.action || actionSummary.action);
+        const highRisk = Array.isArray(payload.highRiskActions) && payload.highRiskActions.length ? payload.highRiskActions.join(', ') : 'No';
+        const warnings = Array.isArray(payload.warnings) && payload.warnings.length ? payload.warnings.join(' | ') : 'None';
         setResults([], [], {
           rowsAffected: Number(payload.rowsAffected || 0),
           tabTitle: `${payload.action || 'Write'} review`,
@@ -5642,12 +5672,21 @@ window.createConsoleApp = function createConsoleApp() {
           type: 'write',
           title: `Confirm ${payload.action}`,
           message: payload.message,
-          confirmLabel: payload.action === 'DELETE' ? 'Execute delete' : 'Execute write',
-          metrics: [{ label: 'Action', value: payload.action }, { label: 'Rows', value: payload.rowsAffected }],
+          confirmLabel: payload.action === 'BATCH' ? 'Execute batch' : payload.action === 'DELETE' ? 'Execute delete' : 'Execute write',
+          expectedText: payload.expectedText || '',
+          metrics: [
+            { label: 'Action', value: payload.action },
+            { label: 'Statements', value: statements },
+            { label: 'Rows', value: payload.rowsAffected ?? 'not previewed' },
+            { label: 'Acknowledgement', value: payload.expectedText ? 'Required' : 'Button only' }
+          ],
           review: [
             { label: 'Server', value: current.server },
             { label: 'Database', value: current.database },
             { label: 'Detected risk', value: actionSummary.risk },
+            { label: 'Operations', value: operations },
+            { label: 'High risk', value: highRisk },
+            { label: 'Warnings', value: warnings },
             { label: 'Active target', value: state.activeObject || state.activeProcedure || 'not selected' },
             { label: 'SQL size', value: `${actionSummary.lines} lines / ${actionSummary.chars} chars` },
             { label: 'Execution path', value: '/api/query confirmation token' }
@@ -5750,11 +5789,15 @@ window.createConsoleApp = function createConsoleApp() {
         return;
       }
 
-      const payload = await api('/api/query', { method: 'POST', data: requestConnection({ ...state.pendingAction.request }) });
+      const acknowledgement = $('secondConfirmInput')?.value || '';
+      const payload = await api('/api/query', { method: 'POST', data: requestConnection({ ...state.pendingAction.request, acknowledgement }) });
       const executedQuery = state.pendingAction.request.query;
       closeConfirm();
-      setResults([], [], {
+      setResults(payload.columns || [], payload.rows || [], {
         rowsAffected: Number(payload.rowsAffected || 0),
+        totalRows: Number(payload.totalRows ?? (payload.rows || []).length),
+        truncated: Boolean(payload.truncated),
+        visualKind: 'query',
         tabTitle: `${payload.action || 'Write'} executed`,
         tabKey: ''
       });

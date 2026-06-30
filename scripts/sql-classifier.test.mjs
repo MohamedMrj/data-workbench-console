@@ -172,9 +172,9 @@ test('mixed-case SELECT', () => {
   assert.equal(classifyQuery('select * from dbo.Foo').kind, 'read');
 });
 
-// ─── classifyQuery — blocked writes ──────────────────────────────────────────
+// ─── classifyQuery — direct-confirm writes ───────────────────────────────────
 
-console.log('\nclassifyQuery — blocked writes');
+console.log('\nclassifyQuery — direct-confirm writes');
 
 const hardBlocked = ['TRUNCATE', 'DROP', 'ALTER', 'CREATE', 'GRANT', 'REVOKE'];
 
@@ -184,6 +184,7 @@ for (const keyword of hardBlocked) {
     assert.equal(result.kind, 'write');
     assert.equal(result.action, keyword);
     assert.equal(result.directConfirmOnly, true);
+    assert.equal(result.requiresAcknowledgement, true);
   });
 }
 
@@ -191,18 +192,21 @@ test('EXEC is classified as directConfirmOnly write', () => {
   const result = classifyQuery('EXEC dbo.MyProc @p1 = 1');
   assert.equal(result.kind, 'write');
   assert.equal(result.directConfirmOnly, true);
+  assert.equal(result.requiresAcknowledgement, true);
 });
 
 test('EXECUTE is classified as directConfirmOnly write', () => {
   const result = classifyQuery('EXECUTE dbo.MyProc');
   assert.equal(result.kind, 'write');
   assert.equal(result.directConfirmOnly, true);
+  assert.equal(result.requiresAcknowledgement, true);
 });
 
 test('MERGE is classified as directConfirmOnly write', () => {
   const result = classifyQuery('MERGE dbo.Target AS tgt USING dbo.Source AS src ON tgt.id = src.id');
   assert.equal(result.kind, 'write');
   assert.equal(result.directConfirmOnly, true);
+  assert.equal(result.requiresAcknowledgement, true);
 });
 
 test('CREATE PROCEDURE body with internal semicolons is direct-confirm DDL', () => {
@@ -217,6 +221,7 @@ END
   assert.equal(result.kind, 'write');
   assert.equal(result.action, 'CREATE');
   assert.equal(result.directConfirmOnly, true);
+  assert.equal(result.requiresAcknowledgement, true);
 });
 
 test('ALTER PROC body with internal semicolons is direct-confirm DDL', () => {
@@ -230,6 +235,7 @@ END
   assert.equal(result.kind, 'write');
   assert.equal(result.action, 'ALTER');
   assert.equal(result.directConfirmOnly, true);
+  assert.equal(result.requiresAcknowledgement, true);
 });
 
 test('CREATE OR ALTER PROCEDURE body is direct-confirm DDL', () => {
@@ -243,6 +249,7 @@ END
   assert.equal(result.kind, 'write');
   assert.equal(result.action, 'CREATE');
   assert.equal(result.directConfirmOnly, true);
+  assert.equal(result.requiresAcknowledgement, true);
 });
 
 test('CREATE PROCEDURE script with GO separator is blocked', () => {
@@ -280,6 +287,7 @@ test('UPDATE without WHERE — warning present', () => {
   const result = classifyQuery('UPDATE dbo.T SET col = 1');
   assert.equal(result.kind, 'write');
   assert.ok(result.warnings.some((w) => w.includes('WHERE')));
+  assert.equal(result.requiresAcknowledgement, true);
 });
 
 test('DELETE with WHERE — no warning', () => {
@@ -292,31 +300,46 @@ test('DELETE without WHERE — warning present', () => {
   const result = classifyQuery('DELETE FROM dbo.T');
   assert.equal(result.kind, 'write');
   assert.ok(result.warnings.some((w) => w.includes('WHERE')));
+  assert.equal(result.requiresAcknowledgement, true);
 });
 
-// ─── classifyQuery — multi-statement blocking ─────────────────────────────────
+// ─── classifyQuery — multi-statement batches ──────────────────────────────────
 
-console.log('\nclassifyQuery — multi-statement blocking');
+console.log('\nclassifyQuery — multi-statement batches');
 
-test('two statements separated by semicolon are blocked', () => {
+test('two statements separated by semicolon become a confirmed batch', () => {
   const result = classifyQuery('SELECT 1; SELECT 2');
-  assert.equal(result.kind, 'blocked');
+  assert.equal(result.kind, 'write');
+  assert.equal(result.action, 'BATCH');
+  assert.equal(result.directConfirmOnly, true);
+  assert.equal(result.requiresAcknowledgement, true);
+  assert.equal(result.multiStatement, true);
+  assert.equal(result.statementCount, 2);
 });
 
-test('DROP after SELECT in same batch is blocked', () => {
+test('DROP after SELECT in same batch is high-risk confirmed batch', () => {
   const result = classifyQuery('SELECT 1; DROP TABLE dbo.T');
-  assert.equal(result.kind, 'blocked');
+  assert.equal(result.kind, 'write');
+  assert.equal(result.action, 'BATCH');
+  assert.ok(result.highRiskActions.includes('DROP'));
 });
 
-test('T-SQL IF block with internal semicolons is blocked with batch guidance', () => {
+test('T-SQL IF block with internal semicolons is a confirmed batch', () => {
   const result = classifyQuery(`
 IF NOT EXISTS (SELECT 1 FROM dbo.Tasks WHERE TaskID = 'x')
 BEGIN
   INSERT INTO dbo.Tasks (TaskID) VALUES ('x');
 END;
 `);
+  assert.equal(result.kind, 'write');
+  assert.equal(result.action, 'BATCH');
+  assert.equal(result.requiresAcknowledgement, true);
+});
+
+test('GO batch separators remain blocked', () => {
+  const result = classifyQuery('SELECT 1;\nGO\nSELECT 2;');
   assert.equal(result.kind, 'blocked');
-  assert.ok(result.reason.includes('IF/BEGIN/END'));
+  assert.match(result.reason, /GO batch separators/);
 });
 
 // ─── classifyQuery — edge cases ──────────────────────────────────────────────

@@ -6,7 +6,7 @@ Production-safe internal SQL workbench for Microsoft Fabric SQL endpoints, Fabri
 
 Data Workbench Console is built for controlled operational work: browse metadata, generate SQL, run read queries, preview writes before execution, run stored procedures from a dedicated flow, and keep an audit trail of important actions.
 
-Current app version: `1.4.6`. See [CHANGELOG.md](CHANGELOG.md) for release notes.
+Current app version: `1.4.7`. See [CHANGELOG.md](CHANGELOG.md) for release notes.
 
 <p>
   <img alt="Next.js" src="https://img.shields.io/badge/Next.js-15-111827?style=for-the-badge&logo=nextdotjs" />
@@ -574,8 +574,9 @@ Template generation:
 
 Important behavior:
 
-- `MERGE` is blocked from execution in the app
-- the app only generates a review template for `MERGE`
+- `MERGE` is generated as a review template and can be executed only through
+  the normal `/api/query` confirmation path
+- high-risk generated SQL requires explicit review and typed acknowledgement
 
 Read-only object analysis actions:
 
@@ -684,8 +685,10 @@ Stored procedure execution includes:
 
 Procedure-specific behavior:
 
-- procedures are not run through free-form `EXEC` in the SQL editor
-- they are executed only from the procedure runner workflow
+- the Procedure Runner remains the recommended path because it discovers
+  parameters and records procedure-specific audit details
+- free-form `EXEC` in SQL Studio is available, but it requires direct
+  confirmation and typed acknowledgement through `/api/query`
 
 ### Results Grid
 
@@ -814,21 +817,24 @@ Write flow:
 6. for larger writes, require typed second confirmation
 7. execute in a transaction only after confirmation
 
-### Blocked SQL
+### Confirmed SQL
 
-The backend blocks:
+The backend no longer blanket-blocks normal SQL Server operations just because
+they are powerful. Instead, the classifier routes them through the safest
+available execution path:
 
-- `TRUNCATE`
-- `DROP`
-- `ALTER` without direct confirmation
-- `CREATE` without direct confirmation
-- `MERGE`
-- `GRANT`
-- `REVOKE`
-- `EXEC` and `EXECUTE` from the SQL editor
-- `UPDATE` without `WHERE`
-- `DELETE` without `WHERE`
-- multiple SQL statements in one request
+- ordinary `SELECT` statements run as reads with the app row cap
+- normal `INSERT`, `UPDATE`, and `DELETE` statements are previewed in a rollback
+  transaction before execution
+- `DROP`, `TRUNCATE`, `ALTER`, `CREATE`, `MERGE`, `GRANT`, `REVOKE`, `EXEC`,
+  and `EXECUTE` require direct confirmation and typed acknowledgement
+- `UPDATE` or `DELETE` without `WHERE` require typed acknowledgement
+- multiple semicolon-separated statements run as a confirmed `BATCH` and require
+  typing `RUN BATCH`
+
+`GO` batch separators are still blocked because `GO` is a client-side script
+separator, not a SQL Server statement accepted by the Node SQL driver. Remove
+`GO` lines or run those batches separately.
 
 ### Stored Procedure Safety
 
@@ -1079,13 +1085,13 @@ Available scripts:
 Verification helpers:
 
 - `scripts/smoke-test.mjs`
-  validates production-start behavior, health endpoint, blocked query behavior, and audit availability
+  validates production-start behavior, health endpoint, batch confirmation behavior, and audit availability
 
 - `scripts/ui-smoke.mjs`
   validates client UI wiring and behavior against the built app using JSDOM mocks
 
 - `scripts/sql-classifier.test.mjs`
-  validates server-side query classification, row limiting, and blocked batch behavior
+  validates server-side query classification, row limiting, confirmed batch behavior, and unsupported `GO` handling
 
 - `scripts/sql-metadata.test.mjs`
   validates generated table DDL rendering for key catalog features
@@ -1099,8 +1105,9 @@ Verification helpers:
 - procedures must be executed from the dedicated procedure workflow
 - object scripts are loaded to an editor only and are never auto-executed
 - Procedure Runner can edit CREATE/ALTER procedure scripts on-page and run them through the existing SQL confirmation path
-- `GO` batch separators are not supported in procedure scripts; run one CREATE/ALTER PROCEDURE definition at a time
+- Semicolon-separated SQL batches are supported through the normal SQL confirmation path
+- `GO` batch separators are not supported; remove `GO` lines or run separate batches
 - SQL Server/Fabric SQL table scripts are generated from catalog metadata, not exact original source text
 - estimated query plans require source support and sufficient permissions
-- `MERGE` generation is supported only as a review template, not as an executable statement
+- `MERGE` generation is supported as a review template and execution requires explicit confirmation
 - this app is intentionally production-safe, so convenience features are secondary to execution control

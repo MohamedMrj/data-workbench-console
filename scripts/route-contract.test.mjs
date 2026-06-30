@@ -105,12 +105,15 @@ try {
   assert.equal(updateDisabled.response.status, 403);
   assert.match(updateDisabled.payload.error, /Self-update is disabled/);
 
-  const blockedQuery = await request('/api/query', {
+  const batchReview = await request('/api/query', {
     method: 'POST',
     body: { ...safeSqlLogin, query: 'SELECT 1; SELECT 2' }
   });
-  assert.equal(blockedQuery.response.status, 400);
-  assert.match(blockedQuery.payload.error, /one SQL statement|blocked/i);
+  assert.equal(batchReview.response.status, 200);
+  assert.equal(batchReview.payload.requiresConfirmation, true);
+  assert.equal(batchReview.payload.action, 'BATCH');
+  assert.equal(batchReview.payload.expectedText, 'RUN BATCH');
+  assert.equal(batchReview.payload.statementCount, 2);
 
   const missingWindowsDomain = await request('/api/query', {
     method: 'POST',
@@ -127,10 +130,10 @@ try {
   assert.equal(missingWindowsDomain.response.status, 400);
   assert.match(missingWindowsDomain.payload.error, /Domain, username, and password/);
 
-  const audit = await request('/api/audit?limit=10&event=query&outcome=blocked');
+  const audit = await request('/api/audit?limit=10&event=write_prepare&outcome=success');
   assert.equal(audit.response.status, 200);
   assert.equal(Array.isArray(audit.payload.entries), true);
-  assert.equal(audit.payload.entries.some((entry) => entry.event === 'query' && entry.outcome === 'blocked'), true);
+  assert.equal(audit.payload.entries.some((entry) => entry.event === 'write_prepare' && entry.action === 'BATCH'), true);
 
   const savedBefore = await request('/api/saved-connections');
   assert.equal(savedBefore.response.status, 200);
