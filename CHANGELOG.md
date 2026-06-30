@@ -39,6 +39,11 @@ Security and reliability hardening across the SQL safety, metadata, and result p
 
 ### Fixed
 
+- Made the in-app self-update reliable. The updater now hard-resets the working
+  tree to the fetched `origin/main` instead of `git pull --ff-only`, which would
+  abort whenever a local checkout had drifted (line-ending churn or a stray edit)
+  and leave the app restarting the old build with the Update button still
+  showing. Untracked files (`.env`, `.data`) are preserved.
 - Reworked qualified-object-name parsing so identifiers that legitimately contain
   `.` or `]` (for example `[My.Table]`) are no longer mangled, which previously
   pointed metadata actions at the wrong object.

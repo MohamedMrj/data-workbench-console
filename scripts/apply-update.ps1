@@ -113,7 +113,14 @@ try {
     Start-Sleep -Seconds 1
 
     Invoke-LoggedCommand -FilePath 'git' -Arguments @('fetch', 'origin', 'main')
-    Invoke-LoggedCommand -FilePath 'git' -Arguments @('pull', '--ff-only', 'origin', 'main')
+    # Sync the working tree to the fetched remote tip instead of `pull --ff-only`.
+    # A fast-forward pull aborts whenever the local checkout has drifted at all
+    # (line-ending churn on Windows, a stray edit, an unexpected local commit),
+    # and the catch block below would then silently relaunch the OLD build while
+    # the update button stayed up. End-user installs are meant to mirror origin
+    # exactly, so hard-reset to the fetched commit. Untracked files such as
+    # .env and the .data directory are not touched by reset --hard.
+    Invoke-LoggedCommand -FilePath 'git' -Arguments @('reset', '--hard', 'origin/main')
 
     $lockAfter = Get-FileHashOrEmpty -Path $lockPath
     $needsInstall = (-not (Test-Path -LiteralPath (Join-Path $ProjectDir 'node_modules'))) -or ($lockBefore -ne $lockAfter)
