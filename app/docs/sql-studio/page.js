@@ -150,7 +150,7 @@ WHERE [Status] LIKE '%FAIL%'
 ORDER BY [CreatedUtc] DESC;`}</pre>
         </DocsExample>
         <div className="docs-callout docs-callout-warning">
-          Generated UPDATE and DELETE statements still go through server-side safety checks. The app blocks unrestricted UPDATE and DELETE operations.
+          Generated UPDATE and DELETE statements still go through server-side safety checks. An UPDATE or DELETE without a WHERE clause is allowed but treated as high-impact: after the preview you must type <code>EXECUTE UPDATE</code> or <code>EXECUTE DELETE</code> to acknowledge it affects every row.
         </div>
         <div className="docs-callout docs-callout-info">
           SQL Server and Fabric SQL table scripts are reconstructed from catalog metadata. They can include columns, identity, defaults, computed columns, keys, checks, indexes, and foreign keys, but they are not the exact original deployment text.
@@ -181,6 +181,10 @@ ORDER BY [CreatedUtc] DESC;`}</pre>
         <DocsMiniSection title="Keyboard shortcuts">
           <p><span className="docs-kbd">Ctrl</span> + <span className="docs-kbd">Enter</span> runs the current query. <span className="docs-kbd">Ctrl</span> + <span className="docs-kbd">Shift</span> + <span className="docs-kbd">F</span> formats SQL.</p>
         </DocsMiniSection>
+        <DocsMiniSection title="Confirming a write">
+          <p>When you run a write, the editor opens a confirmation dialog instead of executing immediately. The dialog shows the <strong>review context</strong> (server, database, detected action, statement count, and the row count from a rollback preview) so you can check the request before it commits.</p>
+          <p>For high-impact operations, the dialog also shows a <strong>typed acknowledgement field</strong>. The required phrase is shown above the box — type it exactly (case does not matter), and the <strong>Continue</strong> button stays disabled until it matches. A live <strong>countdown</strong> indicates how long the preview stays valid; if it expires, run the query again to create a fresh one. See <a href="#safety">Execution safety</a> for the full list of which operations need which phrase.</p>
+        </DocsMiniSection>
       </DocsSection>
 
       <DocsSection id="advanced" title="Advanced Operations And Object Analysis" intro="Advanced Operations create cross-object SQL templates. Object Analysis runs read-only metadata or profiling requests against the current connection.">
@@ -195,7 +199,7 @@ ORDER BY [CreatedUtc] DESC;`}</pre>
           <div><strong>Source key</strong><span>Column or expression on the source object. Defaults to the target key name when possible, but should always be reviewed.</span></div>
           <div><strong>Insert SELECT</strong><span>Creates an INSERT...SELECT review template for loading the active target object from a source object. Requires active target, source object, and column metadata.</span></div>
           <div><strong>Update JOIN</strong><span>Creates an UPDATE...FROM JOIN review template. Requires target key/source key and should be scoped before execution.</span></div>
-          <div><strong>MERGE preview</strong><span>Creates a MERGE review template only. MERGE execution is blocked by the app; use it for design review or copy into a controlled deployment process.</span></div>
+          <div><strong>MERGE preview</strong><span>Creates a MERGE review template in the editor. MERGE can be executed through the normal confirmation path, where it is treated as high-risk and requires typing <code>EXECUTE MERGE</code>. Review the template carefully first.</span></div>
           <div><strong>Sample profile</strong><span>Runs a read-only profile for the active object, using the sample-row setting. Use it to inspect nulls, completeness, and simple column characteristics before writing SQL.</span></div>
           <div><strong>Dependency view</strong><span>Loads dependency rows plus graph-friendly upstream/downstream metadata where the source exposes dependencies. Best for views/procedures and SQL Server/Fabric SQL metadata.</span></div>
           <div><strong>Row count</strong><span>Loads metadata row counts where available. If the source does not expose row-count metadata, the button falls back to an exact <code>COUNT_BIG(*)</code>, which can read the object.</span></div>
@@ -250,15 +254,29 @@ WHERE <review scope before execution>;`}</pre>
         </div>
       </DocsSection>
 
-      <DocsSection id="safety" title="Execution Safety" intro="The backend validates every query. Client-side UI choices are helpful, but server-side checks are the real safety gate.">
+      <DocsSection id="safety" title="Execution Safety" intro="The backend validates every query. Client-side UI choices are helpful, but server-side checks are the real safety gate. Nothing dangerous runs silently: writes are previewed, and high-impact operations require you to type an acknowledgement before they execute.">
         <div className="docs-flow">
-          <div><strong>1. Classify</strong><span>The server identifies SELECT, INSERT, UPDATE, DELETE, and blocked operations.</span></div>
-          <div><strong>2. Preview</strong><span>Writes are previewed in a rollback transaction before real execution.</span></div>
-          <div><strong>3. Confirm</strong><span>Writes require a short-lived confirmation token. Larger writes can require typed confirmation.</span></div>
-          <div><strong>4. Execute</strong><span>The server executes only after the exact reviewed request is confirmed.</span></div>
+          <div><strong>1. Classify</strong><span>The server reads the SQL and decides whether it is a read, a write, a high-risk operation, a multi-statement batch, or unsupported.</span></div>
+          <div><strong>2. Preview</strong><span>Writes are previewed in a rollback transaction first, so you can see the row impact before anything is committed.</span></div>
+          <div><strong>3. Confirm</strong><span>Writes need a short-lived confirmation token. High-risk operations and batches also require typing an exact acknowledgement phrase.</span></div>
+          <div><strong>4. Execute</strong><span>The server commits only after the exact reviewed request is confirmed within the time limit.</span></div>
         </div>
-        <div className="docs-callout docs-callout-danger">
-          Blocked or heightened operations include <code>DROP</code>, <code>TRUNCATE</code>, <code>ALTER</code>, <code>CREATE</code>, <code>MERGE</code>, <code>EXEC</code>, unrestricted <code>UPDATE</code>, unrestricted <code>DELETE</code>, and multiple statements. CREATE and ALTER can only proceed through the existing direct confirmation flow.
+        <DocsMiniSection title="What each operation needs">
+          <p>Use this table to know exactly what to expect before you click Run query. The acknowledgement phrase is typed into the confirmation dialog and is <strong>not case-sensitive</strong>.</p>
+          <div className="docs-table">
+            <div><strong>SELECT / WITH</strong><span>Runs directly and is row-limited. No preview and no confirmation.</span></div>
+            <div><strong>INSERT, or UPDATE / DELETE with a WHERE clause</strong><span>Previewed in a rollback transaction, then released with a single <strong>Continue</strong> click. No phrase to type.</span></div>
+            <div><strong>UPDATE / DELETE without a WHERE clause</strong><span>Allowed, but treated as high-impact: preview, then type <code>EXECUTE UPDATE</code> or <code>EXECUTE DELETE</code> to acknowledge it affects every row.</span></div>
+            <div><strong>DROP, TRUNCATE, ALTER, CREATE, MERGE, GRANT, REVOKE, EXEC / EXECUTE</strong><span>Allowed through confirmation. After preview, type <code>EXECUTE &lt;ACTION&gt;</code> — for example <code>EXECUTE DROP</code> or <code>EXECUTE TRUNCATE</code>.</span></div>
+            <div><strong>Multiple statements separated by <code>;</code></strong><span>Run together as one confirmed <strong>BATCH</strong>. Review every statement, then type <code>RUN BATCH</code>.</span></div>
+            <div><strong>GO batch separators</strong><span>Blocked. <code>GO</code> is a client-tool separator, not a SQL statement the driver can run. Remove <code>GO</code> lines and run a driver-compatible batch.</span></div>
+          </div>
+        </DocsMiniSection>
+        <div className="docs-callout docs-callout-info">
+          Writes that touch more than a few rows (3 by default) show a clear row-count warning in the preview so a large change is never a surprise. The threshold is configurable in Settings.
+        </div>
+        <div className="docs-callout docs-callout-warning">
+          The confirmation dialog shows a live countdown. Confirmation tokens are short-lived (about 5 minutes by default) and tied to the exact query and connection. If the countdown runs out, click <strong>Run query</strong> again to create a fresh preview.
         </div>
       </DocsSection>
 
@@ -267,7 +285,7 @@ WHERE <review scope before execution>;`}</pre>
           <div><strong>Connection failed</strong><span>Check server host, database name, auth mode, credentials, and network access to TCP 1433.</span></div>
           <div><strong>Certificate error</strong><span>Make sure the server field is a single host name, not a full connection string or comma-separated list.</span></div>
           <div><strong>No objects loaded</strong><span>The database may be wrong, metadata permissions may be missing, or the endpoint may not expose tables/views.</span></div>
-          <div><strong>Query blocked</strong><span>Review the safety message. Writes usually need WHERE scope and confirmation. Dangerous commands are intentionally blocked.</span></div>
+          <div><strong>Query needs acknowledgement</strong><span>Read the safety message. High-risk commands and unrestricted UPDATE/DELETE are not blocked — they need a typed phrase such as <code>EXECUTE DROP</code> or <code>RUN BATCH</code> after the preview. Only <code>GO</code> separators and unsupported syntax are truly blocked.</span></div>
           <div><strong>Estimated plan unavailable</strong><span>The source may not support estimated plans or the current account may lack SHOWPLAN-style permission.</span></div>
           <div><strong>Generated table script differs from source file</strong><span>SQL Server does not store original CREATE TABLE text. The app reconstructs a practical script from catalog metadata.</span></div>
           <div><strong>History did not switch object</strong><span>Load the current catalog first. Older history items can only switch objects when the table name exists in the loaded catalog.</span></div>
