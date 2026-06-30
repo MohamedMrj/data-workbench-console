@@ -25,5 +25,5 @@ if not exist ".next\BUILD_ID" (
   echo Run "npm run build" manually to rebuild.
 )
 
-echo Starting production server on http://localhost:3000
+echo Starting production server on http://127.0.0.1:3000
 call npm run start

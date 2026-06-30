@@ -11,6 +11,15 @@ Security and reliability hardening across the SQL safety, metadata, and result p
 
 ### Security
 
+- Bound the production server to the loopback interface (`127.0.0.1`) and pointed
+  the desktop launcher at `127.0.0.1` instead of `localhost`, so the app is no
+  longer reachable from other machines on the network and the Windows IPv6
+  `localhost` resolution quirk cannot affect startup. This closes the only path
+  by which a network peer could reach the local-only lifecycle, update, and
+  settings endpoints. The same-origin guard now treats the loopback host
+  variants (`localhost`, `127.0.0.1`, `[::1]`) on the same scheme and port as a
+  single origin, so requests are accepted whichever loopback name the browser
+  uses while external origins and other ports are still rejected.
 - Stopped persisting the database password in the pending-confirmation store on
   disk. The stored connection is never used at execution time (the request
   re-supplies it), so the secret is now stripped before the record is written.

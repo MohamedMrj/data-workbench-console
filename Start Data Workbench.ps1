@@ -8,7 +8,7 @@ $baseDir = $PSScriptRoot
 
 function Test-AppHealth {
     try {
-        Invoke-WebRequest -UseBasicParsing -Uri 'http://localhost:3000/' -TimeoutSec 5 | Out-Null
+        Invoke-WebRequest -UseBasicParsing -Uri 'http://127.0.0.1:3000/' -TimeoutSec 5 | Out-Null
         return $true
     } catch {
         return $false
@@ -163,8 +163,8 @@ function Open-LauncherLoadingPage {
         return $false
     }
 
-    $target = [System.Uri]::EscapeDataString('http://localhost:3000/')
-    $ready = [System.Uri]::EscapeDataString('http://localhost:3000/launcher-ready.svg')
+    $target = [System.Uri]::EscapeDataString('http://127.0.0.1:3000/')
+    $ready = [System.Uri]::EscapeDataString('http://127.0.0.1:3000/launcher-ready.svg')
     $timeout = [Math]::Max($ExpectedSeconds + 180, 300)
     $expectedChecks = [Math]::Max(8, [Math]::Ceiling($ExpectedSeconds / 0.9))
     $modeParam = [System.Uri]::EscapeDataString($Mode)
@@ -344,7 +344,7 @@ try {
     Update-Progress -Status 'Checking existing server' -Value 5 -Detail 'Looking for an already running app.'
     if ((Test-AppHealth) -and $buildCurrent) {
         Update-Progress -Status 'App is already running' -Value 100 -Detail 'Opening browser.'
-        Open-BrowserUrl -Url 'http://localhost:3000'
+        Open-BrowserUrl -Url 'http://127.0.0.1:3000'
         Start-Sleep -Milliseconds 500
         exit 0
     }
@@ -399,20 +399,20 @@ try {
 
     for ($i = 0; $i -lt 60; $i++) {
         $percent = 83 + [Math]::Min(16, [Math]::Floor($i / 4))
-        Update-Progress -Status 'Waiting for server' -Value $percent -Detail 'Checking http://localhost:3000'
+        Update-Progress -Status 'Waiting for server' -Value $percent -Detail 'Checking http://127.0.0.1:3000'
         Start-Sleep -Seconds 1
         if (Test-AppHealth) {
             $readyDetail = if ($openedLaunchPage) { 'Browser is redirecting to SQL Studio.' } else { 'Opening browser.' }
             Update-Progress -Status 'Ready' -Value 100 -Detail $readyDetail
             if (-not $openedLaunchPage) {
-                Open-BrowserUrl -Url 'http://localhost:3000'
+                Open-BrowserUrl -Url 'http://127.0.0.1:3000'
             }
             Start-Sleep -Milliseconds 500
             exit 0
         }
     }
 
-    Fail-Launch -Message 'The server was started, but it did not respond on http://localhost:3000 within 60 seconds.' -LogPath $serverLog
+    Fail-Launch -Message 'The server was started, but it did not respond on http://127.0.0.1:3000 within 60 seconds.' -LogPath $serverLog
 } catch {
     Fail-Launch -Message $_.Exception.Message -LogPath $launchLog
 } finally {

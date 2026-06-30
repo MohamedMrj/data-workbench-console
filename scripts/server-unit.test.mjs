@@ -244,6 +244,24 @@ const thrownResponse = await nextHandler.runHandler(() => {
 assert.equal(thrownResponse.status, 418);
 assert.equal((await thrownResponse.json()).error, 'teapot');
 
+// Same-origin guard treats loopback host variants (localhost / 127.0.0.1 / ::1)
+// as one origin (matched scheme + port). This is what lets a browser on
+// 127.0.0.1 reach a server whose req.url host Next reports as localhost, while
+// external origins and mismatched ports are still rejected.
+const sameOriginStatus = async (reqUrl, originHeader) => {
+  const response = await nextHandler.runHandler((_req, res) => res.json({ success: true }), makeReq(reqUrl, {
+    method: 'POST',
+    headers: { origin: originHeader },
+    body: { value: 1 }
+  }));
+  return response.status;
+};
+assert.equal(await sameOriginStatus('http://localhost:3000/api/unit', 'http://127.0.0.1:3000'), 200);
+assert.equal(await sameOriginStatus('http://127.0.0.1:3000/api/unit', 'http://localhost:3000'), 200);
+assert.equal(await sameOriginStatus('http://localhost:3000/api/unit', 'http://[::1]:3000'), 200);
+assert.equal(await sameOriginStatus('http://localhost:3000/api/unit', 'http://evil.com'), 403);
+assert.equal(await sameOriginStatus('http://localhost:3000/api/unit', 'http://127.0.0.1:9999'), 403);
+
 await fs.rm(tempRoot, { recursive: true, force: true });
 console.log('Server unit tests passed.');
 process.exit(0);

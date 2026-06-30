@@ -364,8 +364,8 @@
   <script>
     (function () {
       const params = new URLSearchParams(window.location.search);
-      const target = params.get('target') || 'http://localhost:3000/';
-      const readyUrl = params.get('ready') || 'http://localhost:3000/launcher-ready.svg';
+      const target = params.get('target') || 'http://127.0.0.1:3000/';
+      const readyUrl = params.get('ready') || 'http://127.0.0.1:3000/launcher-ready.svg';
       const mode = ['first-run', 'build', 'start'].includes(params.get('mode')) ? params.get('mode') : 'start';
       const etaSeconds = Math.max(10, Number(params.get('eta') || 60));
       const timeoutParam = Number(params.get('timeout'));

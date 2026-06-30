@@ -9,7 +9,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "start": "next start",
+    "start": "next start -H 127.0.0.1",
     "clean": "node -e \"require('fs').rmSync('.next', { recursive: true, force: true })\"",
     "responsive:audit": "node scripts/responsive-audit.mjs",
     "test:server": "node scripts/server-unit.test.mjs",
