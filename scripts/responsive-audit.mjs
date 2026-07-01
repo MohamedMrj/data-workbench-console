@@ -20,6 +20,10 @@ const healthPayload = {
     idleMs: 10000,
     fadeMs: 800
   },
+  appearance: {
+    ambientMotionEnabled: true,
+    ambientMotionDurationMs: 90000
+  },
   supportedSourceTypes: [
     { id: 'fabric-sql', label: 'Fabric SQL endpoint', authModes: ['servicePrincipal'], supportsProcedures: true },
     { id: 'fabric-lakehouse', label: 'Fabric Lakehouse SQL endpoint', authModes: ['servicePrincipal'], supportsProcedures: false },

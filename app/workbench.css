@@ -41,6 +41,25 @@
   mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.7), transparent 88%);
 }
 
+html[data-ambient-motion='enabled'] .shell-grid {
+  animation: ambient-grid-drift var(--ambient-motion-duration, 90000ms) ease-in-out infinite alternate;
+}
+
+@keyframes ambient-grid-drift {
+  0% {
+    transform: translate3d(0, 0, 0);
+  }
+  100% {
+    transform: translate3d(-18px, 14px, 0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html[data-ambient-motion='enabled'] .shell-grid {
+    animation: none;
+  }
+}
+
 .app-shell {
   --panel-handle-size: 12px;
   --control-rail-width: clamp(280px, 21vw, 320px);

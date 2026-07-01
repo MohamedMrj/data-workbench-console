@@ -123,6 +123,11 @@ body {
   background-attachment: fixed;
 }
 
+html[data-ambient-motion='enabled'] body {
+  background-size: 145% 145%, 135% 135%, 100% 100%;
+  animation: ambient-background-shift var(--ambient-motion-duration, 90000ms) ease-in-out infinite alternate;
+}
+
 body::before,
 body::after {
   content: '';
@@ -146,6 +151,21 @@ body::after {
   bottom: -14vw;
   right: -10vw;
   background: radial-gradient(circle, color-mix(in srgb, var(--accent-2) 18%, transparent), transparent 68%);
+}
+
+@keyframes ambient-background-shift {
+  0% {
+    background-position: 0% 0%, 100% 100%, 0 0;
+  }
+  100% {
+    background-position: 14% 8%, 86% 92%, 0 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html[data-ambient-motion='enabled'] body {
+    animation: none;
+  }
 }
 
 button,

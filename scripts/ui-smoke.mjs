@@ -61,6 +61,10 @@ function attachMocks(window) {
           idleMs: 10000,
           fadeMs: 800
         },
+        appearance: {
+          ambientMotionEnabled: true,
+          ambientMotionDurationMs: 90000
+        },
         supportedSourceTypes: [
           { id: 'fabric-sql', label: 'Fabric SQL endpoint', authModes: ['servicePrincipal'], supportsProcedures: true },
           { id: 'fabric-lakehouse', label: 'Fabric Lakehouse SQL endpoint', authModes: ['servicePrincipal'], supportsProcedures: false },
@@ -202,6 +206,7 @@ function attachMocks(window) {
         envPath: '.env',
         groups: [
           { id: 'runtime', title: 'Runtime', description: 'Runtime settings' },
+          { id: 'appearance', title: 'Appearance', description: 'Appearance settings' },
           { id: 'fabric', title: 'Fabric Authentication', description: 'Fabric auth settings' }
         ],
         settings: [
@@ -272,6 +277,28 @@ function attachMocks(window) {
             value: '800',
             description: 'Fade duration.',
             appropriate: '800 is default.',
+            restartRequired: true
+          },
+          {
+            key: 'APP_AMBIENT_MOTION_ENABLED',
+            group: 'appearance',
+            type: 'boolean',
+            label: 'Ambient color motion',
+            value: 'true',
+            description: 'Controls slow background color movement.',
+            appropriate: 'Use false for a static background.',
+            restartRequired: true
+          },
+          {
+            key: 'APP_AMBIENT_MOTION_DURATION_MS',
+            group: 'appearance',
+            type: 'number',
+            min: 30000,
+            max: 300000,
+            label: 'Ambient motion speed',
+            value: '90000',
+            description: 'One motion cycle duration.',
+            appropriate: '90000 means 90 seconds.',
             restartRequired: true
           }
         ],
@@ -726,6 +753,12 @@ sqlWindow.document.getElementById('sourceTypeSelect').dispatchEvent(new sqlWindo
 if (sqlWindow.document.querySelector('.results-card')?.dataset.resultsState !== 'empty') {
   throw new Error('Empty results should mark the results card as empty for compact sizing.');
 }
+if (sqlWindow.document.documentElement.dataset.ambientMotion !== 'enabled') {
+  throw new Error('Ambient motion setting from health should be applied to the document root.');
+}
+if (sqlWindow.document.documentElement.style.getPropertyValue('--ambient-motion-duration') !== '90000ms') {
+  throw new Error('Ambient motion duration from health should be applied as a CSS variable.');
+}
 ['saveConnectionBtn', 'testConnectionBtn', 'loadTablesBtn', 'runQueryBtn', 'clearHistoryBtn', 'toggleAdvancedOperationsBtn', 'insertSelectTemplateBtn', 'updateJoinTemplateBtn', 'mergePreviewBtn', 'profileObjectBtn', 'dependencyViewBtn', 'insertSqlHelperBtn', 'wrapSqlHelperBtn', 'openWorkbenchToolsBtn', 'openEnvSettingsBtn', 'openSupportBtn', 'scrollResultsLeftBtn', 'scrollResultsRightBtn', 'scrollResultsDockLeftBtn', 'scrollResultsDockRightBtn'].forEach((id) => {
   const element = sqlWindow.document.getElementById(id);
   if (!element || typeof element.onclick !== 'function') {
@@ -743,6 +776,9 @@ if (!sqlWindow.document.getElementById('envSettingsContent').textContent.include
 }
 if (!sqlWindow.document.getElementById('envSettingsContent').textContent.includes('Side panel idle delay')) {
   throw new Error('App settings did not render side panel auto-hide controls.');
+}
+if (!sqlWindow.document.getElementById('envSettingsContent').textContent.includes('Ambient color motion')) {
+  throw new Error('App settings did not render ambient motion controls.');
 }
 const secretInput = sqlWindow.document.querySelector('[data-env-key="AZURE_CLIENT_SECRET"]');
 if (!secretInput || secretInput.value !== '') {

@@ -5,6 +5,29 @@ All notable Data Workbench Console changes are tracked here.
 The in-app version is read from `package.json` and exposed through `/api/version`
 together with the current git commit and build information.
 
+## 1.4.11 - 2026-07-01
+
+Configurable side-panel behavior and subtle ambient motion.
+
+### Added
+
+- Added appearance settings for slow background color movement:
+  `APP_AMBIENT_MOTION_ENABLED` and `APP_AMBIENT_MOTION_DURATION_MS`.
+- Exposed appearance settings through `/api/health`, the in-app Settings dialog,
+  `.env.example`, README, and both documentation pages.
+- Added a subtle, slow background/grid movement that respects
+  `prefers-reduced-motion` and can be disabled from Settings.
+
+### Changed
+
+- Clarified Settings documentation so users can find side-panel auto-hide,
+  side-panel timing, and ambient motion controls without editing files manually.
+
+### Verification
+
+- Extended route, server-unit, UI smoke, and responsive audit coverage for the
+  new appearance settings and health payload.
+
 ## 1.4.10 - 2026-06-30
 
 Local-only network hardening and a reliable self-update path.

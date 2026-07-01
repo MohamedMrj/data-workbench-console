@@ -213,6 +213,8 @@ assert.deepEqual(envSettingsStore.validateEnvSettingsForTest({
   APP_SIDE_PANEL_AUTO_HIDE_ENABLED: 'false',
   APP_SIDE_PANEL_IDLE_MS: '30000',
   APP_SIDE_PANEL_FADE_MS: '1200',
+  APP_AMBIENT_MOTION_ENABLED: 'false',
+  APP_AMBIENT_MOTION_DURATION_MS: '120000',
   AZURE_CLIENT_SECRET: ''
 }), {
   PORT: '3001',
@@ -220,11 +222,14 @@ assert.deepEqual(envSettingsStore.validateEnvSettingsForTest({
   APP_SELF_UPDATE_ENABLED: 'false',
   APP_SIDE_PANEL_AUTO_HIDE_ENABLED: 'false',
   APP_SIDE_PANEL_IDLE_MS: '30000',
-  APP_SIDE_PANEL_FADE_MS: '1200'
+  APP_SIDE_PANEL_FADE_MS: '1200',
+  APP_AMBIENT_MOTION_ENABLED: 'false',
+  APP_AMBIENT_MOTION_DURATION_MS: '120000'
 });
 assert.throws(() => envSettingsStore.validateEnvSettingsForTest({ PORT: '99999' }), /at most 65535/);
 assert.throws(() => envSettingsStore.validateEnvSettingsForTest({ NODE_ENV: 'staging' }), /must be one of/);
 assert.throws(() => envSettingsStore.validateEnvSettingsForTest({ APP_SIDE_PANEL_IDLE_MS: '500' }), /at least 1000/);
+assert.throws(() => envSettingsStore.validateEnvSettingsForTest({ APP_AMBIENT_MOTION_DURATION_MS: '1000' }), /at least 30000/);
 assert.throws(() => envSettingsStore.validateEnvSettingsForTest({ UNKNOWN_SETTING: 'x' }), /Unknown setting/);
 
 const okResponse = await nextHandler.runHandler((_req, res) => res.json({ success: true, value: 42 }), makeReq('http://127.0.0.1:3000/api/unit'));

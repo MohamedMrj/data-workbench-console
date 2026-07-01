@@ -72,7 +72,8 @@ export default function ProcedureRunnerDocsPage() {
           <p><strong>Diagnostics</strong> copies safe app/session context for troubleshooting. It does not include passwords or client secrets.</p>
         </DocsMiniSection>
         <DocsMiniSection title="App settings">
-          <p>Settings writes to the local <code>.env</code> file. Runtime, database, safety, audit, lifecycle, side-panel auto-hide, request guardrail, and Fabric service-principal settings are grouped with short descriptions. Most values are read when the server starts, so restart Data Workbench from the desktop shortcut after applying changes.</p>
+          <p>Settings writes to the local <code>.env</code> file. Runtime, database, safety, audit, lifecycle, side-panel auto-hide, appearance, request guardrail, and Fabric service-principal settings are grouped with short descriptions. Most values are read when the server starts, so restart Data Workbench from the desktop shortcut after applying changes.</p>
+          <p>Side-panel auto-hide can be disabled entirely or tuned with idle/fade timing values. Ambient background motion can also be disabled or slowed down for users who prefer a quieter interface.</p>
         </DocsMiniSection>
         <DocsMiniSection title="Support reports">
           <p>The Support form prepares an email to <code>mohamed.al-mefrej@hotmail.com</code> and copies the report text. Browser email drafts cannot attach screenshots automatically, so attach the selected screenshot manually before sending.</p>
@@ -221,6 +222,8 @@ export default function ProcedureRunnerDocsPage() {
           <div><strong>Mode switching</strong><span>Use the top workspace tabs to switch between Procedure Runner and SQL Studio without reopening the connection panel.</span></div>
           <div><strong>Session restore</strong><span>The selected procedure, parameters, result tabs, filters, pagination, and history are restored for the same browser tab where possible.</span></div>
           <div><strong>Panel layout</strong><span>Resizable panels, hidden side panels, result height, and layout choices are saved locally and adapt on narrower screens.</span></div>
+          <div><strong>Panel auto-hide</strong><span>The connection and themes/history panels can fade and collapse after an idle delay. Use Settings to turn this off entirely or adjust the timing.</span></div>
+          <div><strong>Ambient motion</strong><span>The app can use very slow background color movement for a livelier feel. It is configurable in Settings and respects reduced-motion preferences.</span></div>
         </div>
         <div className="docs-callout docs-callout-info">
           Example: if you run <code>dbo.spQueueJob</code>, open another procedure to inspect it, then click the earlier history item, the runner restores <code>dbo.spQueueJob</code> and makes it active again when the catalog contains it.

@@ -1450,6 +1450,17 @@ window.createConsoleApp = function createConsoleApp() {
     `;
   }
 
+  function applyAppearanceSettings() {
+    const appearance = state.health?.appearance || {};
+    const enabled = window.__dataWorkbenchTestConfig?.ambientMotionEnabled ?? appearance.ambientMotionEnabled ?? true;
+    const duration = Number(window.__dataWorkbenchTestConfig?.ambientMotionDurationMs ?? appearance.ambientMotionDurationMs ?? 90000);
+    document.documentElement.dataset.ambientMotion = enabled ? 'enabled' : 'disabled';
+    document.documentElement.style.setProperty(
+      '--ambient-motion-duration',
+      `${Number.isFinite(duration) ? Math.max(30000, duration) : 90000}ms`
+    );
+  }
+
   function renderConnectionTestResult() {
     const panel = $('testConnectionResult');
     if (!panel) {
@@ -5918,6 +5929,7 @@ window.createConsoleApp = function createConsoleApp() {
 
   async function loadHealth() {
     try { state.health = await api('/api/health'); } catch { state.health = null; }
+    applyAppearanceSettings();
     renderConnectionSelectors();
     renderPolicy();
   }

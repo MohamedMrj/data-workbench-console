@@ -6,7 +6,7 @@ Production-safe internal SQL workbench for Microsoft Fabric SQL endpoints, Fabri
 
 Data Workbench Console is built for controlled operational work: browse metadata, generate SQL, run read queries, preview writes before execution, run stored procedures from a dedicated flow, and keep an audit trail of important actions.
 
-Current app version: `1.4.10`. See [CHANGELOG.md](CHANGELOG.md) for release notes.
+Current app version: `1.4.11`. See [CHANGELOG.md](CHANGELOG.md) for release notes.
 
 <p>
   <img alt="Next.js" src="https://img.shields.io/badge/Next.js-15-111827?style=for-the-badge&logo=nextdotjs" />
@@ -247,13 +247,14 @@ Startup details are written under `.data/logs/` so runtime logs do not clutter t
 
 ### App Settings
 
-The `Settings` button opens a guided editor for the local `.env` file. It groups runtime, database, query safety, audit, desktop lifecycle, side-panel auto-hide, request guardrail, and Fabric authentication settings.
+The `Settings` button opens a guided editor for the local `.env` file. It groups runtime, database, query safety, audit, desktop lifecycle, side-panel auto-hide, appearance, request guardrail, and Fabric authentication settings.
 
 Important behavior:
 
 - settings are saved to `.env` in the app folder
 - most settings are read when the server starts, so restart Data Workbench after applying changes
 - side-panel auto-hide can be turned off or adjusted with `APP_SIDE_PANEL_AUTO_HIDE_ENABLED`, `APP_SIDE_PANEL_IDLE_MS`, and `APP_SIDE_PANEL_FADE_MS`
+- subtle background color motion can be turned off or slowed down with `APP_AMBIENT_MOTION_ENABLED` and `APP_AMBIENT_MOTION_DURATION_MS`
 - `AZURE_CLIENT_SECRET` is never returned to the browser; leave it blank to keep the existing secret, or type a new value to replace it
 - unknown settings and invalid values are rejected
 - the settings API is local-only and write-protected by same-origin checks
@@ -980,6 +981,11 @@ Desktop lifecycle and side-panel behavior:
 - `APP_SIDE_PANEL_IDLE_MS`
 - `APP_SIDE_PANEL_FADE_MS`
 - `APP_SELF_UPDATE_ENABLED`
+
+Appearance:
+
+- `APP_AMBIENT_MOTION_ENABLED`
+- `APP_AMBIENT_MOTION_DURATION_MS`
 
 Saved connections and runtime files:
 
