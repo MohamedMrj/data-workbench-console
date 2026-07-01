@@ -94,6 +94,15 @@ try {
   assert.equal(envSettings.payload.settings.some((field) => field.key === 'APP_SIDE_PANEL_IDLE_MS'), true);
   assert.equal(envSettings.payload.settings.some((field) => field.key === 'APP_AMBIENT_MOTION_ENABLED'), true);
 
+  const envWriteAllowedLoopback = await request('/api/env-settings', {
+    method: 'POST',
+    headers: { Origin: `http://localhost:${port}` },
+    body: { settings: {} }
+  });
+  assert.equal(envWriteAllowedLoopback.response.status, 200);
+  assert.equal(envWriteAllowedLoopback.payload.success, true);
+  assert.equal(Array.isArray(envWriteAllowedLoopback.payload.changedKeys), true);
+
   const envWriteBlocked = await request('/api/env-settings', {
     method: 'POST',
     body: { settings: { PORT: '3001' } }

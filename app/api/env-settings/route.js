@@ -5,6 +5,10 @@ import { isLocalLifecycleRequest } from '../../../lib/server/lifecycle-store';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
+function isLoopbackHostname(hostname = '') {
+  return ['localhost', '127.0.0.1', '::1', '[::1]'].includes(String(hostname || '').toLowerCase());
+}
+
 function sameOriginLocalWriteAllowed(req) {
   if (!isLocalLifecycleRequest(req)) {
     return { allowed: false, status: 403, error: 'Environment settings are local-only.' };
@@ -20,7 +24,14 @@ function sameOriginLocalWriteAllowed(req) {
       return false;
     }
     try {
-      return new URL(candidate).origin === expectedOrigin;
+      const candidateUrl = new URL(candidate);
+      if (candidateUrl.origin === expectedOrigin) {
+        return true;
+      }
+      return candidateUrl.protocol === url.protocol
+        && candidateUrl.port === url.port
+        && isLoopbackHostname(candidateUrl.hostname)
+        && isLoopbackHostname(url.hostname);
     } catch {
       return false;
     }

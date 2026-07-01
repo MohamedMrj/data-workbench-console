@@ -5,6 +5,24 @@ All notable Data Workbench Console changes are tracked here.
 The in-app version is read from `package.json` and exposed through `/api/version`
 together with the current git commit and build information.
 
+## 1.4.12 - 2026-07-01
+
+Settings origin-check hotfix.
+
+### Fixed
+
+- Fixed Settings writes being blocked when the browser and Next request URL used
+  different loopback hostnames, for example `127.0.0.1` versus `localhost`.
+- The Settings route now uses the same loopback-origin equivalence as the rest
+  of the local API: `localhost`, `127.0.0.1`, and `[::1]` are accepted as the
+  same local app only when the protocol and port match.
+- Missing-origin writes are still blocked, and non-local hosts are still blocked.
+
+### Verification
+
+- Added route-contract coverage for successful Settings writes across loopback
+  host variants and continued blocking of requests without browser origin data.
+
 ## 1.4.11 - 2026-07-01
 
 Configurable side-panel behavior and subtle ambient motion.
