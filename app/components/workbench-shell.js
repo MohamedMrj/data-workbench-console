@@ -366,6 +366,13 @@ export default function WorkbenchShell({ pageMode = 'sql' }) {
             </div>
           </section>
 
+          <section className="panel-section safety-section">
+            <div className="section-title-row">
+              <h2>Safety Policy</h2>
+            </div>
+            <div id="policySummary" className="policy-summary" />
+          </section>
+
           <section className="panel-section connection-section">
             <div className="section-title-row">
               <div>
@@ -456,13 +463,6 @@ export default function WorkbenchShell({ pageMode = 'sql' }) {
               <span className="tiny-note">Passwords never stored</span>
             </div>
             <div id="savedConnections" className="saved-connections" />
-          </section>
-
-          <section className="panel-section">
-            <div className="section-title-row">
-              <h2>Safety Policy</h2>
-            </div>
-            <div id="policySummary" className="policy-summary" />
           </section>
         </aside>
 

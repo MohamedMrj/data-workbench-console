@@ -861,6 +861,21 @@ if (sqlWindow.document.getElementById('toggleAdvancedOperationsBtn').getAttribut
   }
 });
 
+{
+  const safetySection = sqlWindow.document.querySelector('.control-rail .safety-section');
+  const connectionSection = sqlWindow.document.querySelector('.control-rail .connection-section');
+  const savedProfilesSection = sqlWindow.document.querySelector('.control-rail .grow-section');
+  if (!safetySection || !connectionSection || !savedProfilesSection) {
+    throw new Error('Connection panel should render Safety Policy, Connection, and Saved Profiles sections.');
+  }
+  if (!(safetySection.compareDocumentPosition(connectionSection) & sqlWindow.Node.DOCUMENT_POSITION_FOLLOWING)) {
+    throw new Error('Safety Policy should appear above Connection in the left panel.');
+  }
+  if (!(connectionSection.compareDocumentPosition(savedProfilesSection) & sqlWindow.Node.DOCUMENT_POSITION_FOLLOWING)) {
+    throw new Error('Saved Profiles should remain below Connection in the left panel.');
+  }
+}
+
 dragHandle(sqlWindow, 'controlRail', { x: 320, y: 120 }, { x: 370, y: 120 });
 if (sqlWindow.document.querySelector('.app-shell').style.getPropertyValue('--control-rail-width') !== '390px') {
   throw new Error('Control rail resize did not update the persisted width.');

@@ -5,6 +5,26 @@ All notable Data Workbench Console changes are tracked here.
 The in-app version is read from `package.json` and exposed through `/api/version`
 together with the current git commit and build information.
 
+## 1.4.13 - 2026-07-01
+
+Left-panel safety placement polish.
+
+### Changed
+
+- Moved the left-panel Safety Policy section above Connection so users see the
+  active safety model before entering or loading connection details.
+- Kept Saved Profiles below Connection and preserved the existing connection,
+  save-profile, and policy rendering behavior.
+
+### Fixed
+
+- Added compact wrapping for Safety Policy text in the left rail so long policy
+  summaries do not pressure the panel horizontally.
+
+### Verification
+
+- Added UI smoke coverage for the left-panel section order.
+
 ## 1.4.12 - 2026-07-01
 
 Settings origin-check hotfix.

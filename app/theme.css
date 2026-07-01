@@ -843,6 +843,14 @@ select {
   min-width: 0;
 }
 
+.control-rail .safety-section .policy-summary {
+  overflow: visible;
+}
+
+.control-rail .safety-section .info-chip span {
+  overflow-wrap: anywhere;
+}
+
 .tiny-note {
   line-height: 1.45;
 }
