@@ -21,6 +21,26 @@ async function pathExists(filePath) {
   }
 }
 
+function updateLogPath(projectDir) {
+  return path.join(projectDir, '.data', 'logs', 'data-workbench-update.log');
+}
+
+async function writeUpdateLaunchLog(projectDir, message) {
+  const logPath = updateLogPath(projectDir);
+  await fs.mkdir(path.dirname(logPath), { recursive: true });
+  await fs.appendFile(logPath, `[${new Date().toISOString()}] ${message}\n`, 'utf8');
+}
+
+async function resolvePowerShellPath() {
+  const systemPowerShell = process.env.SystemRoot
+    ? path.join(process.env.SystemRoot, 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe')
+    : '';
+  if (systemPowerShell && await pathExists(systemPowerShell)) {
+    return systemPowerShell;
+  }
+  return 'powershell.exe';
+}
+
 async function runGit(args, options = {}) {
   try {
     const { stdout } = await execFileAsync('git', args, {
@@ -36,6 +56,43 @@ async function runGit(args, options = {}) {
 
 function shortCommit(commit = '') {
   return String(commit || '').slice(0, 7);
+}
+
+function waitForUpdaterStart(child, timeoutMs = 1500) {
+  return new Promise((resolve, reject) => {
+    let spawned = false;
+
+    const cleanup = () => {
+      clearTimeout(timer);
+      child.off('spawn', onSpawn);
+      child.off('error', onError);
+      child.off('exit', onExit);
+    };
+    const settle = (callback, value) => {
+      cleanup();
+      callback(value);
+    };
+    const onSpawn = () => {
+      spawned = true;
+    };
+    const onError = (error) => {
+      settle(reject, error);
+    };
+    const onExit = (code, signal) => {
+      settle(reject, new Error(`Updater exited before it could start work (${signal || `exit ${code}`}).`));
+    };
+    const timer = setTimeout(() => {
+      if (!spawned) {
+        settle(reject, new Error('Timed out waiting for the updater process to launch.'));
+        return;
+      }
+      settle(resolve);
+    }, timeoutMs);
+
+    child.once('spawn', onSpawn);
+    child.once('error', onError);
+    child.once('exit', onExit);
+  });
 }
 
 export async function POST(req) {
@@ -88,26 +145,38 @@ export async function POST(req) {
   }
 
   const port = String(process.env.PORT || '3000');
-  const child = spawn('powershell.exe', [
-    '-NoProfile',
-    '-ExecutionPolicy',
-    'Bypass',
-    '-File',
-    updaterPath,
-    '-ProjectDir',
-    projectDir,
-    '-Port',
-    port,
-    '-OldPid',
-    String(process.pid)
-  ], {
-    cwd: projectDir,
-    detached: true,
-    stdio: 'ignore',
-    windowsHide: true
-  });
-
-  child.unref();
+  const powerShellPath = await resolvePowerShellPath();
+  let child;
+  try {
+    await writeUpdateLaunchLog(projectDir, `Launching updater for ${shortCommit(localCommit)} -> ${shortCommit(latestCommit)}.`);
+    child = spawn(powerShellPath, [
+      '-NoProfile',
+      '-ExecutionPolicy',
+      'Bypass',
+      '-File',
+      updaterPath,
+      '-ProjectDir',
+      projectDir,
+      '-Port',
+      port,
+      '-OldPid',
+      String(process.pid)
+    ], {
+      cwd: projectDir,
+      detached: true,
+      stdio: 'ignore',
+      windowsHide: true
+    });
+    await waitForUpdaterStart(child);
+    child.unref();
+    await writeUpdateLaunchLog(projectDir, `Updater process ${child.pid || 'unknown'} launched.`);
+  } catch (error) {
+    await writeUpdateLaunchLog(projectDir, `Could not launch updater: ${error.message || error}`);
+    return NextResponse.json({
+      success: false,
+      error: `Could not launch updater: ${error.message || error}`
+    }, { status: 500 });
+  }
 
   return NextResponse.json({
     success: true,
