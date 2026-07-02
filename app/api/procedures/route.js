@@ -2,7 +2,7 @@ import { ensureInitialized, getProcedures, postProcedures } from '../../../lib/s
 import { runHandler } from '../../../lib/server/next-handler';
 
 async function postDispatcher(req, res) {
-  if (req.body?.procedure || req.body?.confirmToken) {
+  if (Object.hasOwn(req.body || {}, 'procedure') || req.body?.confirmToken) {
     return postProcedures(req, res);
   }
   return getProcedures(req, res);

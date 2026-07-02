@@ -1,6 +1,6 @@
 {
   "name": "db_interface",
-  "version": "1.4.14",
+  "version": "1.4.16",
   "type": "module",
   "description": "Production-safe multi-source SQL and procedure workbench for Fabric and SQL Server",
   "engines": {
@@ -25,8 +25,8 @@
     "meta_store",
     "internal-tool"
   ],
-  "author": "",
-  "license": "UNLICENSED",
+  "author": "Mohamed Almefrej",
+  "license": "Proprietary License",
   "dependencies": {
     "@azure/identity": "^4.13.1",
     "@azure/keyvault-secrets": "^4.11.2",

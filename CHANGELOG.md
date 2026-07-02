@@ -5,6 +5,38 @@ All notable Data Workbench Console changes are tracked here.
 The in-app version is read from `package.json` and exposed through `/api/version`
 together with the current git commit and build information.
 
+## 1.4.16 - 2026-07-02
+
+Route-contract hardening.
+
+### Fixed
+
+- Fixed `POST /api/procedures` so an explicitly empty procedure name is handled
+  by the procedure execution path and returns a clear `400` validation response
+  instead of being treated as a catalog-load request.
+- Cleaned a misleading indentation issue in the stored procedure handler.
+
+### Verification
+
+- Expanded route-contract coverage for `/api/tables`, `/api/columns`,
+  `/api/test-connection`, `/api/procedure-parameters`, and `/api/procedures`
+  using validation-only requests that do not connect to a database.
+
+## 1.4.15 - 2026-07-02
+
+Release hardening and dependency refresh.
+
+### Changed
+
+- Refreshed in-range dependency lockfile versions for the release gate:
+  Next.js `15.5.20`, `mssql` `12.6.0`, Playwright `1.61.1`, and `ws`
+  `8.21.0`.
+
+### Verification
+
+- Re-ran the full release verification suite after the dependency refresh.
+- Confirmed production and full dependency audits report zero vulnerabilities.
+
 ## 1.4.14 - 2026-07-02
 
 Browser tab icon polish.

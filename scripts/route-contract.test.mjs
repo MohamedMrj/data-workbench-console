@@ -123,6 +123,41 @@ try {
   assert.equal(updateDisabled.response.status, 403);
   assert.match(updateDisabled.payload.error, /Self-update is disabled/);
 
+  const tablesMissingConnection = await request('/api/tables', {
+    method: 'POST',
+    body: {}
+  });
+  assert.equal(tablesMissingConnection.response.status, 400);
+  assert.match(tablesMissingConnection.payload.error, /Server and database/);
+
+  const columnsMissingObject = await request('/api/columns', {
+    method: 'POST',
+    body: safeSqlLogin
+  });
+  assert.equal(columnsMissingObject.response.status, 400);
+  assert.match(columnsMissingObject.payload.error, /Object name is required/);
+
+  const testConnectionMissingConnection = await request('/api/test-connection', {
+    method: 'POST',
+    body: {}
+  });
+  assert.equal(testConnectionMissingConnection.response.status, 400);
+  assert.match(testConnectionMissingConnection.payload.error, /Server and database/);
+
+  const procedureParamsMissingName = await request('/api/procedure-parameters', {
+    method: 'POST',
+    body: safeSqlLogin
+  });
+  assert.equal(procedureParamsMissingName.response.status, 400);
+  assert.match(procedureParamsMissingName.payload.error, /Procedure name is required/);
+
+  const procedureRunMissingName = await request('/api/procedures', {
+    method: 'POST',
+    body: { ...safeSqlLogin, procedure: '' }
+  });
+  assert.equal(procedureRunMissingName.response.status, 400);
+  assert.match(procedureRunMissingName.payload.error, /Procedure name is required/);
+
   const batchReview = await request('/api/query', {
     method: 'POST',
     body: { ...safeSqlLogin, query: 'SELECT 1; SELECT 2' }
