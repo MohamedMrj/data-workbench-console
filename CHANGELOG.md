@@ -5,6 +5,32 @@ All notable Data Workbench Console changes are tracked here.
 The in-app version is read from `package.json` and exposed through `/api/version`
 together with the current git commit and build information.
 
+## 1.4.22 - 2026-07-02
+
+Fix the themes/history panel disappearing when both side panels are open.
+
+### Fixed
+
+- Fixed the right themes/history panel not showing beside the workspace on wide
+  screens when the left connection panel was also open. The JS layout correctly
+  chose "wide" mode, but a leftover `@container (max-width: 1500px)` fallback
+  (same specificity, later in the file) overrode the workspace grid and pushed
+  the right panel into a full-width row far below the fold, so on a typical
+  1920-wide window it was effectively invisible. The JS-driven
+  `data-workspace-mode="wide"` template is now restated at higher specificity so
+  it wins, and the right panel sits beside the studio again.
+- Added a responsive-audit regression check that fails if the themes/history
+  panel is not beside the studio while the workspace is in "wide" mode, so this
+  cannot silently regress again (the previous jsdom check could not catch it
+  because it does not evaluate CSS container queries).
+
+### Notes
+
+- On narrower screens (roughly below a ~1780px window with the left panel open)
+  there still is not room for four side-by-side columns, so the themes/history
+  panel stacks below by design. Collapsing the connection panel frees the space
+  for it to sit beside the studio.
+
 ## 1.4.21 - 2026-07-02
 
 Living ambient backdrop and a left-rail layout fix.

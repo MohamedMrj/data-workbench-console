@@ -712,6 +712,27 @@ html[data-ambient-motion='enabled'] .shell-orbit-b {
   flex-direction: column;
 }
 
+/* The JS layout owns the workspace mode via data-workspace-mode and only picks
+   "wide" when the themes/history panel provably fits beside the studio. Restate
+   the wide (activity as a right column) template here at higher specificity so
+   the older @container width fallbacks further down cannot override it and push
+   the right panel into a full-width row below when both side panels are open. */
+.app-shell[data-workspace-mode="wide"] .workspace-grid {
+  grid-template-columns:
+    minmax(240px, var(--explorer-width))
+    var(--panel-handle-size)
+    minmax(0, 1fr)
+    var(--panel-handle-size)
+    minmax(260px, var(--activity-width));
+  grid-template-areas:
+    'explorer explorer-resizer studio activity-resizer activity';
+}
+
+.app-shell[data-workspace-mode="wide"] .activity-panel {
+  display: flex;
+  flex-direction: column;
+}
+
 .app-shell.activity-panel-collapsed .workspace-grid {
   grid-template-columns:
     minmax(240px, var(--explorer-width))

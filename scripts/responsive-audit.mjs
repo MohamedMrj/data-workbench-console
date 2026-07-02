@@ -430,6 +430,32 @@ async function inspectViewport(page) {
       }
     }
 
+    // In "wide" workspace mode the themes/history (activity) panel must sit
+    // beside the studio, not wrap into a full-width row below it. This guards
+    // the regression where a container-width fallback overrode the JS-driven
+    // wide layout and pushed the right panel off-screen when both side panels
+    // were open.
+    const activityPanelEl = document.querySelector('.activity-panel');
+    const studioStackEl = document.querySelector('.studio-stack');
+    if (
+      shell?.dataset.workspaceMode === 'wide' &&
+      !shell?.classList.contains('activity-panel-collapsed') &&
+      activityPanelEl && studioStackEl &&
+      getComputedStyle(activityPanelEl).display !== 'none'
+    ) {
+      const activityRect = activityPanelEl.getBoundingClientRect();
+      const studioRect = studioStackEl.getBoundingClientRect();
+      if (activityRect.left < studioRect.right - 2 || activityRect.top > studioRect.top + 48) {
+        problems.push({
+          type: 'activity-panel-not-beside-in-wide',
+          activityLeft: Math.round(activityRect.left),
+          activityTop: Math.round(activityRect.top),
+          studioRight: Math.round(studioRect.right),
+          studioTop: Math.round(studioRect.top)
+        });
+      }
+    }
+
     const builder = document.querySelector('.builder-primary-grid');
     const operationPanel = document.querySelector('.builder-panel-operation');
     const columnsPanel = document.querySelector('.builder-panel-columns');
