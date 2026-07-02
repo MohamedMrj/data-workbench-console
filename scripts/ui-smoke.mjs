@@ -63,7 +63,9 @@ function attachMocks(window) {
         },
         appearance: {
           ambientMotionEnabled: true,
-          ambientMotionDurationMs: 90000
+          ambientMotionDurationMs: 90000,
+          tooltipsEnabled: true,
+          tooltipDelayMs: 0
         },
         supportedSourceTypes: [
           { id: 'fabric-sql', label: 'Fabric SQL endpoint', authModes: ['servicePrincipal'], supportsProcedures: true },
@@ -299,6 +301,28 @@ function attachMocks(window) {
             value: '90000',
             description: 'One motion cycle duration.',
             appropriate: '90000 means 90 seconds.',
+            restartRequired: true
+          },
+          {
+            key: 'APP_TOOLTIPS_ENABLED',
+            group: 'appearance',
+            type: 'boolean',
+            label: 'Helpful tooltips',
+            value: 'true',
+            description: 'Shows delayed interface hints.',
+            appropriate: 'Use false for a quieter UI.',
+            restartRequired: true
+          },
+          {
+            key: 'APP_TOOLTIP_DELAY_MS',
+            group: 'appearance',
+            type: 'number',
+            min: 0,
+            max: 3000,
+            label: 'Tooltip delay',
+            value: '650',
+            description: 'Tooltip delay in milliseconds.',
+            appropriate: '650 is calm.',
             restartRequired: true
           }
         ],
@@ -759,12 +783,28 @@ if (sqlWindow.document.documentElement.dataset.ambientMotion !== 'enabled') {
 if (sqlWindow.document.documentElement.style.getPropertyValue('--ambient-motion-duration') !== '90000ms') {
   throw new Error('Ambient motion duration from health should be applied as a CSS variable.');
 }
+if (sqlWindow.document.documentElement.dataset.tooltips !== 'enabled') {
+  throw new Error('Tooltip setting from health should enable app tooltips.');
+}
+if (sqlWindow.document.documentElement.style.getPropertyValue('--tooltip-delay-ms') !== '0ms') {
+  throw new Error('Tooltip delay from health should be applied as a CSS variable.');
+}
 ['saveConnectionBtn', 'testConnectionBtn', 'loadTablesBtn', 'runQueryBtn', 'clearHistoryBtn', 'toggleAdvancedOperationsBtn', 'insertSelectTemplateBtn', 'updateJoinTemplateBtn', 'mergePreviewBtn', 'profileObjectBtn', 'dependencyViewBtn', 'insertSqlHelperBtn', 'wrapSqlHelperBtn', 'openWorkbenchToolsBtn', 'openEnvSettingsBtn', 'openSupportBtn', 'scrollResultsLeftBtn', 'scrollResultsRightBtn', 'scrollResultsDockLeftBtn', 'scrollResultsDockRightBtn'].forEach((id) => {
   const element = sqlWindow.document.getElementById(id);
   if (!element || typeof element.onclick !== 'function') {
     throw new Error(`Expected ${id} to be wired on the SQL page.`);
   }
 });
+sqlWindow.document.getElementById('openEnvSettingsBtn').dispatchEvent(new sqlWindow.Event('pointerover', { bubbles: true }));
+await waitForCondition(
+  () => sqlWindow.document.getElementById('appTooltip')?.classList.contains('visible'),
+  'Hovering a toolbar button should show the controlled app tooltip.'
+);
+if (!sqlWindow.document.getElementById('appTooltip').textContent.includes('Edit local app settings')) {
+  throw new Error('Toolbar tooltip text should explain the settings action.');
+}
+sqlWindow.document.getElementById('openEnvSettingsBtn').dispatchEvent(new sqlWindow.Event('pointerout', { bubbles: true }));
+await flush();
 sqlWindow.document.getElementById('openEnvSettingsBtn').click();
 await flush();
 await flush();
@@ -779,6 +819,15 @@ if (!sqlWindow.document.getElementById('envSettingsContent').textContent.include
 }
 if (!sqlWindow.document.getElementById('envSettingsContent').textContent.includes('Ambient color motion')) {
   throw new Error('App settings did not render ambient motion controls.');
+}
+if (!sqlWindow.document.getElementById('envSettingsContent').textContent.includes('Helpful tooltips')) {
+  throw new Error('App settings did not render tooltip enablement controls.');
+}
+if (!sqlWindow.document.getElementById('envSettingsContent').textContent.includes('Tooltip delay')) {
+  throw new Error('App settings did not render tooltip timing controls.');
+}
+if (!sqlWindow.document.querySelector('[data-env-key="APP_TOOLTIP_DELAY_MS"]')?.dataset.tooltip) {
+  throw new Error('Tooltip settings should expose helpful controlled tooltip text.');
 }
 const secretInput = sqlWindow.document.querySelector('[data-env-key="AZURE_CLIENT_SECRET"]');
 if (!secretInput || secretInput.value !== '') {

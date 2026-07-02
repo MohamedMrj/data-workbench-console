@@ -81,6 +81,8 @@ try {
   assert.equal(typeof health.payload.sidePanels.fadeMs, 'number');
   assert.equal(typeof health.payload.appearance.ambientMotionEnabled, 'boolean');
   assert.equal(typeof health.payload.appearance.ambientMotionDurationMs, 'number');
+  assert.equal(typeof health.payload.appearance.tooltipsEnabled, 'boolean');
+  assert.equal(typeof health.payload.appearance.tooltipDelayMs, 'number');
   const sqlServerSource = health.payload.supportedSourceTypes.find((source) => source.id === 'sql-server');
   assert.equal(sqlServerSource.authModes.includes('windowsNtlm'), true);
   assert.equal(health.payload.supportedAuthModes.some((auth) => auth.id === 'windowsNtlm'), true);
@@ -99,6 +101,8 @@ try {
   assert.equal(clientSecretField?.secret, true);
   assert.equal(envSettings.payload.settings.some((field) => field.key === 'APP_SIDE_PANEL_IDLE_MS'), true);
   assert.equal(envSettings.payload.settings.some((field) => field.key === 'APP_AMBIENT_MOTION_ENABLED'), true);
+  assert.equal(envSettings.payload.settings.some((field) => field.key === 'APP_TOOLTIPS_ENABLED'), true);
+  assert.equal(envSettings.payload.settings.some((field) => field.key === 'APP_TOOLTIP_DELAY_MS'), true);
 
   const envWriteAllowedLoopback = await request('/api/env-settings', {
     method: 'POST',

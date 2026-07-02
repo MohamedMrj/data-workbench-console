@@ -5,6 +5,32 @@ All notable Data Workbench Console changes are tracked here.
 The in-app version is read from `package.json` and exposed through `/api/version`
 together with the current git commit and build information.
 
+## 1.4.17 - 2026-07-02
+
+Helpful tooltips and Settings polish.
+
+### Added
+
+- Added a global controlled tooltip system for workbench controls, fields, tabs,
+  result actions, generated rows, and dense buttons.
+- Added `APP_TOOLTIPS_ENABLED` and `APP_TOOLTIP_DELAY_MS` so users can keep
+  hints enabled, slow them down, make them instant, or disable them from
+  Settings.
+- Exposed tooltip settings through `/api/health`, `/api/env-settings`,
+  `.env.example`, README, and the built-in SQL Studio / Procedure Runner docs.
+
+### Changed
+
+- Converted key native browser `title` hints into the app-controlled tooltip
+  behavior so hints are more consistent and less visually disruptive.
+- Polished the Settings modal with clearer setting cards, smoother hover/focus
+  states, and a stable action footer.
+
+### Verification
+
+- Added server, route-contract, UI smoke, and responsive-audit coverage for
+  tooltip settings and rendering behavior.
+
 ## 1.4.16 - 2026-07-02
 
 Route-contract hardening.

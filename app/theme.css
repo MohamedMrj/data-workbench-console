@@ -375,6 +375,34 @@ p {
   line-height: 1;
 }
 
+.app-tooltip {
+  position: fixed;
+  z-index: 1200;
+  max-width: min(320px, calc(100vw - 24px));
+  padding: 8px 10px;
+  border: 1px solid color-mix(in srgb, var(--line-strong) 76%, transparent);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--surface-strong) 92%, black 8%);
+  color: var(--text);
+  box-shadow: 0 14px 34px color-mix(in srgb, black 34%, transparent);
+  font-size: 0.78rem;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+  pointer-events: none;
+  opacity: 0;
+  transform: translateY(3px) scale(0.98);
+  transition: opacity 0.14s ease, transform 0.14s ease;
+}
+
+.app-tooltip.visible {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+}
+
+html[data-tooltips="disabled"] .app-tooltip {
+  display: none;
+}
+
 .primary-btn:hover:not(:disabled),
 .secondary-btn:hover:not(:disabled),
 .ghost-btn:hover:not(:disabled),

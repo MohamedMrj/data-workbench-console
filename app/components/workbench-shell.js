@@ -190,7 +190,7 @@ function SqlWorkspace({ hidden = false }) {
             </div>
           </div>
           <div className="button-row wrap builder-actions">
-            <button id="generateQueryBtn" className="ghost-btn" type="button" title="Rebuild the editor SQL from the current builder selections.">Refresh SQL</button>
+            <button id="generateQueryBtn" className="ghost-btn" type="button" data-tooltip="Rebuild the SQL editor text from the current builder selections.">Refresh SQL</button>
             <button id="scriptCreateBtn" className="ghost-btn" type="button">Script CREATE</button>
             <button id="scriptAlterBtn" className="ghost-btn" type="button">Script ALTER/Edit</button>
             <button id="insertWhereBtn" className="ghost-btn">Insert WHERE</button>
@@ -293,8 +293,8 @@ function ResultsCard() {
           <button id="loadAuditBtn" className="ghost-btn small">Audit log</button>
           <button id="copyResultsBtn" className="ghost-btn small">Copy rows</button>
           <button id="exportCsvBtn" className="ghost-btn small">Export CSV</button>
-          <button id="scrollResultsLeftBtn" className="ghost-btn small result-scroll-btn" type="button" title="Scroll result columns left" aria-label="Scroll result columns left">← Columns</button>
-          <button id="scrollResultsRightBtn" className="ghost-btn small result-scroll-btn" type="button" title="Scroll result columns right" aria-label="Scroll result columns right">Columns →</button>
+          <button id="scrollResultsLeftBtn" className="ghost-btn small result-scroll-btn" type="button" data-tooltip="Scroll result columns left." aria-label="Scroll result columns left">← Columns</button>
+          <button id="scrollResultsRightBtn" className="ghost-btn small result-scroll-btn" type="button" data-tooltip="Scroll result columns right." aria-label="Scroll result columns right">Columns →</button>
           <button id="prevPageBtn" className="ghost-btn small">Prev</button>
           <div id="pageIndicator" className="page-indicator">Page 1/1</div>
           <button id="nextPageBtn" className="ghost-btn small">Next</button>
@@ -307,8 +307,8 @@ function ResultsCard() {
       <div id="resultsPanel" className="results-panel empty-state">Run a query or procedure to see results.</div>
       <div id="resultsScrollDock" className="results-scroll-dock" aria-label="Result column navigation">
         <span>Columns</span>
-        <button id="scrollResultsDockLeftBtn" className="result-scroll-dock-btn" type="button" title="Scroll result columns left" aria-label="Scroll result columns left">←</button>
-        <button id="scrollResultsDockRightBtn" className="result-scroll-dock-btn" type="button" title="Scroll result columns right" aria-label="Scroll result columns right">→</button>
+        <button id="scrollResultsDockLeftBtn" className="result-scroll-dock-btn" type="button" data-tooltip="Scroll result columns left." aria-label="Scroll result columns left">←</button>
+        <button id="scrollResultsDockRightBtn" className="result-scroll-dock-btn" type="button" data-tooltip="Scroll result columns right." aria-label="Scroll result columns right">→</button>
       </div>
     </section>
   );
@@ -438,7 +438,7 @@ export default function WorkbenchShell({ pageMode = 'sql' }) {
                   <span>Profile name <em className="tiny-note">(optional)</em></span>
                   <input id="profileNameInput" type="text" placeholder="e.g. Production Gold" autoComplete="off" />
                 </label>
-                <button id="saveConnectionBtn" className="save-conn-btn" type="button" title="Save this connection profile to the server">
+                <button id="saveConnectionBtn" className="save-conn-btn" type="button" data-tooltip="Save this connection profile without saving passwords or secrets.">
                   <span className="save-conn-icon" aria-hidden="true">💾</span>
                   Save profile
                 </button>
@@ -499,29 +499,29 @@ export default function WorkbenchShell({ pageMode = 'sql' }) {
                   >
                     Documentation
                   </Link>
-                  <button id="openWorkbenchToolsBtn" className="ghost-btn small" type="button">
+                  <button id="openWorkbenchToolsBtn" className="ghost-btn small" type="button" data-tooltip="Open quick actions, diagnostics, scratchpads, and safety summaries.">
                     Tools
                   </button>
-                  <button id="openEnvSettingsBtn" className="ghost-btn small" type="button">
+                  <button id="openEnvSettingsBtn" className="ghost-btn small" type="button" data-tooltip="Edit local app settings such as panels, tooltips, appearance, timeouts, and safety limits.">
                     Settings
                   </button>
-                  <button id="openSupportBtn" className="ghost-btn small" type="button">
+                  <button id="openSupportBtn" className="ghost-btn small" type="button" data-tooltip="Create a support email with optional safe diagnostics.">
                     Support
                   </button>
-                  <button id="updateWorkbenchBtn" className="primary-btn small update-workbench-btn hidden" type="button">
+                  <button id="updateWorkbenchBtn" className="primary-btn small update-workbench-btn hidden" type="button" data-tooltip="Apply the newest version when this local install is behind the Git remote.">
                     Update
                   </button>
                 </div>
                 <div className="hero-action-group panel-toggle-group" aria-label="Panel visibility">
-                  <button id="toggleControlRailBtn" className="ghost-btn small" type="button" aria-pressed="false">
+                  <button id="toggleControlRailBtn" className="ghost-btn small" type="button" aria-pressed="false" data-tooltip="Hide or show the connection and saved profile panel.">
                     Hide connection panel
                   </button>
-                  <button id="toggleActivityPanelBtn" className="ghost-btn small" type="button" aria-pressed="false">
+                  <button id="toggleActivityPanelBtn" className="ghost-btn small" type="button" aria-pressed="false" data-tooltip="Hide or show themes and recent history.">
                     Hide themes & history
                   </button>
                 </div>
                 <div className="hero-action-group">
-                  <button id="exitWorkbenchBtn" className="ghost-btn small exit-workbench-btn" type="button">
+                  <button id="exitWorkbenchBtn" className="ghost-btn small exit-workbench-btn" type="button" data-tooltip="Close the local Data Workbench server when local shutdown is enabled.">
                     Exit Data Workbench
                   </button>
                 </div>
@@ -798,15 +798,15 @@ export default function WorkbenchShell({ pageMode = 'sql' }) {
               <h2>App settings</h2>
               <p className="modal-message compact-message">Edit the local <code>.env</code> settings through a guided form. Most changes require restarting Data Workbench.</p>
             </div>
-            <button id="closeEnvSettingsBtn" className="icon-btn" type="button" aria-label="Close">×</button>
+            <button id="closeEnvSettingsBtn" className="icon-btn" type="button" aria-label="Close app settings">×</button>
           </div>
           <div id="envSettingsStatus" className="connection-test-panel empty-note hidden" aria-live="polite" />
           <div id="envSettingsContent" className="env-settings-layout">
             <div className="empty-note">Loading settings...</div>
           </div>
           <div className="button-row wrap right modal-actions">
-            <button id="reloadEnvSettingsBtn" className="ghost-btn" type="button">Reload</button>
-            <button id="applyEnvSettingsBtn" className="primary-btn" type="button">Apply settings</button>
+            <button id="reloadEnvSettingsBtn" className="ghost-btn" type="button" data-tooltip="Reload values from the local .env file. Unsaved edits in this dialog are replaced.">Reload</button>
+            <button id="applyEnvSettingsBtn" className="primary-btn" type="button" data-tooltip="Write these values to .env. Most changes take effect after restarting Data Workbench.">Apply settings</button>
           </div>
         </div>
       </div>

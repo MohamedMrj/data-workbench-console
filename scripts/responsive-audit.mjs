@@ -22,7 +22,9 @@ const healthPayload = {
   },
   appearance: {
     ambientMotionEnabled: true,
-    ambientMotionDurationMs: 90000
+    ambientMotionDurationMs: 90000,
+    tooltipsEnabled: true,
+    tooltipDelayMs: 650
   },
   supportedSourceTypes: [
     { id: 'fabric-sql', label: 'Fabric SQL endpoint', authModes: ['servicePrincipal'], supportsProcedures: true },

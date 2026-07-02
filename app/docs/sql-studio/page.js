@@ -73,7 +73,7 @@ export default function SqlStudioDocsPage() {
         </DocsMiniSection>
         <DocsMiniSection title="App settings">
           <p>Settings writes to the local <code>.env</code> file. Runtime, database, safety, audit, lifecycle, side-panel auto-hide, appearance, request guardrail, and Fabric service-principal settings are grouped with short descriptions. Most values are read when the server starts, so restart Data Workbench from the desktop shortcut after applying changes.</p>
-          <p>Use <code>APP_SIDE_PANEL_AUTO_HIDE_ENABLED</code>, <code>APP_SIDE_PANEL_IDLE_MS</code>, and <code>APP_SIDE_PANEL_FADE_MS</code> to decide whether side panels fade away, how long they wait, and how slowly they fade. Use <code>APP_AMBIENT_MOTION_ENABLED</code> and <code>APP_AMBIENT_MOTION_DURATION_MS</code> to keep or disable the slow background color movement.</p>
+          <p>Use <code>APP_SIDE_PANEL_AUTO_HIDE_ENABLED</code>, <code>APP_SIDE_PANEL_IDLE_MS</code>, and <code>APP_SIDE_PANEL_FADE_MS</code> to decide whether side panels fade away, how long they wait, and how slowly they fade. Use <code>APP_AMBIENT_MOTION_ENABLED</code> and <code>APP_AMBIENT_MOTION_DURATION_MS</code> to keep or disable the slow background color movement. Use <code>APP_TOOLTIPS_ENABLED</code> and <code>APP_TOOLTIP_DELAY_MS</code> to keep helpful hints visible or make the interface quieter.</p>
         </DocsMiniSection>
         <DocsMiniSection title="Support reports">
           <p>The Support form prepares an email to <code>mohamed.al-mefrej@hotmail.com</code> and copies the report text. Browser email drafts cannot attach screenshots automatically, so attach the selected screenshot manually before sending.</p>
@@ -283,6 +283,7 @@ WHERE <review scope before execution>;`}</pre>
           <div><strong>Panel layout</strong><span>Resize the connection rail, explorer, activity panel, and results height on wide layouts. Hide/show state and sizes are saved locally.</span></div>
           <div><strong>Panel auto-hide</strong><span>When side panels are visible but unused, they fade and collapse after the configured idle delay. Interacting with a panel resets its timer. Admins/users can adjust or disable this from Settings through the local <code>.env</code>.</span></div>
           <div><strong>Ambient motion</strong><span>Very slow background color movement can be enabled, disabled, or slowed down from Settings. Users with reduced-motion enabled in the browser or operating system get a static background.</span></div>
+          <div><strong>Tooltips</strong><span>Helpful delayed hints appear on controls, fields, tabs, and dense buttons. They can be disabled or delayed from Settings.</span></div>
         </div>
       </DocsSection>
 

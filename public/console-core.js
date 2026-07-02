@@ -21,6 +21,28 @@ window.createConsoleApp = function createConsoleApp() {
   const LIFECYCLE_HEARTBEAT_MS = 10_000;
   const DEFAULT_SIDE_PANEL_IDLE_MS = 10_000;
   const DEFAULT_SIDE_PANEL_FADE_MS = 800;
+  const DEFAULT_TOOLTIP_DELAY_MS = 650;
+  const TOOLTIP_MAX_LENGTH = 260;
+  const TOOLTIP_TARGET_SELECTOR = [
+    '[data-tooltip]',
+    '[data-tooltip-title]',
+    '[aria-label]',
+    'button',
+    'a[href]',
+    'input',
+    'select',
+    'textarea',
+    '[role="button"]',
+    '[role="tab"]',
+    '[role="separator"]',
+    '.column-pill',
+    '.result-tab',
+    '.table-item',
+    '.procedure-item',
+    '.history-item',
+    '.theme-chip',
+    '.saved-item-main'
+  ].join(',');
   const THEMES = ['midnight', 'harbor', 'forge', 'field', 'ink', 'paper'];
   const CONNECTION_HISTORY_MAX = 12;
   const QUERY_HISTORY_MAX = 20;
@@ -1459,6 +1481,206 @@ window.createConsoleApp = function createConsoleApp() {
       '--ambient-motion-duration',
       `${Number.isFinite(duration) ? Math.max(30000, duration) : 90000}ms`
     );
+  }
+
+  function tooltipSettings() {
+    const appearance = state.health?.appearance || {};
+    const enabled = window.__dataWorkbenchTestConfig?.tooltipsEnabled ?? appearance.tooltipsEnabled ?? true;
+    const rawDelay = Number(window.__dataWorkbenchTestConfig?.tooltipDelayMs ?? appearance.tooltipDelayMs ?? DEFAULT_TOOLTIP_DELAY_MS);
+    const delayMs = Number.isFinite(rawDelay) ? Math.min(3000, Math.max(0, rawDelay)) : DEFAULT_TOOLTIP_DELAY_MS;
+    return { enabled: Boolean(enabled), delayMs };
+  }
+
+  function absorbNativeTitle(element) {
+    if (!element || element.nodeType !== 1 || !element.hasAttribute('title')) {
+      return;
+    }
+    const title = String(element.getAttribute('title') || '').trim();
+    element.removeAttribute('title');
+    if (title && !element.dataset.tooltip && !element.dataset.tooltipTitle) {
+      element.dataset.tooltipTitle = title;
+    }
+  }
+
+  function absorbNativeTitles(root = document) {
+    if (!root) return;
+    if (root.nodeType === 1) {
+      absorbNativeTitle(root);
+    }
+    const scope = root.querySelectorAll ? root : document;
+    scope.querySelectorAll?.('[title]').forEach(absorbNativeTitle);
+  }
+
+  function escapeSelectorValue(value = '') {
+    if (window.CSS?.escape) {
+      return window.CSS.escape(String(value));
+    }
+    return String(value).replace(/["\\]/g, '\\$&');
+  }
+
+  function textFromControlLabel(element) {
+    const label = element.closest?.('label');
+    const directLabel = label?.querySelector?.(':scope > span, :scope > strong')?.textContent?.trim();
+    if (directLabel) return directLabel;
+
+    const id = element.id;
+    if (id) {
+      const externalLabel = document.querySelector(`label[for="${escapeSelectorValue(id)}"]`)?.textContent?.trim();
+      if (externalLabel) return externalLabel;
+    }
+
+    const settingItem = element.closest?.('.env-setting-item');
+    const settingLabel = settingItem?.querySelector?.('.env-setting-label-row strong')?.textContent?.trim();
+    if (settingLabel) return settingLabel;
+
+    return '';
+  }
+
+  function compactTooltipText(value = '') {
+    const text = String(value || '').replace(/\s+/g, ' ').trim();
+    if (text.length <= TOOLTIP_MAX_LENGTH) return text;
+    return `${text.slice(0, TOOLTIP_MAX_LENGTH - 1).trim()}…`;
+  }
+
+  function inferTooltipText(element) {
+    if (!element || element.nodeType !== 1) return '';
+    const explicit = element.dataset.tooltip || element.dataset.tooltipTitle || '';
+    if (explicit) return explicit;
+
+    const aria = element.getAttribute('aria-label') || '';
+    if (aria) return aria;
+
+    const tag = element.tagName?.toLowerCase();
+    if (['input', 'select', 'textarea'].includes(tag)) {
+      const label = textFromControlLabel(element);
+      const placeholder = element.getAttribute('placeholder') || '';
+      const type = element.getAttribute('type') || tag;
+      const action = tag === 'select' ? 'Choose' : 'Edit';
+      return [label ? `${action} ${label}` : '', placeholder ? `Example: ${placeholder}` : '', type === 'password' ? 'Secret values are hidden while typing.' : '']
+        .filter(Boolean)
+        .join('. ');
+    }
+
+    const text = element.innerText || element.textContent || '';
+    if (text.trim()) return text;
+
+    return '';
+  }
+
+  function findTooltipTarget(start) {
+    const target = start?.closest?.(TOOLTIP_TARGET_SELECTOR);
+    if (!target || target.closest?.('.app-tooltip')) return null;
+    if (target === document.documentElement || target === document.body) return null;
+    return target;
+  }
+
+  function hideTooltip() {
+    clearTimeout(window.__dataWorkbenchTooltipTimer);
+    window.__dataWorkbenchTooltipTimer = null;
+    window.__dataWorkbenchTooltipTarget = null;
+    const tooltip = document.getElementById('appTooltip');
+    if (!tooltip) return;
+    tooltip.classList.remove('visible');
+    tooltip.setAttribute('aria-hidden', 'true');
+  }
+
+  function positionTooltip(target, tooltip) {
+    const rect = target.getBoundingClientRect();
+    const tooltipRect = tooltip.getBoundingClientRect();
+    const viewportWidth = window.innerWidth || document.documentElement.clientWidth || 0;
+    const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 0;
+    const gap = 10;
+    const margin = 12;
+    const left = Math.min(
+      Math.max(margin, rect.left + rect.width / 2 - tooltipRect.width / 2),
+      Math.max(margin, viewportWidth - tooltipRect.width - margin)
+    );
+    const preferTop = rect.top > tooltipRect.height + gap + margin;
+    const top = preferTop
+      ? rect.top - tooltipRect.height - gap
+      : Math.min(rect.bottom + gap, viewportHeight - tooltipRect.height - margin);
+    tooltip.style.left = `${Math.round(left)}px`;
+    tooltip.style.top = `${Math.round(Math.max(margin, top))}px`;
+    tooltip.dataset.placement = preferTop ? 'top' : 'bottom';
+  }
+
+  function showTooltip(target) {
+    const settings = tooltipSettings();
+    if (!settings.enabled || !target?.isConnected) return;
+    const text = compactTooltipText(inferTooltipText(target));
+    if (!text) return;
+    const tooltip = document.getElementById('appTooltip') || (() => {
+      const node = document.createElement('div');
+      node.id = 'appTooltip';
+      node.className = 'app-tooltip';
+      node.setAttribute('role', 'tooltip');
+      node.setAttribute('aria-hidden', 'true');
+      document.body.appendChild(node);
+      return node;
+    })();
+    tooltip.textContent = text;
+    tooltip.setAttribute('aria-hidden', 'false');
+    tooltip.classList.add('visible');
+    positionTooltip(target, tooltip);
+  }
+
+  function scheduleTooltip(target) {
+    hideTooltip();
+    const settings = tooltipSettings();
+    if (!settings.enabled || !target || !inferTooltipText(target)) return;
+    window.__dataWorkbenchTooltipTarget = target;
+    window.__dataWorkbenchTooltipTimer = window.setTimeout(() => {
+      if (window.__dataWorkbenchTooltipTarget === target) {
+        showTooltip(target);
+      }
+    }, settings.delayMs);
+  }
+
+  function setupTooltips() {
+    if (window.__dataWorkbenchTooltipsReady) {
+      applyTooltipSettings();
+      return;
+    }
+    window.__dataWorkbenchTooltipsReady = true;
+    absorbNativeTitles(document);
+    document.addEventListener('pointerover', (event) => scheduleTooltip(findTooltipTarget(event.target)));
+    document.addEventListener('pointerout', (event) => {
+      const target = window.__dataWorkbenchTooltipTarget;
+      if (!target || !event.relatedTarget || !target.contains(event.relatedTarget)) {
+        hideTooltip();
+      }
+    });
+    document.addEventListener('focusin', (event) => scheduleTooltip(findTooltipTarget(event.target)));
+    document.addEventListener('focusout', hideTooltip);
+    document.addEventListener('scroll', hideTooltip, true);
+    window.addEventListener('resize', hideTooltip);
+    const observer = new MutationObserver((mutations) => {
+      mutations.forEach((mutation) => {
+        if (mutation.type === 'attributes' && mutation.attributeName === 'title') {
+          absorbNativeTitle(mutation.target);
+        }
+        mutation.addedNodes.forEach((node) => {
+          if (node.nodeType === 1) absorbNativeTitles(node);
+        });
+      });
+    });
+    observer.observe(document.documentElement, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ['title']
+    });
+    window.__dataWorkbenchTooltipObserver = observer;
+    applyTooltipSettings();
+  }
+
+  function applyTooltipSettings() {
+    const settings = tooltipSettings();
+    document.documentElement.dataset.tooltips = settings.enabled ? 'enabled' : 'disabled';
+    document.documentElement.style.setProperty('--tooltip-delay-ms', `${settings.delayMs}ms`);
+    if (!settings.enabled) {
+      hideTooltip();
+    }
   }
 
   function renderConnectionTestResult() {
@@ -3662,25 +3884,34 @@ window.createConsoleApp = function createConsoleApp() {
     panel.textContent = message;
   }
 
+  function envFieldTooltip(field) {
+    return compactTooltipText([
+      field.description || '',
+      field.appropriate || '',
+      field.restartRequired ? 'Restart Data Workbench to apply this setting.' : ''
+    ].filter(Boolean).join(' '));
+  }
+
   function envSettingControl(field) {
     const key = esc(field.key);
     const value = esc(field.value || '');
+    const tooltip = esc(envFieldTooltip(field));
     if (field.type === 'boolean') {
       const checked = String(field.value || field.defaultValue || '').toLowerCase() === 'true' ? ' checked' : '';
-      return `<label class="toggle-field compact-toggle"><input data-env-key="${key}" data-env-type="boolean" type="checkbox"${checked} /><span>${esc(field.label)}</span></label>`;
+      return `<label class="toggle-field compact-toggle" data-tooltip="${tooltip}"><input data-env-key="${key}" data-env-type="boolean" type="checkbox"${checked} /><span>${esc(field.label)}</span></label>`;
     }
     if (field.type === 'select') {
       const options = (field.options || []).map((option) => `<option value="${esc(option)}"${String(option) === String(field.value) ? ' selected' : ''}>${esc(option)}</option>`).join('');
-      return `<select data-env-key="${key}" data-env-type="select">${options}</select>`;
+      return `<select data-env-key="${key}" data-env-type="select" data-tooltip="${tooltip}">${options}</select>`;
     }
     if (field.type === 'number') {
-      return `<input data-env-key="${key}" data-env-type="number" type="number" min="${esc(field.min ?? '')}" max="${esc(field.max ?? '')}" value="${value}" />`;
+      return `<input data-env-key="${key}" data-env-type="number" type="number" min="${esc(field.min ?? '')}" max="${esc(field.max ?? '')}" value="${value}" data-tooltip="${tooltip}" />`;
     }
     if (field.type === 'secret') {
       const placeholder = field.configured ? 'Configured. Leave blank to keep current secret.' : 'Paste secret value';
-      return `<input data-env-key="${key}" data-env-type="secret" type="password" value="" placeholder="${esc(placeholder)}" autocomplete="new-password" />`;
+      return `<input data-env-key="${key}" data-env-type="secret" type="password" value="" placeholder="${esc(placeholder)}" autocomplete="new-password" data-tooltip="${tooltip}" />`;
     }
-    return `<input data-env-key="${key}" data-env-type="text" type="text" value="${value}" />`;
+    return `<input data-env-key="${key}" data-env-type="text" type="text" value="${value}" data-tooltip="${tooltip}" />`;
   }
 
   function renderEnvSettings() {
@@ -3703,11 +3934,11 @@ window.createConsoleApp = function createConsoleApp() {
     container.innerHTML = groups.map((group) => {
       const settings = settingsByGroup[group.id] || [];
       if (!settings.length) return '';
-      return `<section class="env-settings-group">
+      return `<section class="env-settings-group" data-tooltip="${esc(group.description || '')}">
         <h3>${esc(group.title)}</h3>
         <p>${esc(group.description || '')}</p>
         <div class="env-setting-list">
-          ${settings.map((field) => `<div class="env-setting-item">
+          ${settings.map((field) => `<div class="env-setting-item" data-tooltip="${esc(envFieldTooltip(field))}">
             <div class="env-setting-label-row"><strong>${esc(field.label)}</strong><code class="env-key">${esc(field.key)}</code></div>
             ${envSettingControl(field)}
             <p class="env-setting-description">${esc(field.description || '')}</p>
@@ -5930,6 +6161,7 @@ window.createConsoleApp = function createConsoleApp() {
   async function loadHealth() {
     try { state.health = await api('/api/health'); } catch { state.health = null; }
     applyAppearanceSettings();
+    applyTooltipSettings();
     renderConnectionSelectors();
     renderPolicy();
   }
@@ -6374,6 +6606,7 @@ window.createConsoleApp = function createConsoleApp() {
     state.workspace = pageMode === 'procedures' ? 'procedure' : 'sql';
     state.explorer = pageMode === 'procedures' ? 'procedures' : 'objects';
     bind();
+    setupTooltips();
     setupResizablePanels();
     setupSidePanelAutoHide();
     applyTextPreferences();

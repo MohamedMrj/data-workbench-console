@@ -73,7 +73,7 @@ export default function ProcedureRunnerDocsPage() {
         </DocsMiniSection>
         <DocsMiniSection title="App settings">
           <p>Settings writes to the local <code>.env</code> file. Runtime, database, safety, audit, lifecycle, side-panel auto-hide, appearance, request guardrail, and Fabric service-principal settings are grouped with short descriptions. Most values are read when the server starts, so restart Data Workbench from the desktop shortcut after applying changes.</p>
-          <p>Side-panel auto-hide can be disabled entirely or tuned with idle/fade timing values. Ambient background motion can also be disabled or slowed down for users who prefer a quieter interface.</p>
+          <p>Side-panel auto-hide can be disabled entirely or tuned with idle/fade timing values. Ambient background motion can also be disabled or slowed down for users who prefer a quieter interface. Helpful tooltips can be disabled or delayed with <code>APP_TOOLTIPS_ENABLED</code> and <code>APP_TOOLTIP_DELAY_MS</code>.</p>
         </DocsMiniSection>
         <DocsMiniSection title="Support reports">
           <p>The Support form prepares an email to <code>mohamed.al-mefrej@hotmail.com</code> and copies the report text. Browser email drafts cannot attach screenshots automatically, so attach the selected screenshot manually before sending.</p>
@@ -224,6 +224,7 @@ export default function ProcedureRunnerDocsPage() {
           <div><strong>Panel layout</strong><span>Resizable panels, hidden side panels, result height, and layout choices are saved locally and adapt on narrower screens.</span></div>
           <div><strong>Panel auto-hide</strong><span>The connection and themes/history panels can fade and collapse after an idle delay. Use Settings to turn this off entirely or adjust the timing.</span></div>
           <div><strong>Ambient motion</strong><span>The app can use very slow background color movement for a livelier feel. It is configurable in Settings and respects reduced-motion preferences.</span></div>
+          <div><strong>Tooltips</strong><span>Delayed hints explain controls and fields without opening documentation. Use Settings to turn them off or change the delay.</span></div>
         </div>
         <div className="docs-callout docs-callout-info">
           Example: if you run <code>dbo.spQueueJob</code>, open another procedure to inspect it, then click the earlier history item, the runner restores <code>dbo.spQueueJob</code> and makes it active again when the catalog contains it.
