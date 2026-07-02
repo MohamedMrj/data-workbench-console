@@ -5,6 +5,26 @@ All notable Data Workbench Console changes are tracked here.
 The in-app version is read from `package.json` and exposed through `/api/version`
 together with the current git commit and build information.
 
+## 1.4.21 - 2026-07-02
+
+Living ambient backdrop and a left-rail layout fix.
+
+### Changed
+
+- Brought the ambient backdrop to life. The two accent light orbs now slowly
+  drift and gently pulse (previously only a near-invisible grid moved), with the
+  two hues desynced so the glow feels organic. Motion stays gated by
+  `APP_AMBIENT_MOTION_ENABLED` and is disabled under `prefers-reduced-motion`; the
+  speed still follows `APP_AMBIENT_MOTION_DURATION_MS`.
+
+### Fixed
+
+- Fixed a large blank vertical gap in the left rail's `Safety Policy` section when
+  the connection panel is widened. The heading collapsed and wrapped one letter
+  per line because the section was omitted from the content-sizing rules the other
+  rail sections already use; `Safety Policy` is now content-sized like
+  `Connection` and `Saved Profiles`.
+
 ## 1.4.20 - 2026-07-02
 
 Safe `.env` settings sync.

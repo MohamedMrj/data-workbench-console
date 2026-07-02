@@ -17,9 +17,10 @@
   width: 44vw;
   height: 44vw;
   border-radius: 50%;
-  background: radial-gradient(circle, color-mix(in srgb, var(--accent) 22%, transparent) 0%, transparent 68%);
+  background: radial-gradient(circle, color-mix(in srgb, var(--accent) 30%, transparent) 0%, transparent 68%);
   filter: blur(18px);
-  opacity: 0.45;
+  opacity: 0.5;
+  transform-origin: center;
 }
 
 .shell-orbit-b {
@@ -27,9 +28,10 @@
   width: 34vw;
   height: 34vw;
   border-radius: 50%;
-  background: radial-gradient(circle, color-mix(in srgb, var(--accent-2) 20%, transparent) 0%, transparent 72%);
+  background: radial-gradient(circle, color-mix(in srgb, var(--accent-2) 28%, transparent) 0%, transparent 72%);
   filter: blur(20px);
-  opacity: 0.42;
+  opacity: 0.46;
+  transform-origin: center;
 }
 
 .shell-grid {
@@ -45,6 +47,19 @@ html[data-ambient-motion='enabled'] .shell-grid {
   animation: ambient-grid-drift var(--ambient-motion-duration, 90000ms) ease-in-out infinite alternate;
 }
 
+/* The two accent orbs slowly drift and "breathe" so the backdrop feels alive
+   rather than a static wash. Durations are derived from the configurable
+   ambient duration and deliberately desynced so the two hues never line up. */
+html[data-ambient-motion='enabled'] .shell-orbit-a {
+  animation: ambient-orbit-a calc(var(--ambient-motion-duration, 90000ms) * 0.5) ease-in-out infinite alternate;
+  will-change: transform, opacity;
+}
+
+html[data-ambient-motion='enabled'] .shell-orbit-b {
+  animation: ambient-orbit-b calc(var(--ambient-motion-duration, 90000ms) * 0.62) ease-in-out infinite alternate;
+  will-change: transform, opacity;
+}
+
 @keyframes ambient-grid-drift {
   0% {
     transform: translate3d(0, 0, 0);
@@ -54,8 +69,40 @@ html[data-ambient-motion='enabled'] .shell-grid {
   }
 }
 
+@keyframes ambient-orbit-a {
+  0% {
+    transform: translate3d(0, 0, 0) scale(1);
+    opacity: 0.4;
+  }
+  50% {
+    transform: translate3d(5vw, -3vh, 0) scale(1.14);
+    opacity: 0.62;
+  }
+  100% {
+    transform: translate3d(-2vw, 4vh, 0) scale(1.05);
+    opacity: 0.48;
+  }
+}
+
+@keyframes ambient-orbit-b {
+  0% {
+    transform: translate3d(0, 0, 0) scale(1.05);
+    opacity: 0.36;
+  }
+  50% {
+    transform: translate3d(-4vw, 3vh, 0) scale(0.9);
+    opacity: 0.56;
+  }
+  100% {
+    transform: translate3d(3vw, -3vh, 0) scale(1.1);
+    opacity: 0.44;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
-  html[data-ambient-motion='enabled'] .shell-grid {
+  html[data-ambient-motion='enabled'] .shell-grid,
+  html[data-ambient-motion='enabled'] .shell-orbit-a,
+  html[data-ambient-motion='enabled'] .shell-orbit-b {
     animation: none;
   }
 }
@@ -306,7 +353,8 @@ html[data-ambient-motion='enabled'] .shell-grid {
   flex-direction: column;
 }
 
-.control-rail .grow-section {
+.control-rail .grow-section,
+.control-rail .safety-section {
   display: grid;
   flex: 0 0 auto;
   grid-auto-rows: max-content;
@@ -338,20 +386,24 @@ html[data-ambient-motion='enabled'] .shell-grid {
 }
 
 .control-rail .connection-section > .section-title-row,
+.control-rail .safety-section > .section-title-row,
 .control-rail .grow-section > .section-title-row {
   min-height: 0;
   height: auto;
   align-content: start;
 }
 
-.control-rail .grow-section > .section-title-row {
+.control-rail .grow-section > .section-title-row,
+.control-rail .safety-section > .section-title-row {
   display: grid;
   grid-template-columns: 1fr;
   justify-content: stretch;
 }
 
 .control-rail .grow-section > .section-title-row > :first-child,
-.control-rail .grow-section > .section-title-row > :last-child {
+.control-rail .grow-section > .section-title-row > :last-child,
+.control-rail .safety-section > .section-title-row > :first-child,
+.control-rail .safety-section > .section-title-row > :last-child {
   flex: none;
   width: 100%;
 }

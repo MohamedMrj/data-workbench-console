@@ -1,6 +1,6 @@
 {
   "name": "db_interface",
-  "version": "1.4.20",
+  "version": "1.4.21",
   "type": "module",
   "description": "Production-safe multi-source SQL and procedure workbench for Fabric and SQL Server",
   "engines": {
