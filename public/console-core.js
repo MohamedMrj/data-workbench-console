@@ -152,6 +152,7 @@ window.createConsoleApp = function createConsoleApp() {
     copySupportReportBtn: 'Copy the support request so you can paste it into email or Teams.',
     sendSupportReportBtn: 'Open your email client with the support request filled in.',
     reloadEnvSettingsBtn: 'Reload values from the local .env file. Unsaved edits in this dialog are replaced.',
+    syncEnvSettingsBtn: 'Append default values for new settings missing from .env. Existing values and secrets are preserved.',
     applyEnvSettingsBtn: 'Write these values to .env. Most changes take effect after restarting Data Workbench.',
     auditEventFilter: 'Filter audit rows by event name.',
     auditOutcomeFilter: 'Filter audit rows by success or failure outcome.',
@@ -4159,6 +4160,13 @@ window.createConsoleApp = function createConsoleApp() {
     const container = $('envSettingsContent');
     if (!container) return;
     const payload = state.envSettings;
+    const syncButton = $('syncEnvSettingsBtn');
+    const missingKeys = payload?.envSync?.missingKeys || [];
+    if (syncButton) {
+      syncButton.classList.toggle('hidden', missingKeys.length === 0);
+      syncButton.disabled = missingKeys.length === 0;
+      syncButton.textContent = missingKeys.length ? `Sync ${missingKeys.length} new setting${missingKeys.length === 1 ? '' : 's'}` : 'Sync new settings';
+    }
     if (!payload?.settings?.length) {
       container.innerHTML = '<div class="empty-note">No editable settings were loaded.</div>';
       return;
@@ -4179,11 +4187,12 @@ window.createConsoleApp = function createConsoleApp() {
         <h3>${esc(group.title)}</h3>
         <p>${esc(group.description || '')}</p>
         <div class="env-setting-list">
-          ${settings.map((field) => `<div class="env-setting-item" data-tooltip="${esc(envFieldTooltip(field))}">
+          ${settings.map((field) => `<div class="env-setting-item${field.missing ? ' env-setting-missing' : ''}" data-tooltip="${esc(envFieldTooltip(field))}">
             <div class="env-setting-label-row"><strong>${esc(field.label)}</strong><code class="env-key">${esc(field.key)}</code></div>
             ${envSettingControl(field)}
             <p class="env-setting-description">${esc(field.description || '')}</p>
             <p class="env-setting-appropriate">${esc(field.appropriate || '')}${field.restartRequired ? ' Restart required.' : ''}</p>
+            ${field.missing ? '<span class="env-secret-note">Missing from .env. Sync new settings can add this default without changing existing values.</span>' : ''}
             ${field.secret ? '<span class="env-secret-note">Secret values are never shown after saving.</span>' : ''}
           </div>`).join('')}
         </div>
@@ -4202,6 +4211,8 @@ window.createConsoleApp = function createConsoleApp() {
     renderEnvSettings();
     if (!payload.envExists) {
       envSettingsStatus('neutral', 'No .env file exists yet. Applying settings will create one from the template.');
+    } else if (payload.envSync?.missingKeys?.length) {
+      envSettingsStatus('neutral', `${payload.envSync.missingKeys.length} new setting${payload.envSync.missingKeys.length === 1 ? '' : 's'} missing from .env. Use Sync new settings to append defaults without changing existing values.`);
     }
   }
 
@@ -6407,6 +6418,40 @@ window.createConsoleApp = function createConsoleApp() {
     renderPolicy();
   }
 
+  async function syncEnvSettings() {
+    const syncButton = $('syncEnvSettingsBtn');
+    if (syncButton) {
+      syncButton.disabled = true;
+      syncButton.textContent = 'Syncing...';
+    }
+    envSettingsStatus('neutral', 'Appending missing settings to .env...');
+    try {
+      const payload = await api('/api/env-settings', {
+        method: 'POST',
+        data: { action: 'syncMissing' }
+      });
+      state.envSettings = payload;
+      renderEnvSettings();
+      const added = payload.addedKeys?.length
+        ? `Added: ${payload.addedKeys.join(', ')}. `
+        : 'No missing settings were found. ';
+      const backup = payload.backupPath ? `Backup created at ${payload.backupPath}. ` : '';
+      const restart = payload.restartRequired
+        ? 'Restart Data Workbench from the desktop shortcut to apply the synced defaults.'
+        : 'No restart is needed.';
+      envSettingsStatus('success', `${added}${backup}${restart}`);
+      setStatus('success', 'Environment settings synchronized.');
+    } catch (error) {
+      envSettingsStatus('error', error.message || 'Could not sync environment settings.');
+      setStatus('error', `Could not sync app settings: ${error.message}`);
+    } finally {
+      if (syncButton) {
+        syncButton.disabled = false;
+      }
+      renderEnvSettings();
+    }
+  }
+
   function bind() {
     const handleConnectionFieldChange = () => {
       persistActiveConnection();
@@ -6453,6 +6498,7 @@ window.createConsoleApp = function createConsoleApp() {
     if ($('closeWorkbenchToolsBtn')) $('closeWorkbenchToolsBtn').onclick = closeWorkbenchTools;
     if ($('closeEnvSettingsBtn')) $('closeEnvSettingsBtn').onclick = closeEnvSettingsDialog;
     if ($('reloadEnvSettingsBtn')) $('reloadEnvSettingsBtn').onclick = () => loadEnvSettings().catch((error) => envSettingsStatus('error', error.message));
+    if ($('syncEnvSettingsBtn')) $('syncEnvSettingsBtn').onclick = () => syncEnvSettings().catch((error) => envSettingsStatus('error', error.message));
     if ($('applyEnvSettingsBtn')) $('applyEnvSettingsBtn').onclick = () => applyEnvSettings().catch((error) => envSettingsStatus('error', error.message));
     if ($('closeSupportBtn')) $('closeSupportBtn').onclick = closeSupportDialog;
     if ($('saveScratchpadBtn')) $('saveScratchpadBtn').onclick = saveCurrentScratchpad;

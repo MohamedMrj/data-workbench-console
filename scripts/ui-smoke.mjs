@@ -47,6 +47,7 @@ async function assertBuildIsFresh() {
 }
 
 function attachMocks(window) {
+  let envSettingsSynced = false;
   window.fetch = async (url, options = {}) => {
     const body = options.body ? JSON.parse(options.body) : {};
 
@@ -202,6 +203,11 @@ function attachMocks(window) {
     }
 
     if (String(url).includes('/api/env-settings')) {
+      const syncRequest = options.method === 'POST' && body.action === 'syncMissing';
+      if (syncRequest) {
+        envSettingsSynced = true;
+      }
+      const missingKeys = envSettingsSynced ? [] : ['APP_SIDE_PANEL_FADE_MS'];
       const payload = {
         success: true,
         envExists: true,
@@ -277,6 +283,7 @@ function attachMocks(window) {
             max: 10000,
             label: 'Side panel fade duration',
             value: '800',
+            missing: !envSettingsSynced,
             description: 'Fade duration.',
             appropriate: '800 is default.',
             restartRequired: true
@@ -326,7 +333,20 @@ function attachMocks(window) {
             restartRequired: true
           }
         ],
-        changedKeys: options.method === 'POST' ? ['PORT'] : [],
+        envSync: {
+          missingKeys,
+          missingSettings: missingKeys.map((key) => ({
+            key,
+            label: 'Side panel fade duration',
+            group: 'runtime',
+            defaultValue: '800',
+            restartRequired: true
+          })),
+          canSync: missingKeys.length > 0
+        },
+        changedKeys: options.method === 'POST' && !syncRequest ? ['PORT'] : [],
+        addedKeys: syncRequest ? ['APP_SIDE_PANEL_FADE_MS'] : [],
+        backupPath: syncRequest ? '.data/backups/.env-ui-smoke.bak' : null,
         restartRequired: options.method === 'POST'
       };
       return new Response(JSON.stringify(payload), {
@@ -852,6 +872,21 @@ if (!sqlWindow.document.getElementById('envSettingsContent').textContent.include
 }
 if (!sqlWindow.document.querySelector('[data-env-key="APP_TOOLTIP_DELAY_MS"]')?.dataset.tooltip) {
   throw new Error('Tooltip settings should expose helpful controlled tooltip text.');
+}
+if (sqlWindow.document.getElementById('syncEnvSettingsBtn').classList.contains('hidden')) {
+  throw new Error('Settings should show Sync new settings when .env is missing schema keys.');
+}
+if (!sqlWindow.document.querySelector('[data-env-key="APP_SIDE_PANEL_FADE_MS"]')?.closest('.env-setting-item')?.classList.contains('env-setting-missing')) {
+  throw new Error('Missing .env settings should be marked in the settings form.');
+}
+sqlWindow.document.getElementById('syncEnvSettingsBtn').click();
+await flush();
+await flush();
+if (!sqlWindow.document.getElementById('envSettingsStatus').textContent.includes('APP_SIDE_PANEL_FADE_MS')) {
+  throw new Error('Syncing missing .env settings should report the added key.');
+}
+if (!sqlWindow.document.getElementById('syncEnvSettingsBtn').classList.contains('hidden')) {
+  throw new Error('Sync new settings should hide after missing .env keys are synchronized.');
 }
 const secretInput = sqlWindow.document.querySelector('[data-env-key="AZURE_CLIENT_SECRET"]');
 if (!secretInput || secretInput.value !== '') {

@@ -806,6 +806,7 @@ export default function WorkbenchShell({ pageMode = 'sql' }) {
           </div>
           <div className="button-row wrap right modal-actions">
             <button id="reloadEnvSettingsBtn" className="ghost-btn" type="button" data-tooltip="Reload values from the local .env file. Unsaved edits in this dialog are replaced.">Reload</button>
+            <button id="syncEnvSettingsBtn" className="secondary-btn hidden" type="button" data-tooltip="Append defaults for new app settings that are missing from .env. Existing values are preserved.">Sync new settings</button>
             <button id="applyEnvSettingsBtn" className="primary-btn" type="button" data-tooltip="Write these values to .env. Most changes take effect after restarting Data Workbench.">Apply settings</button>
           </div>
         </div>

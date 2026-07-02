@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getEnvSettings, updateEnvSettings } from '../../../lib/server/env-settings-store';
+import { getEnvSettings, syncMissingEnvSettings, updateEnvSettings } from '../../../lib/server/env-settings-store';
 import { isLocalLifecycleRequest } from '../../../lib/server/lifecycle-store';
 
 export const runtime = 'nodejs';
@@ -72,9 +72,12 @@ export async function POST(req) {
 
   try {
     const body = await req.json();
+    const payload = body?.action === 'syncMissing'
+      ? await syncMissingEnvSettings()
+      : await updateEnvSettings(body);
     return NextResponse.json({
       success: true,
-      ...(await updateEnvSettings(body))
+      ...payload
     }, {
       headers: { 'Cache-Control': 'no-store' }
     });

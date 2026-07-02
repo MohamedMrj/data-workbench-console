@@ -5,6 +5,32 @@ All notable Data Workbench Console changes are tracked here.
 The in-app version is read from `package.json` and exposed through `/api/version`
 together with the current git commit and build information.
 
+## 1.4.20 - 2026-07-02
+
+Safe `.env` settings sync.
+
+### Added
+
+- Added missing-key detection for local `.env` settings based on the app's
+  server-side settings schema.
+- Added a `Sync new settings` action in the Settings dialog when an update
+  introduces new `.env` keys that the user's local file does not have yet.
+- Added server-side sync support that appends defaults for missing keys,
+  preserves existing values, and creates a `.env` backup under `.data/backups/`
+  before writing.
+- Added `.env.example` drift coverage so tests fail if a schema setting is not
+  represented in the example file.
+
+### Changed
+
+- Settings now marks fields that are missing from the real `.env`, making it
+  clear which values will be added by sync.
+
+### Verification
+
+- Added server unit coverage for safe missing-key sync and UI smoke coverage for
+  the Settings sync flow.
+
 ## 1.4.19 - 2026-07-02
 
 Side-panel responsive layout fix.

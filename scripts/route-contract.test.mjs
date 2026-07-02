@@ -103,6 +103,9 @@ try {
   assert.equal(envSettings.payload.settings.some((field) => field.key === 'APP_AMBIENT_MOTION_ENABLED'), true);
   assert.equal(envSettings.payload.settings.some((field) => field.key === 'APP_TOOLTIPS_ENABLED'), true);
   assert.equal(envSettings.payload.settings.some((field) => field.key === 'APP_TOOLTIP_DELAY_MS'), true);
+  assert.equal(Array.isArray(envSettings.payload.envSync?.missingKeys), true);
+  assert.equal(Array.isArray(envSettings.payload.envSync?.missingSettings), true);
+  assert.equal(typeof envSettings.payload.envSync?.canSync, 'boolean');
 
   const envWriteAllowedLoopback = await request('/api/env-settings', {
     method: 'POST',
@@ -112,6 +115,7 @@ try {
   assert.equal(envWriteAllowedLoopback.response.status, 200);
   assert.equal(envWriteAllowedLoopback.payload.success, true);
   assert.equal(Array.isArray(envWriteAllowedLoopback.payload.changedKeys), true);
+  assert.equal(Array.isArray(envWriteAllowedLoopback.payload.envSync?.missingKeys), true);
 
   const envWriteBlocked = await request('/api/env-settings', {
     method: 'POST',

@@ -237,6 +237,27 @@ assert.throws(() => envSettingsStore.validateEnvSettingsForTest({ APP_AMBIENT_MO
 assert.throws(() => envSettingsStore.validateEnvSettingsForTest({ APP_TOOLTIP_DELAY_MS: '9000' }), /at most 3000/);
 assert.throws(() => envSettingsStore.validateEnvSettingsForTest({ UNKNOWN_SETTING: 'x' }), /Unknown setting/);
 
+const envSyncRoot = path.join(tempRoot, 'env-sync');
+await fs.mkdir(envSyncRoot, { recursive: true });
+const envFile = path.join(envSyncRoot, '.env');
+const exampleFile = path.join(envSyncRoot, '.env.example');
+const backupDir = path.join(envSyncRoot, 'backups');
+await fs.writeFile(envFile, 'PORT=3009\nNODE_ENV=production\n', 'utf8');
+await fs.writeFile(exampleFile, 'PORT=3000\nNODE_ENV=production\nAPP_TOOLTIP_DELAY_MS=650\n', 'utf8');
+const envBeforeSync = await envSettingsStore.getEnvSettings({ envFile, exampleFile, backupDir });
+assert.equal(envBeforeSync.envSync.missingKeys.includes('APP_TOOLTIP_DELAY_MS'), true);
+const syncResult = await envSettingsStore.syncMissingEnvSettings({ envFile, exampleFile, backupDir });
+assert.equal(syncResult.addedKeys.includes('APP_TOOLTIP_DELAY_MS'), true);
+assert.equal(typeof syncResult.backupPath, 'string');
+const syncedEnvText = await fs.readFile(envFile, 'utf8');
+assert.match(syncedEnvText, /^PORT=3009/m);
+assert.match(syncedEnvText, /^APP_TOOLTIP_DELAY_MS=650/m);
+assert.equal((await envSettingsStore.getEnvSettings({ envFile, exampleFile, backupDir })).envSync.missingKeys.includes('APP_TOOLTIP_DELAY_MS'), false);
+const repositoryEnvExample = await fs.readFile(path.join(process.cwd(), '.env.example'), 'utf8');
+for (const field of envSettingsStore.FIELD_DEFINITIONS) {
+  assert.match(repositoryEnvExample, new RegExp(`^${field.key}=`, 'm'), `.env.example should include ${field.key}`);
+}
+
 const okResponse = await nextHandler.runHandler((_req, res) => res.json({ success: true, value: 42 }), makeReq('http://127.0.0.1:3000/api/unit'));
 assert.equal(okResponse.status, 200);
 assert.equal(okResponse.headers.get('x-content-type-options'), 'nosniff');

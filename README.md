@@ -6,7 +6,7 @@ Production-safe internal SQL workbench for Microsoft Fabric SQL endpoints, Fabri
 
 Data Workbench Console is built for controlled operational work: browse metadata, generate SQL, run read queries, preview writes before execution, run stored procedures from a dedicated flow, and keep an audit trail of important actions.
 
-Current app version: `1.4.19`. See [CHANGELOG.md](CHANGELOG.md) for release notes.
+Current app version: `1.4.20`. See [CHANGELOG.md](CHANGELOG.md) for release notes.
 
 <p>
   <img alt="Next.js" src="https://img.shields.io/badge/Next.js-15-111827?style=for-the-badge&logo=nextdotjs" />
@@ -257,6 +257,8 @@ Important behavior:
 - subtle background color motion can be turned off or slowed down with `APP_AMBIENT_MOTION_ENABLED` and `APP_AMBIENT_MOTION_DURATION_MS`
 - helpful tooltips can be turned off or delayed with `APP_TOOLTIPS_ENABLED` and `APP_TOOLTIP_DELAY_MS`
 - `AZURE_CLIENT_SECRET` is never returned to the browser; leave it blank to keep the existing secret, or type a new value to replace it
+- when an app update introduces new settings, the Settings dialog shows `Sync new settings`; this appends safe defaults for missing keys without changing existing values
+- syncing missing settings creates a backup under `.data/backups/` before writing `.env`
 - unknown settings and invalid values are rejected
 - the settings API is local-only and write-protected by same-origin checks
 
@@ -274,6 +276,8 @@ When the app is a Git checkout and `origin/main` is ahead, the workspace header 
 - reloads the browser when the server is ready
 
 Update logs are written to `.data/logs/data-workbench-update.log`. Set `APP_SELF_UPDATE_ENABLED=false` to hide the update path from the API while keeping version checks available.
+
+After updating, open `Settings`. If new `.env` keys were added in the release, Data Workbench shows a `Sync new settings` button. Use it to append the new defaults to the local `.env` file while preserving the user's existing port, credentials, saved profile location, safety limits, and other values.
 
 - `/docs/sql-studio` - SQL Studio guide
 - `/docs/procedure-runner` - Procedure Runner guide
