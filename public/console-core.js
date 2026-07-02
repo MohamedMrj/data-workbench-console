@@ -191,7 +191,7 @@ window.createConsoleApp = function createConsoleApp() {
     procedure: { min: 320, max: 640 }
   };
   const MIN_STUDIO_SPACE_WITH_EXPLORER = 720;
-  const MIN_STUDIO_SPACE_WITH_ACTIVITY = 820;
+  const MIN_STUDIO_SPACE_WITH_ACTIVITY = 620;
   const WORKSPACE_WIDE_FIXED_SPACE = 104;
   const WORKSPACE_COMPRESSED_FIXED_SPACE = 52;
   const FALLBACK_SOURCES = [
@@ -630,13 +630,21 @@ window.createConsoleApp = function createConsoleApp() {
     const builderDelta = Math.max(0, widths.builder - DEFAULT_PANEL_LAYOUT.builder);
     const shellStackThreshold = Math.max(900, 820 + controlRailDelta);
     const workspaceStackThreshold = 1180;
-    const workspaceWideThreshold = 1500 + activityDelta;
+    const explorerDelta = Math.max(0, widths.explorer - DEFAULT_PANEL_LAYOUT.explorer);
+    const minStudioSpaceWithActivity = MIN_STUDIO_SPACE_WITH_ACTIVITY
+      + controlRailDelta
+      + Math.floor(activityDelta * 0.5)
+      + Math.floor(explorerDelta * 0.5);
+    const workspaceWideThreshold = widths.explorer
+      + (state.sidePanels.activityPanelCollapsed ? 0 : widths.activity)
+      + minStudioSpaceWithActivity
+      + WORKSPACE_WIDE_FIXED_SPACE;
     const studioWideThreshold = 1360 + builderDelta;
     const studioSpaceWithActivity = workspaceWidth - widths.explorer - (state.sidePanels.activityPanelCollapsed ? 0 : widths.activity) - WORKSPACE_WIDE_FIXED_SPACE;
     const studioSpaceCompressed = workspaceWidth - widths.explorer - WORKSPACE_COMPRESSED_FIXED_SPACE;
     const workspaceMode = workspaceWidth <= workspaceStackThreshold || studioSpaceCompressed < MIN_STUDIO_SPACE_WITH_EXPLORER
       ? 'stacked'
-      : workspaceWidth <= workspaceWideThreshold || (!state.sidePanels.activityPanelCollapsed && studioSpaceWithActivity < MIN_STUDIO_SPACE_WITH_ACTIVITY)
+      : workspaceWidth <= workspaceWideThreshold || (!state.sidePanels.activityPanelCollapsed && studioSpaceWithActivity < minStudioSpaceWithActivity)
         ? 'compressed'
         : 'wide';
     const estimatedStudioWidth = workspaceMode === 'wide'

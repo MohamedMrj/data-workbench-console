@@ -5,6 +5,24 @@ All notable Data Workbench Console changes are tracked here.
 The in-app version is read from `package.json` and exposed through `/api/version`
 together with the current git commit and build information.
 
+## 1.4.19 - 2026-07-02
+
+Side-panel responsive layout fix.
+
+### Fixed
+
+- Fixed the themes/history panel disappearing from the visible desktop row when
+  the connection panel was also open at common browser widths.
+- Removed a viewport-only CSS rule that forced the right panel below the studio
+  too early.
+- Updated workspace layout calculation to use actual saved panel widths, so
+  default panels keep the right panel visible while oversized saved panel
+  layouts still compress safely.
+
+### Verification
+
+- Added UI smoke coverage for both side panels visible at desktop width.
+
 ## 1.4.18 - 2026-07-02
 
 Tooltip quality refinement.

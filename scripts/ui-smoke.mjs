@@ -1506,6 +1506,27 @@ if (mediumWindow.document.querySelector('[data-resize-handle="activity"]')?.getA
   throw new Error('Activity resize handle should be disabled below the wide desktop breakpoint.');
 }
 
+const bothPanelsDesktopWindow = await createWindow(
+  'http://127.0.0.1:3100/',
+  [],
+  { width: 1840, height: 980 },
+  (window) => {
+    window.localStorage.setItem('dataWorkbenchSidePanelVisibilityV1', JSON.stringify({
+      controlRailCollapsed: false,
+      activityPanelCollapsed: false
+    }));
+  }
+);
+if (bothPanelsDesktopWindow.document.querySelector('.app-shell')?.dataset.workspaceMode !== 'wide') {
+  throw new Error('Default-width visible side panels should keep themes/history in the desktop row when there is enough room.');
+}
+if (bothPanelsDesktopWindow.document.querySelector('.app-shell')?.classList.contains('activity-panel-collapsed')) {
+  throw new Error('Themes/history panel should remain visible when both side panels are enabled.');
+}
+if (bothPanelsDesktopWindow.document.querySelector('[data-resize-handle="activity"]')?.getAttribute('aria-hidden') !== 'false') {
+  throw new Error('Themes/history resize handle should remain enabled when the right panel is visible in desktop layout.');
+}
+
 const maxPanelsWindow = await createWindow(
   'http://127.0.0.1:3100/',
   [],
