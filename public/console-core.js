@@ -43,6 +43,133 @@ window.createConsoleApp = function createConsoleApp() {
     '.theme-chip',
     '.saved-item-main'
   ].join(',');
+  const TOOLTIP_DESCRIPTIONS = {
+    openWorkbenchToolsBtn: 'Open quick actions, diagnostics, scratchpads, and the current safety summary.',
+    openEnvSettingsBtn: 'Edit local app settings such as panels, tooltips, appearance, timeouts, and safety limits.',
+    openSupportBtn: 'Prepare a support request with bug details and safe diagnostics.',
+    updateWorkbenchBtn: 'Apply the newest version when this local install is behind the Git remote.',
+    toggleControlRailBtn: 'Hide or restore the connection panel with source fields and saved profiles.',
+    toggleActivityPanelBtn: 'Hide or restore the themes, recent history, and personalization panel.',
+    exitWorkbenchBtn: 'Close the local Data Workbench server when local shutdown is enabled.',
+    sourceTypeSelect: 'Choose which source type this connection uses. This controls authentication choices and supported metadata features.',
+    authModeSelect: 'Choose how Data Workbench authenticates to the selected source.',
+    serverInput: 'Enter the server name, SQL endpoint, or host used for catalog loading and queries.',
+    portInput: 'Enter the SQL TCP port. Fabric and most SQL Server connections use 1433.',
+    databaseInput: 'Enter the database name where catalog, query, and procedure requests should run.',
+    domainInput: 'Enter the Windows or NTLM domain for SQL Server Windows authentication.',
+    usernameInput: 'Enter the SQL login, service principal app id, or Windows username for this connection.',
+    passwordInput: 'Enter the password or secret for this browser session. It is never saved in profiles.',
+    trustServerCertificateInput: 'Allow SQL Server connections that rely on a trusted local or server certificate setup.',
+    testConnectionBtn: 'Verify the server, database, authentication method, and credentials before loading metadata.',
+    loadTablesBtn: 'Load tables, views, and stored procedures from the current source catalog.',
+    profileNameInput: 'Give this connection profile a friendly local name before saving it.',
+    saveConnectionBtn: 'Save this connection profile locally without saving passwords or secrets.',
+    tableSearchInput: 'Filter loaded tables and views by schema, object name, and loaded column names.',
+    procedureSearchInput: 'Filter loaded stored procedures by schema or procedure name.',
+    objectTypeFilter: 'Limit the explorer to tables, views, procedures, or all object types.',
+    objectSchemaFilter: 'Limit object results to one schema.',
+    procedureSchemaFilter: 'Limit stored procedure results to one schema.',
+    pinnedOnlyObjectsToggle: 'Show only table and view objects pinned for this connection.',
+    recentOnlyObjectsToggle: 'Show only table and view objects recently selected for this connection.',
+    pinnedOnlyProceduresToggle: 'Show only stored procedures pinned for this connection.',
+    recentOnlyProceduresToggle: 'Show only stored procedures recently selected for this connection.',
+    previewRowsBtn: 'Build a SELECT TOP query for the active table or view.',
+    countRowsBtn: 'Build a row count query for the active table or view.',
+    resetBuilderBtn: 'Reset builder choices such as columns, filters, sorting, top rows, and distinct.',
+    generateQueryBtn: 'Rebuild the SQL editor text from the current builder selections.',
+    scriptCreateBtn: 'Load a CREATE script for the selected table, view, or procedure into the SQL editor.',
+    scriptAlterBtn: 'Load an editable ALTER script for the selected view or procedure when the source supports it.',
+    insertWhereBtn: 'Insert a WHERE clause from configured filters, or add a filter first.',
+    insertOrderByBtn: 'Insert an ORDER BY clause from the selected sort column and direction.',
+    insertJoinCommentBtn: 'Insert a join note template into the SQL editor for manual review.',
+    sqlHelperSelect: 'Choose a SQL helper expression to insert or wrap around selected text.',
+    insertSqlHelperBtn: 'Insert the selected SQL helper expression at the current cursor position.',
+    wrapSqlHelperBtn: 'Wrap the selected SQL text with the selected helper expression.',
+    queryEditor: 'Write, review, and edit SQL here. Running uses the normal safety and confirmation flow.',
+    decreaseEditorTextBtn: 'Make SQL editor text smaller.',
+    increaseEditorTextBtn: 'Make SQL editor text larger.',
+    formatQueryBtn: 'Format the current SQL text for readability.',
+    copyQueryBtn: 'Copy the current SQL editor text to the clipboard.',
+    clearQueryBtn: 'Clear the SQL editor.',
+    runQueryBtn: 'Run the current SQL through the existing read/write safety and confirmation path.',
+    addFilterBtn: 'Add a filter row used to build WHERE clauses.',
+    selectAllColumnsBtn: 'Include every loaded column in generated SQL.',
+    clearColumnsBtn: 'Clear selected columns so generated SQL can use all columns again.',
+    sortColumnSelect: 'Choose the column used for ORDER BY.',
+    sortDirectionSelect: 'Choose ascending or descending sort direction.',
+    topRowsInput: 'Limit how many rows generated SELECT queries request.',
+    distinctSelect: 'Use SELECT DISTINCT when generated SQL should remove duplicate rows.',
+    advancedSourceObjectSelect: 'Choose the loaded companion object used by cross-object templates and compare actions.',
+    targetJoinColumnSelect: 'Choose the target key column used in generated cross-object templates.',
+    sourceJoinColumnInput: 'Enter or confirm the source key column used in generated cross-object templates.',
+    profileSampleRowsInput: 'Choose how many rows object profiling should sample when supported.',
+    toggleAdvancedOperationsBtn: 'Show or hide read-only analysis tools and cross-object SQL templates.',
+    insertSelectTemplateBtn: 'Create an INSERT...SELECT template from the active target and source context.',
+    updateJoinTemplateBtn: 'Create an UPDATE JOIN template from the selected target/source keys.',
+    mergePreviewBtn: 'Create a MERGE preview template for manual review before running.',
+    profileObjectBtn: 'Run read-only profiling against the selected object when metadata and permissions allow it.',
+    dependencyViewBtn: 'Load dependency metadata for the selected object when the source exposes it.',
+    rowCountInsightBtn: 'Estimate or count rows for the selected object depending on source support.',
+    topValuesInsightBtn: 'Profile common values plus null and blank counts for selected columns.',
+    schemaCompareBtn: 'Compare the active object with another saved-profile-based source object.',
+    resultShapeBtn: 'Inspect result metadata for a query or selected object without changing data.',
+    queryPlanBtn: 'Request an estimated query plan for read-only SQL when supported and permitted.',
+    loadAuditBtn: 'Open audit filters and load matching audit events.',
+    localResultsFilter: 'Filter the currently loaded result rows in this browser.',
+    copyResultsBtn: 'Copy the currently loaded result rows.',
+    exportCsvBtn: 'Export the currently loaded result rows as CSV.',
+    scrollResultsLeftBtn: 'Move the result grid to earlier columns.',
+    scrollResultsRightBtn: 'Move the result grid to later columns.',
+    scrollResultsDockLeftBtn: 'Move the result grid left from the floating column navigator.',
+    scrollResultsDockRightBtn: 'Move the result grid right from the floating column navigator.',
+    prevPageBtn: 'Show the previous page of currently loaded results.',
+    nextPageBtn: 'Show the next page of currently loaded results.',
+    decreaseResultsTextBtn: 'Make result grid text smaller.',
+    increaseResultsTextBtn: 'Make result grid text larger.',
+    clearHistoryBtn: 'Clear the current SQL or procedure history stored in this browser.',
+    queryHistorySearch: 'Filter saved SQL history entries stored in this browser.',
+    loadProcedureParamsBtn: 'Refresh parameters for the selected stored procedure.',
+    scriptProcedureCreateBtn: 'Load a CREATE script for the selected stored procedure into the procedure script editor.',
+    scriptProcedureAlterBtn: 'Load an editable ALTER script for the selected stored procedure into the procedure script editor.',
+    runProcedureBtn: 'Run the selected stored procedure through the normal confirmation path.',
+    procedureScriptEditor: 'Review or edit stored procedure DDL here before running it through confirmation.',
+    toggleProcedureScriptExpandBtn: 'Expand or collapse the stored procedure script editor.',
+    copyProcedureScriptBtn: 'Copy the stored procedure script text to the clipboard.',
+    clearProcedureScriptBtn: 'Clear the stored procedure script editor.',
+    runProcedureScriptBtn: 'Run the stored procedure script through the SQL confirmation path.',
+    commandSearchInput: 'Search quick actions available in Workbench Tools.',
+    saveScratchpadBtn: 'Save the current SQL editor text as a local scratchpad.',
+    copyDiagnosticsBtn: 'Copy safe diagnostics without passwords, secrets, or result data.',
+    supportNameInput: 'Enter your name so the support request has a contact person.',
+    supportEmailInput: 'Enter the email address support should reply to.',
+    supportAreaSelect: 'Choose which part of Data Workbench the issue affects.',
+    supportSeveritySelect: 'Choose how urgent or blocking the issue is.',
+    supportTitleInput: 'Enter a short issue title for the support email subject.',
+    supportDescriptionInput: 'Describe what went wrong and what you expected instead.',
+    supportStepsInput: 'List the steps needed to reproduce the issue.',
+    supportScreenshotInput: 'Add the screenshot filename or paste a link if one is available.',
+    supportDiagnosticsInput: 'Review safe diagnostics that can be included in the support email.',
+    copySupportReportBtn: 'Copy the support request so you can paste it into email or Teams.',
+    sendSupportReportBtn: 'Open your email client with the support request filled in.',
+    reloadEnvSettingsBtn: 'Reload values from the local .env file. Unsaved edits in this dialog are replaced.',
+    applyEnvSettingsBtn: 'Write these values to .env. Most changes take effect after restarting Data Workbench.',
+    auditEventFilter: 'Filter audit rows by event name.',
+    auditOutcomeFilter: 'Filter audit rows by success or failure outcome.',
+    auditActionFilter: 'Filter audit rows by query or metadata action.',
+    auditSourceFilter: 'Filter audit rows by source type.',
+    auditDatabaseFilter: 'Filter audit rows by database name.',
+    auditSearchFilter: 'Search audit text, object names, messages, and request details.',
+    auditLimitFilter: 'Limit how many audit rows are loaded.',
+    applyAuditFiltersBtn: 'Load audit rows that match the selected filters.',
+    clearAuditFiltersBtn: 'Reset all audit filters to their defaults.',
+    closeModalBtn: 'Close this dialog without taking the action.',
+    cancelModalBtn: 'Cancel the pending action.',
+    confirmModalBtn: 'Confirm the reviewed action and continue.',
+    closeAuditFiltersBtn: 'Close audit filters without changing the current result.',
+    closeSupportBtn: 'Close the support dialog.',
+    closeEnvSettingsBtn: 'Close app settings.',
+    closeWorkbenchToolsBtn: 'Close Workbench Tools.'
+  };
   const THEMES = ['midnight', 'harbor', 'forge', 'field', 'ink', 'paper'];
   const CONNECTION_HISTORY_MAX = 12;
   const QUERY_HISTORY_MAX = 20;
@@ -1536,6 +1663,117 @@ window.createConsoleApp = function createConsoleApp() {
     return '';
   }
 
+  function normalizedTooltipText(value = '') {
+    return String(value || '')
+      .replace(/\s+/g, ' ')
+      .replace(/[×*]/g, '')
+      .trim()
+      .toLowerCase();
+  }
+
+  function visibleElementText(element) {
+    if (!element || element.nodeType !== 1) return '';
+    const clone = element.cloneNode(true);
+    clone.querySelectorAll?.('small, span[aria-hidden="true"], i, code, .pin-toggle').forEach((node) => node.remove());
+    return String(clone.innerText || clone.textContent || '').replace(/\s+/g, ' ').trim();
+  }
+
+  function isRedundantTooltip(value, element) {
+    const tooltip = normalizedTooltipText(value);
+    if (!tooltip) return true;
+    const visible = normalizedTooltipText(visibleElementText(element));
+    if (!visible) return false;
+    return tooltip === visible || tooltip.startsWith(`${visible} `) || visible.startsWith(`${tooltip} `);
+  }
+
+  function descriptionFromControl(element) {
+    const tag = element.tagName?.toLowerCase();
+    if (!['input', 'select', 'textarea'].includes(tag)) return '';
+    const label = textFromControlLabel(element);
+    const placeholder = element.getAttribute('placeholder') || '';
+    const type = element.getAttribute('type') || tag;
+    const readableLabel = label ? label.toLowerCase() : '';
+    const parts = [];
+
+    if (tag === 'select') {
+      parts.push(readableLabel ? `Choose the ${readableLabel} option for this setting.` : 'Choose one of the available options.');
+    } else if (type === 'checkbox') {
+      parts.push(readableLabel ? `Turn ${readableLabel} on or off.` : 'Toggle this option on or off.');
+    } else if (tag === 'textarea') {
+      parts.push(readableLabel ? `Enter detailed ${readableLabel} text here.` : 'Enter detailed text here.');
+    } else {
+      parts.push(readableLabel ? `Enter the ${readableLabel} value here.` : 'Enter a value here.');
+    }
+
+    if (placeholder && !normalizedTooltipText(placeholder).includes('select')) {
+      parts.push(`Example or hint: ${placeholder}.`);
+    }
+    if (type === 'password') {
+      parts.push('Secret values are hidden while typing and are not saved in profiles.');
+    }
+    if (element.disabled) {
+      parts.push('This field is currently disabled.');
+    }
+
+    return parts.join(' ');
+  }
+
+  function contextualTooltipText(element) {
+    if (!element || element.nodeType !== 1) return '';
+    if (element.id && TOOLTIP_DESCRIPTIONS[element.id]) {
+      return TOOLTIP_DESCRIPTIONS[element.id];
+    }
+    if (element.matches?.('.theme-chip')) {
+      const theme = visibleElementText(element) || 'this theme';
+      return `Apply the ${theme} visual theme locally in this browser.`;
+    }
+    if (element.matches?.('.saved-item-main')) {
+      return 'Load this saved connection profile into the connection form. Passwords still need to be entered unless they are in session memory.';
+    }
+    if (element.matches?.('.history-item')) {
+      return element.dataset.procedureHistoryId
+        ? 'Restore this stored procedure run from local history.'
+        : 'Restore this SQL text from local history into the editor.';
+    }
+    if (element.matches?.('.result-tab')) {
+      return 'Switch to this result tab. Use the small close control to remove it.';
+    }
+    if (element.matches?.('[data-close-result-tab]')) {
+      return 'Close this result tab.';
+    }
+    if (element.matches?.('.table-item')) {
+      const objectName = element.dataset.object || visibleElementText(element) || 'this object';
+      const objectType = element.dataset.objectType || 'object';
+      return `Select ${objectName} as the active ${objectType} for SQL generation, metadata actions, and scripting.`;
+    }
+    if (element.matches?.('.procedure-item')) {
+      const procedureName = element.dataset.procedure || visibleElementText(element) || 'this procedure';
+      return `Select ${procedureName} for parameter discovery, execution, and procedure scripting.`;
+    }
+    if (element.matches?.('.pin-toggle')) {
+      return element.dataset.pinProcedure
+        ? 'Pin or unpin this stored procedure for the current connection.'
+        : 'Pin or unpin this object for the current connection.';
+    }
+    if (element.matches?.('.column-pill')) {
+      return 'Toggle this column in generated SQL. Selected columns are included explicitly.';
+    }
+    if (element.matches?.('.table-header-btn')) {
+      const column = element.dataset.sort || visibleElementText(element) || 'this column';
+      return `Sort the loaded result rows by ${column}.`;
+    }
+    if (element.matches?.('.column-resize-handle')) {
+      return 'Drag to resize this result column.';
+    }
+    if (element.matches?.('[role="separator"]')) {
+      return 'Drag to resize this panel.';
+    }
+    if (element.matches?.('td')) {
+      return 'Result cell. Right-click for copy options, including cell value, column values, row JSON, row CSV, and formatted JSON when available.';
+    }
+    return '';
+  }
+
   function compactTooltipText(value = '') {
     const text = String(value || '').replace(/\s+/g, ' ').trim();
     if (text.length <= TOOLTIP_MAX_LENGTH) return text;
@@ -1544,25 +1782,20 @@ window.createConsoleApp = function createConsoleApp() {
 
   function inferTooltipText(element) {
     if (!element || element.nodeType !== 1) return '';
-    const explicit = element.dataset.tooltip || element.dataset.tooltipTitle || '';
-    if (explicit) return explicit;
+    const explicit = element.dataset.tooltip || '';
+    if (explicit && !isRedundantTooltip(explicit, element)) return explicit;
+
+    const contextual = contextualTooltipText(element);
+    if (contextual) return contextual;
+
+    const titleText = element.dataset.tooltipTitle || '';
+    if (titleText && !isRedundantTooltip(titleText, element)) return titleText;
 
     const aria = element.getAttribute('aria-label') || '';
-    if (aria) return aria;
+    if (aria && !isRedundantTooltip(aria, element)) return aria;
 
-    const tag = element.tagName?.toLowerCase();
-    if (['input', 'select', 'textarea'].includes(tag)) {
-      const label = textFromControlLabel(element);
-      const placeholder = element.getAttribute('placeholder') || '';
-      const type = element.getAttribute('type') || tag;
-      const action = tag === 'select' ? 'Choose' : 'Edit';
-      return [label ? `${action} ${label}` : '', placeholder ? `Example: ${placeholder}` : '', type === 'password' ? 'Secret values are hidden while typing.' : '']
-        .filter(Boolean)
-        .join('. ');
-    }
-
-    const text = element.innerText || element.textContent || '';
-    if (text.trim()) return text;
+    const controlDescription = descriptionFromControl(element);
+    if (controlDescription && !isRedundantTooltip(controlDescription, element)) return controlDescription;
 
     return '';
   }

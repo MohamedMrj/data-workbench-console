@@ -5,6 +5,27 @@ All notable Data Workbench Console changes are tracked here.
 The in-app version is read from `package.json` and exposed through `/api/version`
 together with the current git commit and build information.
 
+## 1.4.18 - 2026-07-02
+
+Tooltip quality refinement.
+
+### Fixed
+
+- Stopped the global tooltip system from falling back to raw visible labels,
+  which caused useless hints like a button showing only its own name.
+- Added contextual explanations for major workspace controls, explorer rows,
+  result tabs, result cells, history rows, theme chips, resize handles, SQL
+  actions, procedure actions, audit filters, support fields, and Settings
+  controls.
+- Lowered priority for converted native `title` text so generated UI elements
+  do not show duplicate value-only tooltips when a real explanation is
+  available.
+
+### Verification
+
+- Added UI smoke coverage that fails if representative tooltips repeat the
+  hovered control label instead of explaining the action.
+
 ## 1.4.17 - 2026-07-02
 
 Helpful tooltips and Settings polish.

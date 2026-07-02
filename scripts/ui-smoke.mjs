@@ -803,7 +803,31 @@ await waitForCondition(
 if (!sqlWindow.document.getElementById('appTooltip').textContent.includes('Edit local app settings')) {
   throw new Error('Toolbar tooltip text should explain the settings action.');
 }
+if (sqlWindow.document.getElementById('appTooltip').textContent.trim() === sqlWindow.document.getElementById('openEnvSettingsBtn').textContent.trim()) {
+  throw new Error('Toolbar tooltip should explain the action instead of repeating the button label.');
+}
 sqlWindow.document.getElementById('openEnvSettingsBtn').dispatchEvent(new sqlWindow.Event('pointerout', { bubbles: true }));
+await flush();
+sqlWindow.document.getElementById('testConnectionBtn').dispatchEvent(new sqlWindow.Event('pointerover', { bubbles: true }));
+await waitForCondition(
+  () => sqlWindow.document.getElementById('appTooltip')?.textContent.includes('Verify the server'),
+  'Hovering Test connection should show an explanatory tooltip.'
+);
+if (sqlWindow.document.getElementById('appTooltip').textContent.trim() === sqlWindow.document.getElementById('testConnectionBtn').textContent.trim()) {
+  throw new Error('Connection tooltip should explain the action instead of repeating the button label.');
+}
+sqlWindow.document.getElementById('testConnectionBtn').dispatchEvent(new sqlWindow.Event('pointerout', { bubbles: true }));
+await flush();
+const themeChip = sqlWindow.document.querySelector('.theme-chip');
+themeChip.dispatchEvent(new sqlWindow.Event('pointerover', { bubbles: true }));
+await waitForCondition(
+  () => sqlWindow.document.getElementById('appTooltip')?.textContent.includes('visual theme'),
+  'Hovering a theme chip should explain what the chip does.'
+);
+if (sqlWindow.document.getElementById('appTooltip').textContent.trim() === themeChip.textContent.trim()) {
+  throw new Error('Theme tooltip should explain the action instead of repeating the theme name.');
+}
+themeChip.dispatchEvent(new sqlWindow.Event('pointerout', { bubbles: true }));
 await flush();
 sqlWindow.document.getElementById('openEnvSettingsBtn').click();
 await flush();
