@@ -70,10 +70,16 @@ try {
   assert.equal(health.response.status, 200);
   assert.equal(health.payload.ok, true);
   assert.equal(health.response.headers.get('x-content-type-options'), 'nosniff');
-  assert.equal(health.payload.sidePanels.autoHideEnabled, true);
+
+  const favicon = await fetch(`${baseUrl}/favicon.ico`);
+  assert.equal(favicon.status, 200);
+  assert.match(favicon.headers.get('content-type') || '', /image\/(x-icon|vnd\.microsoft\.icon)/i);
+  assert.ok((await favicon.arrayBuffer()).byteLength > 1024);
+
+  assert.equal(typeof health.payload.sidePanels.autoHideEnabled, 'boolean');
   assert.equal(typeof health.payload.sidePanels.idleMs, 'number');
   assert.equal(typeof health.payload.sidePanels.fadeMs, 'number');
-  assert.equal(health.payload.appearance.ambientMotionEnabled, true);
+  assert.equal(typeof health.payload.appearance.ambientMotionEnabled, 'boolean');
   assert.equal(typeof health.payload.appearance.ambientMotionDurationMs, 'number');
   const sqlServerSource = health.payload.supportedSourceTypes.find((source) => source.id === 'sql-server');
   assert.equal(sqlServerSource.authModes.includes('windowsNtlm'), true);

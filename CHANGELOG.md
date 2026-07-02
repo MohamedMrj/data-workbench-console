@@ -5,6 +5,21 @@ All notable Data Workbench Console changes are tracked here.
 The in-app version is read from `package.json` and exposed through `/api/version`
 together with the current git commit and build information.
 
+## 1.4.14 - 2026-07-02
+
+Browser tab icon polish.
+
+### Added
+
+- Added the Data Workbench Console desktop shortcut icon as the app favicon so
+  browser tabs show the product icon instead of the default browser/page icon.
+- Added explicit Next metadata for the favicon.
+
+### Verification
+
+- Added route-contract coverage that verifies `/favicon.ico` is served as a
+  non-empty icon response.
+
 ## 1.4.13 - 2026-07-01
 
 Left-panel safety placement polish.

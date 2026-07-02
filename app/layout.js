@@ -2,7 +2,12 @@ import './globals.css';
 
 export const metadata = {
   title: 'Data Workbench Console',
-  description: 'Production-safe multi-source SQL and stored procedure workbench for Fabric and SQL Server.'
+  description: 'Production-safe multi-source SQL and stored procedure workbench for Fabric and SQL Server.',
+  icons: {
+    icon: '/favicon.ico',
+    shortcut: '/favicon.ico',
+    apple: '/favicon.ico'
+  }
 };
 
 export const viewport = {
