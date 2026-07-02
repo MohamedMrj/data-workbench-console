@@ -1608,6 +1608,75 @@ window.createConsoleApp = function createConsoleApp() {
     `;
   }
 
+  function normalizeHexColor(input) {
+    const match = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(String(input || '').trim());
+    if (!match) return '';
+    let hex = match[1];
+    if (hex.length === 3) hex = hex.split('').map((c) => c + c).join('');
+    return `#${hex.toLowerCase()}`;
+  }
+
+  // Rotate a hex color's hue so the two ambient wave layers use related but
+  // distinct hues, keeping the effect vivid instead of flat.
+  function shiftHue(hex, degrees) {
+    const norm = normalizeHexColor(hex);
+    if (!norm) return '';
+    let r = parseInt(norm.slice(1, 3), 16) / 255;
+    let g = parseInt(norm.slice(3, 5), 16) / 255;
+    let b = parseInt(norm.slice(5, 7), 16) / 255;
+    const max = Math.max(r, g, b);
+    const min = Math.min(r, g, b);
+    let h = 0;
+    let s = 0;
+    const l = (max + min) / 2;
+    if (max !== min) {
+      const d = max - min;
+      s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+      if (max === r) h = (g - b) / d + (g < b ? 6 : 0);
+      else if (max === g) h = (b - r) / d + 2;
+      else h = (r - g) / d + 4;
+      h /= 6;
+    }
+    h = (h + degrees / 360) % 1;
+    if (h < 0) h += 1;
+    const hue2rgb = (p, q, t) => {
+      if (t < 0) t += 1;
+      if (t > 1) t -= 1;
+      if (t < 1 / 6) return p + (q - p) * 6 * t;
+      if (t < 1 / 2) return q;
+      if (t < 2 / 3) return p + (q - p) * (2 / 3 - t) * 6;
+      return p;
+    };
+    if (s === 0) {
+      r = g = b = l;
+    } else {
+      const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+      const p = 2 * l - q;
+      r = hue2rgb(p, q, h + 1 / 3);
+      g = hue2rgb(p, q, h);
+      b = hue2rgb(p, q, h - 1 / 3);
+    }
+    const toHex = (x) => Math.round(x * 255).toString(16).padStart(2, '0');
+    return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
+  }
+
+  // Apply the ambient color + intensity as CSS custom properties. An empty color
+  // means "follow the theme accent" (the CSS falls back to var(--accent)).
+  function applyAmbientColor(colorRaw, intensityRaw) {
+    const rootStyle = document.documentElement.style;
+    const color = normalizeHexColor(colorRaw);
+    const intensity = Number(intensityRaw);
+    const strength = Number.isFinite(intensity) ? Math.max(0, Math.min(1, intensity / 100)) : 0.55;
+    rootStyle.setProperty('--ambient-strength', String(strength));
+    if (color) {
+      rootStyle.setProperty('--ambient-color', color);
+      rootStyle.setProperty('--ambient-color-2', shiftHue(color, 38) || color);
+    } else {
+      rootStyle.removeProperty('--ambient-color');
+      rootStyle.removeProperty('--ambient-color-2');
+    }
+  }
+
   function applyAppearanceSettings() {
     const appearance = state.health?.appearance || {};
     const enabled = window.__dataWorkbenchTestConfig?.ambientMotionEnabled ?? appearance.ambientMotionEnabled ?? true;
@@ -1616,6 +1685,10 @@ window.createConsoleApp = function createConsoleApp() {
     document.documentElement.style.setProperty(
       '--ambient-motion-duration',
       `${Number.isFinite(duration) ? Math.max(30000, duration) : 90000}ms`
+    );
+    applyAmbientColor(
+      window.__dataWorkbenchTestConfig?.ambientColor ?? appearance.ambientColor ?? '',
+      window.__dataWorkbenchTestConfig?.ambientIntensity ?? appearance.ambientIntensity ?? 55
     );
   }
 
@@ -4149,6 +4222,14 @@ window.createConsoleApp = function createConsoleApp() {
     if (field.type === 'number') {
       return `<input data-env-key="${key}" data-env-type="number" type="number" min="${esc(field.min ?? '')}" max="${esc(field.max ?? '')}" value="${value}" data-tooltip="${tooltip}" />`;
     }
+    if (field.type === 'color') {
+      const follow = !normalizeHexColor(field.value);
+      const swatch = normalizeHexColor(field.value) || '#22b8a8';
+      return `<div class="env-color-control">
+        <input data-env-key="${key}" data-env-type="color" type="color" value="${esc(swatch)}" data-tooltip="${tooltip}"${follow ? ' disabled' : ''} />
+        <label class="toggle-field compact-toggle"><input data-env-follow="${key}" type="checkbox"${follow ? ' checked' : ''} /><span>Follow theme color</span></label>
+      </div>`;
+    }
     if (field.type === 'secret') {
       const placeholder = field.configured ? 'Configured. Leave blank to keep current secret.' : 'Paste secret value';
       return `<input data-env-key="${key}" data-env-type="secret" type="password" value="" placeholder="${esc(placeholder)}" autocomplete="new-password" data-tooltip="${tooltip}" />`;
@@ -4198,6 +4279,16 @@ window.createConsoleApp = function createConsoleApp() {
         </div>
       </section>`;
     }).join('');
+
+    // When the ambient color follows the theme, show the current theme accent in
+    // the (disabled) swatch so the picker reflects what is actually rendered.
+    const ambientColorInput = container.querySelector('[data-env-key="APP_AMBIENT_COLOR"]');
+    if (ambientColorInput && ambientColorInput.disabled) {
+      const themeAccent = normalizeHexColor(getComputedStyle(document.documentElement).getPropertyValue('--accent'));
+      if (themeAccent) {
+        ambientColorInput.value = themeAccent;
+      }
+    }
   }
 
   async function loadEnvSettings() {
@@ -4243,11 +4334,39 @@ window.createConsoleApp = function createConsoleApp() {
       if (!key) return;
       if (element.dataset.envType === 'boolean') {
         settings[key] = element.checked ? 'true' : 'false';
+      } else if (element.dataset.envType === 'color') {
+        // A checked "follow theme" toggle stores an empty value (theme accent).
+        const follow = document.querySelector(`[data-env-follow="${key}"]`);
+        settings[key] = follow && follow.checked ? '' : (element.value || '');
       } else {
         settings[key] = element.value || '';
       }
     });
     return settings;
+  }
+
+  // Live-preview the ambient color/intensity as the user edits them in Settings,
+  // so the moving background updates immediately (before saving/restart).
+  function handleAmbientLivePreview(event) {
+    const target = event.target;
+    const key = target?.dataset?.envKey;
+    const followKey = target?.dataset?.envFollow;
+    if (key !== 'APP_AMBIENT_COLOR' && key !== 'APP_AMBIENT_INTENSITY' && followKey !== 'APP_AMBIENT_COLOR') {
+      return;
+    }
+    const colorInput = document.querySelector('[data-env-key="APP_AMBIENT_COLOR"]');
+    const followInput = document.querySelector('[data-env-follow="APP_AMBIENT_COLOR"]');
+    const intensityInput = document.querySelector('[data-env-key="APP_AMBIENT_INTENSITY"]');
+    if (key === 'APP_AMBIENT_COLOR' && followInput?.checked) {
+      followInput.checked = false;
+    }
+    if (colorInput && followInput) {
+      colorInput.disabled = followInput.checked;
+    }
+    const follow = followInput ? followInput.checked : false;
+    const color = follow ? '' : (colorInput ? colorInput.value : '');
+    const intensity = intensityInput ? intensityInput.value : 55;
+    applyAmbientColor(color, intensity);
   }
 
   async function applyEnvSettings() {
@@ -6500,6 +6619,11 @@ window.createConsoleApp = function createConsoleApp() {
     if ($('reloadEnvSettingsBtn')) $('reloadEnvSettingsBtn').onclick = () => loadEnvSettings().catch((error) => envSettingsStatus('error', error.message));
     if ($('syncEnvSettingsBtn')) $('syncEnvSettingsBtn').onclick = () => syncEnvSettings().catch((error) => envSettingsStatus('error', error.message));
     if ($('applyEnvSettingsBtn')) $('applyEnvSettingsBtn').onclick = () => applyEnvSettings().catch((error) => envSettingsStatus('error', error.message));
+    if ($('envSettingsContent') && !$('envSettingsContent').dataset.ambientLiveWired) {
+      $('envSettingsContent').dataset.ambientLiveWired = '1';
+      $('envSettingsContent').addEventListener('input', handleAmbientLivePreview);
+      $('envSettingsContent').addEventListener('change', handleAmbientLivePreview);
+    }
     if ($('closeSupportBtn')) $('closeSupportBtn').onclick = closeSupportDialog;
     if ($('saveScratchpadBtn')) $('saveScratchpadBtn').onclick = saveCurrentScratchpad;
     if ($('copyDiagnosticsBtn')) $('copyDiagnosticsBtn').onclick = copyDiagnostics;

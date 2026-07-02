@@ -5,6 +5,29 @@ All notable Data Workbench Console changes are tracked here.
 The in-app version is read from `package.json` and exposed through `/api/version`
 together with the current git commit and build information.
 
+## 1.4.23 - 2026-07-02
+
+Living ambient color wave with a live color picker and intensity control.
+
+### Added
+
+- Users can customize the ambient background color from Settings with a live RGB
+  color picker (`APP_AMBIENT_COLOR`). The moving background updates immediately as
+  the color is picked. Leave it on "Follow theme color" to track the theme accent,
+  or choose any custom color.
+- Added an ambient intensity control (`APP_AMBIENT_INTENSITY`, 0-100) for exactly
+  how strongly the ambient color shows — 0 hides it, 55 is the visible default,
+  100 is boldest. It previews live alongside the color picker.
+
+### Changed
+
+- Replaced the barely-visible ambient backdrop with a clearly visible colour wave:
+  two large, soft colour fields now travel across the whole app in opposite
+  diagonals (a second hue is derived from the chosen colour), giving a living,
+  breathing feel. Motion is still gated by `APP_AMBIENT_MOTION_ENABLED` and
+  disabled under `prefers-reduced-motion`, and the whole layer is scaled by the
+  new intensity setting.
+
 ## 1.4.22 - 2026-07-02
 
 Fix the themes/history panel disappearing when both side panels are open.

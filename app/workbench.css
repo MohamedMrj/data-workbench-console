@@ -4,6 +4,12 @@
   overflow: hidden;
   pointer-events: none;
   z-index: 0;
+  /* --ambient-color / --ambient-color-2 default to the theme accents; the client
+     overrides --ambient-color from the user's Settings colour picker (and derives
+     a second hue). --ambient-strength (0-1) is the user-controlled "how strongly
+     it shows" intensity applied to the whole ambient layer. */
+  opacity: clamp(0, var(--ambient-strength, 0.55), 1);
+  transition: opacity 260ms ease;
 }
 
 .shell-orbit,
@@ -12,12 +18,41 @@
   inset: 0;
 }
 
+/* The moving colour wave: two large, soft colour fields that travel across the
+   whole viewport in opposite diagonals, giving a living/breathing feel. Rendered
+   as pseudo-elements so no markup change is needed. */
+.shell-backdrop::before,
+.shell-backdrop::after {
+  content: '';
+  position: absolute;
+  inset: -55%;
+  border-radius: 45%;
+  pointer-events: none;
+  will-change: transform;
+}
+
+.shell-backdrop::before {
+  background: radial-gradient(closest-side,
+    color-mix(in srgb, var(--ambient-color, var(--accent)) 60%, transparent) 0%,
+    color-mix(in srgb, var(--ambient-color, var(--accent)) 24%, transparent) 46%,
+    transparent 72%);
+  filter: blur(70px);
+}
+
+.shell-backdrop::after {
+  background: radial-gradient(closest-side,
+    color-mix(in srgb, var(--ambient-color-2, var(--accent-2)) 52%, transparent) 0%,
+    color-mix(in srgb, var(--ambient-color-2, var(--accent-2)) 20%, transparent) 48%,
+    transparent 74%);
+  filter: blur(80px);
+}
+
 .shell-orbit-a {
   inset: auto auto -12vh -10vw;
   width: 44vw;
   height: 44vw;
   border-radius: 50%;
-  background: radial-gradient(circle, color-mix(in srgb, var(--accent) 30%, transparent) 0%, transparent 68%);
+  background: radial-gradient(circle, color-mix(in srgb, var(--ambient-color, var(--accent)) 30%, transparent) 0%, transparent 68%);
   filter: blur(18px);
   opacity: 0.5;
   transform-origin: center;
@@ -28,7 +63,7 @@
   width: 34vw;
   height: 34vw;
   border-radius: 50%;
-  background: radial-gradient(circle, color-mix(in srgb, var(--accent-2) 28%, transparent) 0%, transparent 72%);
+  background: radial-gradient(circle, color-mix(in srgb, var(--ambient-color-2, var(--accent-2)) 28%, transparent) 0%, transparent 72%);
   filter: blur(20px);
   opacity: 0.46;
   transform-origin: center;
@@ -47,9 +82,17 @@ html[data-ambient-motion='enabled'] .shell-grid {
   animation: ambient-grid-drift var(--ambient-motion-duration, 90000ms) ease-in-out infinite alternate;
 }
 
-/* The two accent orbs slowly drift and "breathe" so the backdrop feels alive
-   rather than a static wash. Durations are derived from the configurable
-   ambient duration and deliberately desynced so the two hues never line up. */
+/* The colour-wave fields travel across the whole app in opposite diagonals; the
+   two accent orbs slowly drift and "breathe". Durations are derived from the
+   configurable ambient duration and deliberately desynced so nothing lines up. */
+html[data-ambient-motion='enabled'] .shell-backdrop::before {
+  animation: ambient-wave-a calc(var(--ambient-motion-duration, 90000ms) * 0.55) ease-in-out infinite alternate;
+}
+
+html[data-ambient-motion='enabled'] .shell-backdrop::after {
+  animation: ambient-wave-b calc(var(--ambient-motion-duration, 90000ms) * 0.75) ease-in-out infinite alternate;
+}
+
 html[data-ambient-motion='enabled'] .shell-orbit-a {
   animation: ambient-orbit-a calc(var(--ambient-motion-duration, 90000ms) * 0.5) ease-in-out infinite alternate;
   will-change: transform, opacity;
@@ -58,6 +101,30 @@ html[data-ambient-motion='enabled'] .shell-orbit-a {
 html[data-ambient-motion='enabled'] .shell-orbit-b {
   animation: ambient-orbit-b calc(var(--ambient-motion-duration, 90000ms) * 0.62) ease-in-out infinite alternate;
   will-change: transform, opacity;
+}
+
+@keyframes ambient-wave-a {
+  0% {
+    transform: translate3d(-28%, -18%, 0) scale(1);
+  }
+  50% {
+    transform: translate3d(22%, 8%, 0) scale(1.25);
+  }
+  100% {
+    transform: translate3d(30%, 26%, 0) scale(1.12);
+  }
+}
+
+@keyframes ambient-wave-b {
+  0% {
+    transform: translate3d(30%, 22%, 0) scale(1.1);
+  }
+  50% {
+    transform: translate3d(-18%, -6%, 0) scale(1.3);
+  }
+  100% {
+    transform: translate3d(-30%, -24%, 0) scale(1.16);
+  }
 }
 
 @keyframes ambient-grid-drift {
@@ -100,6 +167,8 @@ html[data-ambient-motion='enabled'] .shell-orbit-b {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  html[data-ambient-motion='enabled'] .shell-backdrop::before,
+  html[data-ambient-motion='enabled'] .shell-backdrop::after,
   html[data-ambient-motion='enabled'] .shell-grid,
   html[data-ambient-motion='enabled'] .shell-orbit-a,
   html[data-ambient-motion='enabled'] .shell-orbit-b {
@@ -2054,6 +2123,32 @@ html[data-ambient-motion='enabled'] .shell-orbit-b {
 .env-setting-item input,
 .env-setting-item select {
   width: 100%;
+}
+
+.env-color-control {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+.env-color-control input[type="color"] {
+  width: 52px;
+  min-width: 52px;
+  height: 34px;
+  padding: 2px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.env-color-control input[type="color"]:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.env-color-control .toggle-field,
+.env-color-control input[type="checkbox"] {
+  width: auto;
 }
 
 .env-setting-description,
