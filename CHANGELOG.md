@@ -5,6 +5,26 @@ All notable Data Workbench Console changes are tracked here.
 The in-app version is read from `package.json` and exposed through `/api/version`
 together with the current git commit and build information.
 
+## 1.4.24 - 2026-07-08
+
+Self-update launcher reliability fix.
+
+### Fixed
+
+- Fixed the Update button showing `Could not launch updater: Updater exited
+  before it could start work (exit 0)` even when the Windows process launch
+  succeeded.
+- Changed the update endpoint to start a detached Windows `cmd /c start`
+  launcher that opens the PowerShell updater hidden, then returns success once
+  the launcher process has actually spawned.
+- Moved updater launch command construction and launch probing into
+  `lib/server/update-launcher.js` so it can be tested outside the Next route.
+
+### Verification
+
+- Added server-unit coverage for fast-exiting updater launchers and for the
+  generated hidden PowerShell launch command.
+
 ## 1.4.23 - 2026-07-02
 
 Living ambient color wave with a live color picker and intensity control.

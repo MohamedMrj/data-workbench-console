@@ -5,6 +5,7 @@ import { promisify } from 'util';
 import { execFile } from 'child_process';
 import { NextResponse } from 'next/server';
 import { isLocalLifecycleRequest } from '../../../lib/server/lifecycle-store';
+import { buildUpdaterLaunchCommand, waitForUpdaterStart } from '../../../lib/server/update-launcher';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -58,43 +59,6 @@ function shortCommit(commit = '') {
   return String(commit || '').slice(0, 7);
 }
 
-function waitForUpdaterStart(child, timeoutMs = 1500) {
-  return new Promise((resolve, reject) => {
-    let spawned = false;
-
-    const cleanup = () => {
-      clearTimeout(timer);
-      child.off('spawn', onSpawn);
-      child.off('error', onError);
-      child.off('exit', onExit);
-    };
-    const settle = (callback, value) => {
-      cleanup();
-      callback(value);
-    };
-    const onSpawn = () => {
-      spawned = true;
-    };
-    const onError = (error) => {
-      settle(reject, error);
-    };
-    const onExit = (code, signal) => {
-      settle(reject, new Error(`Updater exited before it could start work (${signal || `exit ${code}`}).`));
-    };
-    const timer = setTimeout(() => {
-      if (!spawned) {
-        settle(reject, new Error('Timed out waiting for the updater process to launch.'));
-        return;
-      }
-      settle(resolve);
-    }, timeoutMs);
-
-    child.once('spawn', onSpawn);
-    child.once('error', onError);
-    child.once('exit', onExit);
-  });
-}
-
 export async function POST(req) {
   if (!isLocalLifecycleRequest(req)) {
     return NextResponse.json({ success: false, error: 'Update endpoint is local-only.' }, { status: 403 });
@@ -146,22 +110,17 @@ export async function POST(req) {
 
   const port = String(process.env.PORT || '3000');
   const powerShellPath = await resolvePowerShellPath();
+  const launchCommand = buildUpdaterLaunchCommand({
+    powerShellPath,
+    updaterPath,
+    projectDir,
+    port,
+    oldPid: String(process.pid)
+  });
   let child;
   try {
     await writeUpdateLaunchLog(projectDir, `Launching updater for ${shortCommit(localCommit)} -> ${shortCommit(latestCommit)}.`);
-    child = spawn(powerShellPath, [
-      '-NoProfile',
-      '-ExecutionPolicy',
-      'Bypass',
-      '-File',
-      updaterPath,
-      '-ProjectDir',
-      projectDir,
-      '-Port',
-      port,
-      '-OldPid',
-      String(process.pid)
-    ], {
+    child = spawn('cmd.exe', ['/d', '/s', '/c', launchCommand], {
       cwd: projectDir,
       detached: true,
       stdio: 'ignore',

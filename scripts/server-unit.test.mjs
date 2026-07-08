@@ -1,4 +1,5 @@
 import assert from 'assert/strict';
+import { EventEmitter } from 'events';
 import fs from 'fs/promises';
 import os from 'os';
 import path from 'path';
@@ -30,6 +31,7 @@ const savedStore = await import('../lib/server/saved-connections-store.js');
 const lifecycleStore = await import('../lib/server/lifecycle-store.js');
 const nextHandler = await import('../lib/server/next-handler.js');
 const envSettingsStore = await import('../lib/server/env-settings-store.js');
+const updateLauncher = await import('../lib/server/update-launcher.js');
 
 function makeReq(url, options = {}) {
   return new Request(url, {
@@ -205,6 +207,30 @@ assert.equal(lifecycleStore.isLocalLifecycleRequest(makeReq('http://127.0.0.1:30
 assert.equal(lifecycleStore.isLocalLifecycleRequest(makeReq('http://127.0.0.1:3000/api/lifecycle/status', {
   headers: { host: 'example.com' }
 })), false);
+
+const fastExitUpdater = new EventEmitter();
+const fastExitPromise = updateLauncher.waitForUpdaterStart(fastExitUpdater, 50);
+fastExitUpdater.emit('spawn');
+fastExitUpdater.emit('exit', 0, null);
+await fastExitPromise;
+
+const updateLaunchCommand = updateLauncher.buildUpdaterLaunchCommand({
+  powerShellPath: 'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe',
+  updaterPath: 'C:\\Data Workbench\\scripts\\apply-update.ps1',
+  projectDir: 'C:\\Data Workbench',
+  port: '3000',
+  oldPid: '1234'
+});
+assert.match(updateLaunchCommand, /^start "" \/min/);
+assert.match(updateLaunchCommand, /-WindowStyle Hidden/);
+assert.match(updateLaunchCommand, /-File "C:\\Data Workbench\\scripts\\apply-update\.ps1"/);
+assert.match(updateLaunchCommand, /-ProjectDir "C:\\Data Workbench"/);
+assert.match(updateLaunchCommand, /-OldPid "1234"/);
+
+const failedUpdater = new EventEmitter();
+const failedUpdaterPromise = updateLauncher.waitForUpdaterStart(failedUpdater, 50);
+failedUpdater.emit('error', new Error('powershell missing'));
+await assert.rejects(failedUpdaterPromise, /powershell missing/);
 
 assert.deepEqual(envSettingsStore.validateEnvSettingsForTest({
   PORT: '3001',
