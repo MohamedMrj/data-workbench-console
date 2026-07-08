@@ -428,6 +428,36 @@ test('top-level ORDER BY with OFFSET but no FETCH gets a FETCH cap', () => {
   assert.equal(limited, 'SELECT * FROM dbo.T ORDER BY Id OFFSET 10 ROWS\nFETCH NEXT 25 ROWS ONLY;');
 });
 
+test('CTE query with user TOP is not wrapped in an invalid derived table', () => {
+  const limited = buildLimitedReadQuery(`WITH q AS (
+  SELECT Id FROM dbo.T
+)
+SELECT TOP (100) *
+FROM q
+WHERE Id > 0;`, 25);
+  assert.equal(limited, `WITH q AS (
+  SELECT Id FROM dbo.T
+)
+SELECT TOP (100) *
+FROM q
+WHERE Id > 0;`);
+  assert.ok(!limited.includes('__rowlimit_wrapper'));
+});
+
+test('CTE query without user TOP gets TOP on the final SELECT', () => {
+  const limited = buildLimitedReadQuery(`WITH q AS (
+  SELECT Id FROM dbo.T
+)
+SELECT *
+FROM q`, 25);
+  assert.equal(limited, `WITH q AS (
+  SELECT Id FROM dbo.T
+)
+SELECT TOP (25) *
+FROM q;`);
+  assert.ok(!limited.includes('__rowlimit_wrapper'));
+});
+
 test('ORDER BY inside OVER does not trigger top-level ORDER BY handling', () => {
   const limited = buildLimitedReadQuery('SELECT ROW_NUMBER() OVER (ORDER BY Id) AS rn FROM dbo.T', 25);
   assert.ok(limited.startsWith('SELECT TOP (25) * FROM ('));
