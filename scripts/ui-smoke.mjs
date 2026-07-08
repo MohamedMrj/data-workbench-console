@@ -511,6 +511,16 @@ function attachMocks(window) {
 
     if (String(url).includes('/api/query')) {
       const queryText = String(body.query || '');
+      if (/\bLIMIT\s+\d+\s*;?\s*$/i.test(queryText)) {
+        return new Response(JSON.stringify({
+          success: false,
+          error: "Incorrect syntax near 'LIMIT'.",
+          code: 'EREQUEST'
+        }), {
+          status: 400,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
       const statementCount = queryText.split(';').map((part) => part.trim()).filter(Boolean).length;
       if (statementCount > 1 && !body.confirmToken) {
         return new Response(JSON.stringify({
@@ -1284,6 +1294,14 @@ sqlWindow.document.getElementById('contextCopyFormattedJsonBtn').click();
 await flush();
 if (!sqlWindow.__lastClipboardText.includes('\n  "severity": "low"')) {
   throw new Error(`Formatted JSON copy did not write pretty JSON. Clipboard: ${sqlWindow.__lastClipboardText}`);
+}
+
+editor.value = 'SELECT * FROM dbo.Alerts LIMIT 100;';
+editor.dispatchEvent(new sqlWindow.Event('input', { bubbles: true }));
+sqlWindow.document.getElementById('runQueryBtn').click();
+await flush();
+if (!sqlWindow.document.querySelector('.result-error-card')?.textContent.includes('LIMIT is not valid')) {
+  throw new Error('LIMIT syntax errors should explain the T-SQL TOP/OFFSET alternative.');
 }
 
 editor.value = 'SELECT 1 AS a; SELECT 2 AS b;';

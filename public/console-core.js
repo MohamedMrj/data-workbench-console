@@ -5228,6 +5228,9 @@ window.createConsoleApp = function createConsoleApp() {
     if (/permission|not authorized|unauthorized|forbidden|denied/i.test(message)) {
       return 'The current account does not have enough permission for this action. Use a permitted account or ask the database owner to grant access.';
     }
+    if (/\bLIMIT\b/i.test(sql) && /syntax|parse|near|limit/i.test(message)) {
+      return 'This connection uses T-SQL, where LIMIT is not valid. Move the row limit to SELECT TOP (100) near the start of the query, or use ORDER BY ... OFFSET 0 ROWS FETCH NEXT 100 ROWS ONLY.';
+    }
     if (/syntax|parse|near/i.test(message)) {
       return 'SQL Server rejected the statement syntax. Review the highlighted SQL text and run a smaller statement if needed.';
     }
