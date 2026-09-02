@@ -3026,9 +3026,22 @@ html[data-ambient-motion='enabled'] .shell-orbit-b {
   cursor: not-allowed;
 }
 
-.result-edit-readonly-cell .result-edit-key-marker {
+.result-edit-key-marker {
   color: var(--accent);
   font-size: 0.82em;
+}
+
+.result-edit-key-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+}
+
+.result-edit-key-wrap .result-edit-input {
+  width: auto;
+  flex: 1 1 auto;
+  min-width: 60px;
 }
 
 .row-actions-col {
@@ -3039,6 +3052,17 @@ html[data-ambient-motion='enabled'] .shell-orbit-b {
 .row-actions-cell {
   text-align: center;
   white-space: nowrap;
+}
+
+.row-delete-btn {
+  border-color: color-mix(in srgb, var(--danger) 48%, var(--control-border));
+  color: var(--danger);
+}
+
+.row-delete-btn:hover:not(:disabled) {
+  border-color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 14%, var(--control-bg));
+  color: var(--danger);
 }
 
 tr.result-row-deleted {

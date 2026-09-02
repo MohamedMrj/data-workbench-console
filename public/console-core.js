@@ -5482,10 +5482,6 @@ window.createConsoleApp = function createConsoleApp() {
       return `<span class="result-edit-readonly-cell">${plainDisplay}</span>`;
     }
 
-    if (isKeyColumn) {
-      return `<span class="result-edit-readonly-cell" data-tooltip="This column identifies the row and can't be changed inline."><span class="result-edit-key-marker" aria-hidden="true">key</span>${plainDisplay}</span>`;
-    }
-
     const isEditableColumn = info.editableColumns.some((name) => name.toLowerCase() === column.toLowerCase());
     if (!isEditableColumn) {
       return `<span class="result-edit-readonly-cell" data-tooltip="This column's type isn't supported for inline editing.">${plainDisplay}</span>`;
@@ -5494,7 +5490,18 @@ window.createConsoleApp = function createConsoleApp() {
     const staged = state.results.pendingEdits[rowKey]?.[column];
     const hasPendingEdit = staged !== undefined;
     const displayValue = hasPendingEdit ? staged : (value === null || value === undefined ? '' : String(value));
-    return `<input type="text" class="result-edit-input${hasPendingEdit ? ' result-edit-dirty' : ''}" data-edit-row-key="${esc(rowKey)}" data-edit-column="${esc(column)}" value="${esc(displayValue)}" autoComplete="off" spellcheck="false" data-tooltip="Type NULL to set this value to NULL. Edits are staged until you click Save changes." />`;
+    // Key columns are editable too: the generated UPDATE always matches this
+    // row by its ORIGINAL key value (see buildMatchClause()) and sets the new
+    // one, so renaming a key never loses the row. The key badge stays as a
+    // hint that changing it renames what identifies the row, not a lock.
+    const tooltip = isKeyColumn
+      ? 'This column identifies the row. Editing it renames the row’s key — the row is still matched by its original value when you save.'
+      : 'Type NULL to set this value to NULL. Edits are staged until you click Save changes.';
+    const input = `<input type="text" class="result-edit-input${hasPendingEdit ? ' result-edit-dirty' : ''}" data-edit-row-key="${esc(rowKey)}" data-edit-column="${esc(column)}" value="${esc(displayValue)}" autoComplete="off" spellcheck="false" data-tooltip="${esc(tooltip)}" />`;
+    if (!isKeyColumn) {
+      return input;
+    }
+    return `<span class="result-edit-key-wrap"><span class="result-edit-key-marker" aria-hidden="true">key</span>${input}</span>`;
   }
 
   function formatResultValue(value, rowIndex, column, row) {
@@ -5880,7 +5887,7 @@ window.createConsoleApp = function createConsoleApp() {
       const rowKey = showRowActions ? resultRowEditKey(row) : '';
       const isDeleted = showRowActions && Boolean(state.results.deletedRowKeys?.[rowKey]);
       const actionsCell = showRowActions
-        ? `<td class="row-actions-cell"><button class="ghost-btn small" type="button" data-toggle-delete-row-key="${esc(rowKey)}" data-tooltip="${isDeleted ? 'Undo: keep this row.' : 'Stage this row for deletion. Nothing is removed until you click Save changes.'}">${isDeleted ? 'Restore' : 'Delete'}</button></td>`
+        ? `<td class="row-actions-cell"><button class="ghost-btn small${isDeleted ? '' : ' row-delete-btn'}" type="button" data-toggle-delete-row-key="${esc(rowKey)}" data-tooltip="${isDeleted ? 'Undo: keep this row.' : 'Stage this row for deletion. Nothing is removed until you click Save changes.'}">${isDeleted ? 'Restore' : 'Delete'}</button></td>`
         : '';
       return `<tr${isDeleted ? ' class="result-row-deleted"' : ''}><td class="row-index">${start + index + 1}</td>${actionsCell}${state.results.columns.map((column) => `<td title="${esc(row[column])}">${formatResultValue(row[column], start + index, column, row)}</td>`).join('')}</tr>`;
     }).join('')}</tbody></table>`;
@@ -6007,8 +6014,8 @@ window.createConsoleApp = function createConsoleApp() {
   }
 
   // Columns real (already-existing) rows can be edited in: every column the
-  // server returned except the key columns (identifying the row is not
-  // editable) and any type it flagged as unsuitable for a plain text input.
+  // server returned, including key columns, except any type it flagged as
+  // unsuitable for a plain text input.
   function editableColumnNames() {
     return state.results.editableInfo?.editableColumns || [];
   }

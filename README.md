@@ -754,14 +754,14 @@ Source support:
 
 Row matching:
 
-- when the table has a primary key or unique constraint, that key identifies each row —
-  those key column(s) render read-only in the grid (they identify the row rather than
-  describe it)
-- when it doesn't — common on Fabric Warehouse, which doesn't enforce these constraints —
-  the app falls back to matching a row by every visible, comparable column's original value
-  instead. A note above the grid explains this is active. Every column stays editable in
-  this mode, including ones used for matching, since editing uses the column's value
-  *before* the edit to find the row
+- when the table has a primary key or unique constraint, that key identifies each row. Key
+  column(s) stay editable — changing one renames what identifies the row, it's never
+  blocked — but keep a small "key" badge as a hint, since the generated `UPDATE` always
+  matches the row using the key's *original* value in the `WHERE` clause and writes the new
+  value in the `SET` clause, so a rename can never lose the row
+- when there's no primary key or unique constraint — common on Fabric Warehouse, which
+  doesn't enforce these constraints — the app falls back to matching a row by every visible,
+  comparable column's original value instead. A note above the grid explains this is active
 - either way, unsupported column types
   (`binary`/`varbinary`/`image`/`xml`/`geography`/`geometry`/`hierarchyid`/`sql_variant`/
   `timestamp`/`rowversion`) always render read-only and are never used to match a row
@@ -773,9 +773,10 @@ Row matching:
 
 Editing, once `Edit results` is on:
 
-- edit any non-key, editable-type cell directly in the grid
-- mark any row for deletion with a per-row `Delete` button (`Restore` undoes it); a
-  deleted row is shown struck through until you save or discard
+- edit any editable-type cell directly in the grid, including key columns
+- mark any row for deletion with a red per-row `Delete` button (`Restore` undoes it, and
+  switches back to neutral styling); a deleted row is shown struck through until you save
+  or discard
 - add new rows with `+ New row`; leave a field blank to use the column's database default
   or identity value
 - a pending-changes bar shows a live "N modified, M deleted, K new" breakdown and enables

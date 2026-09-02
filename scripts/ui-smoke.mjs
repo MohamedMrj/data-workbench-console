@@ -406,7 +406,7 @@ function attachMocks(window) {
           keyColumns: ['AlertId'],
           matchColumns: ['AlertId'],
           keyType: 'primary',
-          editableColumns: ['Status'],
+          editableColumns: ['AlertId', 'Status'],
           columns: [
             { name: 'AlertId', type: 'int', nullable: false },
             { name: 'Status', type: 'varchar', nullable: true }
@@ -1920,8 +1920,17 @@ if (autoHideWindow.localStorage.getItem('dataWorkbenchSidePanelVisibilityV1')) {
   if (editorWindow.document.querySelectorAll('[data-toggle-delete-row-key]').length !== 3) {
     throw new Error('Expected one delete button per loaded row.');
   }
-  if (editorWindow.document.querySelector('.result-edit-input[data-edit-column="AlertId"]')) {
-    throw new Error('The key column (AlertId) must never render as an editable input.');
+  if (!editorWindow.document.querySelector('[data-toggle-delete-row-key]').classList.contains('row-delete-btn')) {
+    throw new Error('The Delete button should carry the danger (red) styling class.');
+  }
+  // A key column is editable, not locked — renaming it is safe because the
+  // generated UPDATE always matches the row by its ORIGINAL key value — but it
+  // keeps a "key" badge as a hint that changing it renames the row's identity.
+  if (!editorWindow.document.querySelector('.result-edit-input[data-edit-column="AlertId"]')) {
+    throw new Error('The key column (AlertId) should still render as an editable input.');
+  }
+  if (!editorWindow.document.querySelector('.result-edit-key-wrap .result-edit-key-marker')) {
+    throw new Error('An editable key column should keep its "key" badge as a hint.');
   }
   if (editorWindow.document.querySelectorAll('.result-edit-input[data-edit-column="Status"]').length !== 3) {
     throw new Error('The editable Status column should render as an input for every row.');
@@ -1964,6 +1973,9 @@ if (autoHideWindow.localStorage.getItem('dataWorkbenchSidePanelVisibilityV1')) {
   await flush();
   if (editorWindow.document.querySelectorAll('tr.result-row-deleted').length !== 1) {
     throw new Error('Deleting a row should mark exactly one row as deleted.');
+  }
+  if (editorWindow.document.querySelectorAll('[data-toggle-delete-row-key]')[2].classList.contains('row-delete-btn')) {
+    throw new Error('Once a row is deleted its button becomes Restore and should drop the danger styling.');
   }
 
   // --- Modify row 1's Status cell.

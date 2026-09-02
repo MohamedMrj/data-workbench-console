@@ -18,10 +18,11 @@ grid, then save through the normal write-confirmation pipeline.
   `lib/server/sql-classifier.js` (`analyzeSingleTableSelect`) and `lib/server/sql-metadata.js`
   (`loadObjectKeyColumns`, `loadObjectKind`, `isInlineEditableColumnType`), exposed through a
   new `editability` action on `POST /api/object-insights`.
-- Full row CRUD in edit mode: edit any non-key, supported-type cell in place; mark rows for
-  deletion with a per-row `Delete`/`Restore` button; add new rows with `+ New row` (leave a
-  field blank to use the column's default or identity value). A pending-changes bar shows a
-  live modified/deleted/new breakdown and gates `Save changes` / `Discard edits`.
+- Full row CRUD in edit mode: edit any supported-type cell in place, including key columns
+  (a "key" badge marks them as a hint, not a lock — see Fixed below); mark rows for deletion
+  with a red per-row `Delete`/`Restore` button; add new rows with `+ New row` (leave a field
+  blank to use the column's default or identity value). A pending-changes bar shows a live
+  modified/deleted/new breakdown and gates `Save changes` / `Discard edits`.
 - `Save changes` builds one `DELETE`/`UPDATE`/`INSERT` per changed row and runs it through the
   exact same classify → preview → confirm → execute pipeline as every other write — no new
   execution path, no change to the confirmation or typed-acknowledgement rules. On success the
@@ -52,6 +53,17 @@ grid, then save through the normal write-confirmation pipeline.
   (never `NULL` by definition) but live for a `NULL`-able unique-constraint column, and now
   also for the all-columns fallback above. Fixed with a shared `buildMatchClause()` helper
   used everywhere a row is matched: the real statements and the new uniqueness check alike.
+
+- Key columns rendered read-only with no way to change their value. That was unnecessarily
+  strict: the generated `UPDATE` always matches a row by its key's *original* value in the
+  `WHERE` clause and writes the new value in the `SET` clause — the two are independent, so
+  renaming a key column can never lose the row. Key columns are now editable like any other
+  supported-type column, keeping only the "key" badge as a hint about what identifies the row.
+  `editableColumns` from `POST /api/object-insights` (`editability` action) now includes key
+  columns instead of excluding them.
+- The per-row `Delete` button used the same neutral styling as every other button, making a
+  destructive, if easily-undoable, action easy to miss. It's now styled red (a new
+  `.row-delete-btn` class); the `Restore` button a deleted row switches to stays neutral.
 
 - The unsaved-edits confirmation guard (before running a new query, switching, or closing a
   result tab) counted only staged cell edits, so a pending row deletion or a pending new row
