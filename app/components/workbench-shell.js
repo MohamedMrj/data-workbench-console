@@ -291,6 +291,7 @@ function ResultsCard() {
           <button id="increaseResultsTextBtn" className="ghost-btn small" type="button">A+</button>
           <input id="localResultsFilter" type="text" placeholder="Filter results..." className="ghost-btn small local-filter-input" autoComplete="off" />
           <button id="loadAuditBtn" className="ghost-btn small">Audit log</button>
+          <button id="toggleEditResultsBtn" className="ghost-btn small hidden" type="button" aria-pressed="false">Edit results</button>
           <button id="copyResultsBtn" className="ghost-btn small">Copy rows</button>
           <button id="exportCsvBtn" className="ghost-btn small">Export CSV</button>
           <button id="scrollResultsLeftBtn" className="ghost-btn small result-scroll-btn" type="button" data-tooltip="Scroll result columns left." aria-label="Scroll result columns left">← Columns</button>
@@ -303,6 +304,15 @@ function ResultsCard() {
       </div>
       <div id="resultTabs" className="result-tabs" aria-label="Result tabs" />
       <div id="resultsMeta" className="results-meta">No results yet.</div>
+      <div id="pendingEditsBar" className="pending-edits-bar hidden" aria-live="polite">
+        <span id="pendingEditsSummary">0 unsaved edits</span>
+        <div className="button-row wrap right">
+          <button id="addResultRowBtn" className="ghost-btn small" type="button">+ New row</button>
+          <button id="discardResultEditsBtn" className="ghost-btn small" type="button">Discard edits</button>
+          <button id="saveResultEditsBtn" className="primary-btn small" type="button">Save changes</button>
+        </div>
+      </div>
+      <div id="resultsNewRows" className="results-new-rows hidden" aria-live="polite" />
       <div id="resultsArtifacts" className="results-artifacts" />
       <div id="resultsPanel" className="results-panel empty-state">Run a query or procedure to see results.</div>
       <div id="resultsScrollDock" className="results-scroll-dock" aria-label="Result column navigation">
@@ -706,6 +716,8 @@ export default function WorkbenchShell({ pageMode = 'sql' }) {
           </div>
         </div>
       </div>
+
+      <div id="appToastContainer" className="app-toast-container" aria-live="polite" />
 
       <div id="shutdownOverlay" className="shutdown-overlay hidden" aria-hidden="true">
         <div className="shutdown-card">

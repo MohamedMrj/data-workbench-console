@@ -115,6 +115,10 @@ window.createConsoleApp = function createConsoleApp() {
     resultShapeBtn: 'Inspect result metadata for a query or selected object without changing data.',
     queryPlanBtn: 'Request an estimated query plan for read-only SQL when supported and permitted.',
     loadAuditBtn: 'Open audit filters and load matching audit events.',
+    toggleEditResultsBtn: 'Edit results in place: modify cells, delete rows, and add new rows. Changes save as UPDATE/DELETE/INSERT statements, previewed and confirmed like any other write. Only shown when the result maps to one table with a primary or unique key.',
+    addResultRowBtn: 'Add a blank row to insert. Leave a field empty to use the column\'s default or identity value.',
+    saveResultEditsBtn: 'Save all staged changes (modified, deleted, and new rows). Builds one DELETE/UPDATE/INSERT statement per row and runs them through the normal write preview and confirmation.',
+    discardResultEditsBtn: 'Discard all unsaved changes in this result set — modified cells, marked-for-deletion rows, and new rows — without saving anything.',
     localResultsFilter: 'Filter the currently loaded result rows in this browser.',
     copyResultsBtn: 'Copy the currently loaded result rows.',
     exportCsvBtn: 'Export the currently loaded result rows as CSV.',
@@ -312,8 +316,43 @@ window.createConsoleApp = function createConsoleApp() {
       sortDirection: 'asc',
       localFilter: '',
       visualKind: '',
-      visualObject: ''
+      visualObject: '',
+      // Row-editability state (results-grid inline editor). Deliberately not
+      // persisted across session restore or tab snapshots: normalizeResultsSnapshot
+      // below always resets these to the defaults here regardless of what a
+      // snapshot contains, because editability depends on a live catalog lookup
+      // that can go stale (schema changes) and is cheap to recompute on demand.
+      editable: false,
+      editableInfo: null,
+      editMode: false,
+      pendingEdits: {},
+      deletedRowKeys: {},
+      insertedRows: []
     };
+  }
+
+  // Total number of staged (unsaved) cell edits across all rows in the active
+  // result set.
+  // Counts every kind of unsaved result-grid change (modified cells, rows
+  // staged for deletion, new rows with at least one filled field) — not just
+  // staged cell edits — so a discard/navigate-away guard below never misses a
+  // pending delete or insert that has no accompanying cell edit.
+  function pendingResultEditCount() {
+    return pendingResultChangeSummary().total;
+  }
+
+  // Guards an action that would discard unsaved result edits (running a new
+  // query, switching or closing a result tab). Nothing has been written to the
+  // database yet at this point, so this is a data-loss guard for in-browser
+  // draft state, not a database safety check — matches the existing
+  // window.confirm pattern used by exitWorkbench()/updateWorkbench() rather
+  // than introducing a new confirmation UI.
+  function confirmDiscardPendingResultEdits(actionLabel) {
+    const editCount = pendingResultEditCount();
+    if (!editCount) {
+      return true;
+    }
+    return window.confirm(`Discard ${editCount} unsaved result edit${editCount === 1 ? '' : 's'} and ${actionLabel}?`);
   }
 
   function createResultTab(title = 'Results', results = defaultResultsState(), options = {}) {
@@ -339,6 +378,9 @@ window.createConsoleApp = function createConsoleApp() {
   }
 
   function activateResultTab(tabId) {
+    if (tabId !== state.activeResultTabId && !confirmDiscardPendingResultEdits('switch result tabs')) {
+      return;
+    }
     syncActiveResultsToTab();
     const tab = state.resultTabs.find((item) => item.id === tabId);
     if (!tab) {
@@ -352,6 +394,9 @@ window.createConsoleApp = function createConsoleApp() {
   }
 
   function closeResultTab(tabId) {
+    if (tabId === state.activeResultTabId && !confirmDiscardPendingResultEdits('close this result tab')) {
+      return;
+    }
     const index = state.resultTabs.findIndex((item) => item.id === tabId);
     if (index < 0) {
       return;
@@ -5172,7 +5217,18 @@ window.createConsoleApp = function createConsoleApp() {
       sortDirection: 'asc',
       localFilter: '',
       visualKind: meta.visualKind || '',
-      visualObject: meta.visualObject || meta.object || ''
+      visualObject: meta.visualObject || meta.object || '',
+      // A brand new result set never inherits the previous one's editability or
+      // in-progress edits (this spreads ...state.results above, unlike
+      // resetResultsForRun/renderResultError which rebuild from
+      // defaultResultsState() and get this for free). checkResultEditability()
+      // populates editable/editableInfo asynchronously right after a plain read.
+      editable: false,
+      editableInfo: null,
+      editMode: false,
+      pendingEdits: {},
+      deletedRowKeys: {},
+      insertedRows: []
     };
     // Keep the visible local-filter box in sync with the freshly-reset filter
     // state so stale filter text never lingers over a new result set.
@@ -5182,6 +5238,9 @@ window.createConsoleApp = function createConsoleApp() {
     upsertResultTab(meta.tabTitle || meta.message || meta.visualKind || 'Results', state.results, {
       key: meta.tabKey || ''
     });
+    renderEditResultsButton();
+    renderPendingEditsBar();
+    renderNewRows();
     renderResults();
     persistWorkspaceState(state.workspace);
   }
@@ -5218,6 +5277,9 @@ window.createConsoleApp = function createConsoleApp() {
     }
     updateResultScrollControls();
     renderResultTabs();
+    renderEditResultsButton();
+    renderPendingEditsBar();
+    renderNewRows();
   }
 
   function resultErrorHint(error, context = {}) {
@@ -5403,7 +5465,42 @@ window.createConsoleApp = function createConsoleApp() {
     });
   }
 
-  function formatResultValue(value, rowIndex, column) {
+  function inlineEditCellMarkup(value, column, row) {
+    const info = state.results.editableInfo;
+    const isKeyColumn = info.keyColumns.some((name) => name.toLowerCase() === column.toLowerCase());
+    const plainDisplay = value === null || value === undefined
+      ? '<span class="result-null">NULL</span>'
+      : esc(String(value));
+    const rowKey = resultRowEditKey(row);
+    const isDeleted = Boolean(state.results.deletedRowKeys?.[rowKey]);
+
+    if (isDeleted) {
+      // A row staged for deletion is shown but frozen: no point editing a
+      // value that is about to be removed, so every column in the row
+      // renders as plain (struck-through, via the row's own CSS class) text
+      // regardless of whether it would normally be a key or an input.
+      return `<span class="result-edit-readonly-cell">${plainDisplay}</span>`;
+    }
+
+    if (isKeyColumn) {
+      return `<span class="result-edit-readonly-cell" data-tooltip="This column identifies the row and can't be changed inline."><span class="result-edit-key-marker" aria-hidden="true">key</span>${plainDisplay}</span>`;
+    }
+
+    const isEditableColumn = info.editableColumns.some((name) => name.toLowerCase() === column.toLowerCase());
+    if (!isEditableColumn) {
+      return `<span class="result-edit-readonly-cell" data-tooltip="This column's type isn't supported for inline editing.">${plainDisplay}</span>`;
+    }
+
+    const staged = state.results.pendingEdits[rowKey]?.[column];
+    const hasPendingEdit = staged !== undefined;
+    const displayValue = hasPendingEdit ? staged : (value === null || value === undefined ? '' : String(value));
+    return `<input type="text" class="result-edit-input${hasPendingEdit ? ' result-edit-dirty' : ''}" data-edit-row-key="${esc(rowKey)}" data-edit-column="${esc(column)}" value="${esc(displayValue)}" autoComplete="off" spellcheck="false" data-tooltip="Type NULL to set this value to NULL. Edits are staged until you click Save changes." />`;
+  }
+
+  function formatResultValue(value, rowIndex, column, row) {
+    if (state.results.editMode && state.results.editableInfo) {
+      return inlineEditCellMarkup(value, column, row);
+    }
     if (value === null || value === undefined) return '<span class="result-null">NULL</span>';
     // An empty string is distinct from SQL NULL; render it as an empty cell to
     // match what copy/CSV export produce (NULL -> "NULL", "" -> "").
@@ -5711,6 +5808,7 @@ window.createConsoleApp = function createConsoleApp() {
   }
 
   function renderResults() {
+    renderNewRows();
     const panel = $('resultsPanel');
     const resultsCard = panel?.closest('.results-card');
     const rows = sortedRows();
@@ -5770,10 +5868,22 @@ window.createConsoleApp = function createConsoleApp() {
       return '';
     };
 
-    panel.innerHTML = `<table class="results-table"><colgroup><col class="row-index-col" />${state.results.columns.map((column) => {
+    // The row-actions column (Delete/Restore) only makes sense while actively
+    // editing an editable result — it disappears along with the rest of the
+    // editor chrome otherwise.
+    const showRowActions = Boolean(state.results.editMode && state.results.editable);
+
+    panel.innerHTML = `<table class="results-table"><colgroup><col class="row-index-col" />${showRowActions ? '<col class="row-actions-col" />' : ''}${state.results.columns.map((column) => {
       const width = Number(state.results.columnWidths[column]);
       return `<col data-column-width="${esc(column)}"${width ? ` style="width:${width}px;min-width:${width}px"` : ''} />`;
-    }).join('')}</colgroup><thead><tr><th class="row-index-head">#</th>${state.results.columns.map((column) => `<th><div class="results-header-cell"><button class="table-header-btn" data-sort="${esc(column)}" type="button">${esc(column)}${getColIcon(column)} ${state.results.sortColumn === column ? (state.results.sortDirection === 'asc' ? '↑' : '↓') : ''}</button><div class="column-resize-handle" data-resize-column="${esc(column)}" role="separator" aria-orientation="vertical" aria-label="Resize ${esc(column)} column"></div></div></th>`).join('')}</tr></thead><tbody>${visibleRows.map((row, index) => `<tr><td class="row-index">${start + index + 1}</td>${state.results.columns.map((column) => `<td title="${esc(row[column])}">${formatResultValue(row[column], start + index, column)}</td>`).join('')}</tr>`).join('')}</tbody></table>`;
+    }).join('')}</colgroup><thead><tr><th class="row-index-head">#</th>${showRowActions ? '<th class="row-actions-head"></th>' : ''}${state.results.columns.map((column) => `<th><div class="results-header-cell"><button class="table-header-btn" data-sort="${esc(column)}" type="button">${esc(column)}${getColIcon(column)} ${state.results.sortColumn === column ? (state.results.sortDirection === 'asc' ? '↑' : '↓') : ''}</button><div class="column-resize-handle" data-resize-column="${esc(column)}" role="separator" aria-orientation="vertical" aria-label="Resize ${esc(column)} column"></div></div></th>`).join('')}</tr></thead><tbody>${visibleRows.map((row, index) => {
+      const rowKey = showRowActions ? resultRowEditKey(row) : '';
+      const isDeleted = showRowActions && Boolean(state.results.deletedRowKeys?.[rowKey]);
+      const actionsCell = showRowActions
+        ? `<td class="row-actions-cell"><button class="ghost-btn small" type="button" data-toggle-delete-row-key="${esc(rowKey)}" data-tooltip="${isDeleted ? 'Undo: keep this row.' : 'Stage this row for deletion. Nothing is removed until you click Save changes.'}">${isDeleted ? 'Restore' : 'Delete'}</button></td>`
+        : '';
+      return `<tr${isDeleted ? ' class="result-row-deleted"' : ''}><td class="row-index">${start + index + 1}</td>${actionsCell}${state.results.columns.map((column) => `<td title="${esc(row[column])}">${formatResultValue(row[column], start + index, column, row)}</td>`).join('')}</tr>`;
+    }).join('')}</tbody></table>`;
     panel.querySelectorAll('[data-sort]').forEach((button) => {
       button.onclick = () => {
         const column = button.dataset.sort;
@@ -5789,6 +5899,7 @@ window.createConsoleApp = function createConsoleApp() {
     bindResultColumnResizers(panel);
     bindResultCellToggles(panel);
     bindResultsPanelScrollAssist(panel);
+    bindResultEditInputs(panel);
 
     panel.querySelectorAll('tbody tr').forEach((tr, index) => {
       tr.addEventListener('contextmenu', (e) => {
@@ -5847,6 +5958,518 @@ window.createConsoleApp = function createConsoleApp() {
     }
     return String(value);
   }
+
+  // ─── Results-grid inline editor ───────────────────────────────────────────
+  //
+  // Lets an operator modify, insert, and delete rows directly in a loaded
+  // result set and save the changes. Only offered when the server's advisory
+  // /api/object-insights {action:'editability'} check says the result maps
+  // 1:1 to real rows of one table with a primary/unique key (see
+  // lib/server/sql-classifier.js analyzeSingleTableSelect and
+  // lib/server/db-interface.js). Saving builds one ordinary INSERT / UPDATE
+  // ... WHERE <key> / DELETE ... WHERE <key> statement per changed row and
+  // sends it through the exact same /api/query classify -> preview ->
+  // confirm -> execute path as any hand-written write in SQL Studio — this
+  // feature adds no new execution or bypass logic, only a new way to compose
+  // the SQL text. After a confirmed save, the original SELECT is re-run
+  // automatically so the grid reflects the saved data (server-computed
+  // identity values, defaults, and trigger effects included) rather than a
+  // client-side guess, and edit mode stays on so the operator can keep going.
+
+  // Bracket-quote every part of a schema.object name using the existing
+  // bracket/dot-aware reader, not a naive split('.') — the server can compose
+  // a bracket-quoted fullName for an object whose real name contains a
+  // literal '.' (e.g. dbo.[My.Table]), and a plain split would misread the
+  // dot inside the brackets as a part separator.
+  function quoteFullObjectName(fullName) {
+    const parts = readSqlObjectName(String(fullName || ''), 0);
+    return parts.length ? parts.map(bid).join('.') : bid(fullName);
+  }
+
+  // A stable identifier for a row, built from its key column values, so
+  // staged edits and cell rendering survive re-sorting, re-paging, and local
+  // filtering (all of which reorder or hide rows without reloading them).
+  // Joined with an ASCII control character (never legitimate cell text)
+  // rather than '' so a composite key's parts cannot concatenate
+  // ambiguously — e.g. ('1','23') and ('12','3') would otherwise both
+  // produce the same key.
+  function resultRowEditKey(row) {
+    const info = state.results.editableInfo;
+    if (!info || !row) {
+      return '';
+    }
+    return info.keyColumns.map((column) => serializeCellValueForCopy(row?.[column])).join(String.fromCharCode(1));
+  }
+
+  function findOriginalRowByKey(rowKey) {
+    return (state.results.rows || []).find((row) => resultRowEditKey(row) === rowKey);
+  }
+
+  // Columns real (already-existing) rows can be edited in: every column the
+  // server returned except the key columns (identifying the row is not
+  // editable) and any type it flagged as unsuitable for a plain text input.
+  function editableColumnNames() {
+    return state.results.editableInfo?.editableColumns || [];
+  }
+
+  // Columns a *new* row can be given a value for: the same type-based
+  // exclusion as editableColumnNames(), but this time including the key
+  // columns — a natural (non-identity) key must be supplied on insert, while
+  // an identity/auto-generated key is simply left blank, matching the
+  // "blank column -> not included in the statement, so the database default
+  // or identity applies" convention below.
+  function insertableColumnNames() {
+    const info = state.results.editableInfo;
+    if (!info) {
+      return [];
+    }
+    const allowed = new Set([...(info.editableColumns || []), ...(info.keyColumns || [])]);
+    return (info.columns || []).map((column) => column.name).filter((name) => allowed.has(name));
+  }
+
+  function renderEditResultsButton() {
+    const button = $('toggleEditResultsBtn');
+    if (!button) {
+      return;
+    }
+    button.classList.toggle('hidden', !state.results.editable);
+    if (!state.results.editable && state.results.editMode) {
+      state.results.editMode = false;
+    }
+    button.setAttribute('aria-pressed', state.results.editMode ? 'true' : 'false');
+    button.textContent = state.results.editMode ? 'Exit edit mode' : 'Edit results';
+  }
+
+  // Single source of truth for "what would Save actually do right now" — used
+  // both to render the pending-edits summary and to build the save SQL, so
+  // the displayed count can never drift from what gets executed. A deleted
+  // row's staged cell edits are dropped (deleting takes precedence), and a
+  // new row only counts once it has at least one non-blank field.
+  function pendingResultChangeSummary() {
+    const pendingEdits = state.results.pendingEdits || {};
+    const deletedRowKeys = state.results.deletedRowKeys || {};
+    const insertedRows = state.results.insertedRows || [];
+
+    const updateRowKeys = Object.keys(pendingEdits).filter((rowKey) => (
+      !deletedRowKeys[rowKey] && Object.keys(pendingEdits[rowKey] || {}).length
+    ));
+    const deleteRowKeys = Object.keys(deletedRowKeys);
+    const insertRows = insertedRows.filter((row) => (
+      Object.values(row.values || {}).some((value) => String(value ?? '').trim() !== '')
+    ));
+
+    return {
+      updateRowKeys,
+      deleteRowKeys,
+      insertRows,
+      updateCount: updateRowKeys.length,
+      deleteCount: deleteRowKeys.length,
+      insertCount: insertRows.length,
+      total: updateRowKeys.length + deleteRowKeys.length + insertRows.length
+    };
+  }
+
+  function renderPendingEditsBar() {
+    const bar = $('pendingEditsBar');
+    const summaryEl = $('pendingEditsSummary');
+    const insertButton = $('addResultRowBtn');
+    if (!bar || !summaryEl) {
+      return;
+    }
+    if (!state.results.editMode) {
+      bar.classList.add('hidden');
+      return;
+    }
+    bar.classList.remove('hidden');
+    if (insertButton) {
+      insertButton.disabled = !state.results.editable;
+    }
+
+    const summary = pendingResultChangeSummary();
+    if (!summary.total) {
+      summaryEl.textContent = 'No unsaved changes';
+    } else {
+      const parts = [];
+      if (summary.updateCount) parts.push(`${summary.updateCount} modified`);
+      if (summary.deleteCount) parts.push(`${summary.deleteCount} deleted`);
+      if (summary.insertCount) parts.push(`${summary.insertCount} new`);
+      summaryEl.textContent = `${summary.total} unsaved change${summary.total === 1 ? '' : 's'} (${parts.join(', ')})`;
+    }
+
+    const saveButton = $('saveResultEditsBtn');
+    const discardButton = $('discardResultEditsBtn');
+    if (saveButton) saveButton.disabled = !summary.total;
+    if (discardButton) discardButton.disabled = !summary.total && !(state.results.insertedRows || []).length;
+  }
+
+  // Stage or clear one cell's edit without re-rendering the results table —
+  // a full renderResults() on every keystroke would rebuild the input and
+  // lose focus/cursor position while typing.
+  function stageResultEdit(input) {
+    const rowKey = input.dataset.editRowKey;
+    const column = input.dataset.editColumn;
+    if (state.results.deletedRowKeys?.[rowKey]) {
+      return;
+    }
+    const originalRow = findOriginalRowByKey(rowKey);
+    const originalValue = originalRow ? originalRow[column] : undefined;
+    const originalText = originalValue === null || originalValue === undefined ? '' : String(originalValue);
+
+    if (input.value === originalText) {
+      delete state.results.pendingEdits[rowKey]?.[column];
+      if (state.results.pendingEdits[rowKey] && !Object.keys(state.results.pendingEdits[rowKey]).length) {
+        delete state.results.pendingEdits[rowKey];
+      }
+      input.classList.remove('result-edit-dirty');
+    } else {
+      state.results.pendingEdits[rowKey] = state.results.pendingEdits[rowKey] || {};
+      state.results.pendingEdits[rowKey][column] = input.value;
+      input.classList.add('result-edit-dirty');
+    }
+    renderPendingEditsBar();
+  }
+
+  function bindResultEditInputs(panel) {
+    panel.querySelectorAll('.result-edit-input').forEach((input) => {
+      input.oninput = () => stageResultEdit(input);
+    });
+    panel.querySelectorAll('[data-toggle-delete-row-key]').forEach((button) => {
+      button.onclick = () => toggleResultRowDeleted(button.dataset.toggleDeleteRowKey);
+    });
+  }
+
+  // Marking a row deleted is a visual/staged toggle only — nothing is sent to
+  // the database until Save, and it can be undone freely before that.
+  function toggleResultRowDeleted(rowKey) {
+    state.results.deletedRowKeys = state.results.deletedRowKeys || {};
+    if (state.results.deletedRowKeys[rowKey]) {
+      delete state.results.deletedRowKeys[rowKey];
+    } else {
+      state.results.deletedRowKeys[rowKey] = true;
+    }
+    renderPendingEditsBar();
+    renderResults();
+  }
+
+  function addNewResultRow() {
+    if (!state.results.editable || !state.results.editMode) {
+      return;
+    }
+    state.results.insertedRows = state.results.insertedRows || [];
+    state.results.insertedRows.push({
+      clientId: `new_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`,
+      values: {}
+    });
+    renderNewRows();
+    renderPendingEditsBar();
+  }
+
+  function removeNewResultRow(clientId) {
+    state.results.insertedRows = (state.results.insertedRows || []).filter((row) => row.clientId !== clientId);
+    renderNewRows();
+    renderPendingEditsBar();
+  }
+
+  function renderNewRows() {
+    const container = $('resultsNewRows');
+    if (!container) {
+      return;
+    }
+    const insertedRows = state.results.insertedRows || [];
+    if (!state.results.editMode || !state.results.editable || !insertedRows.length) {
+      container.classList.add('hidden');
+      container.innerHTML = '';
+      return;
+    }
+
+    container.classList.remove('hidden');
+    const columns = insertableColumnNames();
+    container.innerHTML = insertedRows.map((row) => `
+      <div class="results-new-row" data-new-row-id="${esc(row.clientId)}">
+        <div class="results-new-row-fields">
+          ${columns.map((column) => `<label class="field compact-field"><span>${esc(column)}</span><input type="text" class="result-edit-input" data-new-row-column="${esc(column)}" data-new-row-id="${esc(row.clientId)}" value="${esc(row.values[column] || '')}" autoComplete="off" spellcheck="false" placeholder="Blank = default/auto" data-tooltip="Leave blank to use the column's database default or identity value." /></label>`).join('')}
+        </div>
+        <button class="ghost-btn small" data-remove-new-row="${esc(row.clientId)}" type="button">Remove</button>
+      </div>
+    `).join('');
+
+    container.querySelectorAll('[data-new-row-column]').forEach((input) => {
+      input.oninput = () => {
+        const row = insertedRows.find((item) => item.clientId === input.dataset.newRowId);
+        if (row) {
+          row.values[input.dataset.newRowColumn] = input.value;
+        }
+        renderPendingEditsBar();
+      };
+    });
+    container.querySelectorAll('[data-remove-new-row]').forEach((button) => {
+      button.onclick = () => removeNewResultRow(button.dataset.removeNewRow);
+    });
+  }
+
+  const NUMERIC_RESULT_EDIT_TYPES = new Set(['tinyint', 'smallint', 'int', 'bigint', 'decimal', 'numeric', 'float', 'real', 'money', 'smallmoney']);
+
+  // Encode one edited cell's raw text into a SQL literal for the generated
+  // statement. Deliberately does not reuse quoteValue()'s "looks numeric ->
+  // emit unquoted" heuristic: that would send a zero-padded value in a text
+  // column (e.g. a '02139' code) as the bare number 2139, silently losing the
+  // leading zero. With the column's real type known here, only genuinely
+  // numeric/bit columns are ever emitted unquoted; everything else is a
+  // quoted string literal and SQL Server converts it.
+  function encodeResultEditValue(rawText, columnType) {
+    const text = String(rawText ?? '');
+    const trimmed = text.trim();
+    if (/^null$/i.test(trimmed)) {
+      return 'NULL';
+    }
+    const type = String(columnType || '').toLowerCase();
+    if (type === 'bit') {
+      if (/^(1|true|yes|y)$/i.test(trimmed)) return '1';
+      if (/^(0|false|no|n)$/i.test(trimmed)) return '0';
+    }
+    if (NUMERIC_RESULT_EDIT_TYPES.has(type) && /^-?\d+(\.\d+)?$/.test(trimmed)) {
+      return trimmed;
+    }
+    return `'${text.replace(/'/g, "''")}'`;
+  }
+
+  // Runs after every successful direct SELECT (never after procedure runs or
+  // metadata actions) to decide whether to show the Edit results button.
+  // Fire-and-forget and non-blocking: results render immediately, and the
+  // button appears once this resolves. A stale response landing after the
+  // user has already started a different result set is discarded via the
+  // targetResults reference check, since setResults() always replaces
+  // state.results with a new object. Also called (awaited) right after a
+  // save to refresh the editability info against the just-saved data.
+  async function checkResultEditability(query) {
+    const targetResults = state.results;
+    try {
+      const payload = await api('/api/object-insights', {
+        method: 'POST',
+        data: requestConnection({ action: 'editability', query })
+      });
+      if (state.results !== targetResults) {
+        return;
+      }
+      state.results.editable = Boolean(payload.editable);
+      state.results.editableInfo = payload.editable ? {
+        object: payload.object,
+        keyColumns: payload.keyColumns || [],
+        editableColumns: payload.editableColumns || [],
+        columns: payload.columns || [],
+        query
+      } : null;
+    } catch {
+      // Advisory only: a failed check (network hiccup, unsupported source)
+      // just means no Edit button, not an error worth surfacing.
+      if (state.results !== targetResults) {
+        return;
+      }
+      state.results.editable = false;
+      state.results.editableInfo = null;
+    }
+    renderEditResultsButton();
+  }
+
+  function clearPendingResultChanges() {
+    state.results.pendingEdits = {};
+    state.results.deletedRowKeys = {};
+    state.results.insertedRows = [];
+  }
+
+  function toggleEditResultsMode() {
+    if (!state.results.editable) {
+      return;
+    }
+    if (state.results.editMode && !confirmDiscardPendingResultEdits('exit edit mode')) {
+      return;
+    }
+    if (state.results.editMode) {
+      clearPendingResultChanges();
+    }
+    state.results.editMode = !state.results.editMode;
+    renderEditResultsButton();
+    renderPendingEditsBar();
+    renderNewRows();
+    renderResults();
+  }
+
+  function discardResultEdits() {
+    if (!pendingResultChangeSummary().total) {
+      return;
+    }
+    clearPendingResultChanges();
+    renderPendingEditsBar();
+    renderNewRows();
+    renderResults();
+    setStatus('neutral', 'Discarded unsaved result changes.');
+  }
+
+  // A small, self-dismissing notification for "your save went through" —
+  // separate from the persistent status bar/badge, which stays until the
+  // next action. Falls back to the status bar if the toast container isn't
+  // present for some reason (defensive; it is always in the shell).
+  function showToast(message, kind = 'success', durationMs = 5000) {
+    const container = $('appToastContainer');
+    if (!container) {
+      setStatus(kind === 'error' ? 'error' : 'success', message);
+      return;
+    }
+    const toast = document.createElement('div');
+    toast.className = `app-toast app-toast-${kind}`;
+    toast.setAttribute('role', 'status');
+    toast.textContent = message;
+    container.appendChild(toast);
+    // Force a layout pass so the 'visible' class addition below transitions
+    // in instead of the toast appearing already at its final state.
+    void toast.offsetWidth;
+    toast.classList.add('visible');
+    window.setTimeout(() => {
+      toast.classList.remove('visible');
+      window.setTimeout(() => toast.remove(), 300);
+    }, durationMs);
+  }
+
+  // Re-runs the exact SELECT that produced the just-saved grid, so the
+  // operator sees real, server-computed data afterward (identity values,
+  // defaults, computed columns, trigger effects) instead of a client-side
+  // guess at what changed. Re-enters edit mode automatically so a save
+  // doesn't interrupt an ongoing editing session.
+  async function refreshEditableResultsAfterSave(query, objectName) {
+    if (!query) {
+      return;
+    }
+    try {
+      const payload = await api('/api/query', { method: 'POST', data: requestConnection({ query }) });
+      if (payload.requiresConfirmation) {
+        return;
+      }
+      setResults(payload.columns || [], payload.rows || [], {
+        totalRows: Number(payload.totalRows ?? (payload.rows || []).length),
+        truncated: Boolean(payload.truncated),
+        visualKind: 'query',
+        tabTitle: objectName ? `Query ${objectName}` : 'Query result',
+        tabKey: ''
+      });
+      await checkResultEditability(query);
+      if (state.results.editable) {
+        state.results.editMode = true;
+      }
+      renderEditResultsButton();
+      renderPendingEditsBar();
+      renderNewRows();
+      renderResults();
+    } catch (error) {
+      setStatus('error', `Saved, but could not refresh the grid: ${error.message}`);
+    }
+  }
+
+  async function saveResultEdits() {
+    const info = state.results.editableInfo;
+    if (!info) {
+      setStatus('error', 'No unsaved changes to save.');
+      return;
+    }
+    if (!ensureReadyConnection('saving result changes')) {
+      return;
+    }
+
+    const summary = pendingResultChangeSummary();
+    if (!summary.total) {
+      setStatus('error', 'No unsaved changes to save.');
+      return;
+    }
+
+    const columnTypeByName = new Map((info.columns || []).map((column) => [String(column.name).toLowerCase(), column.type]));
+    const quotedObject = quoteFullObjectName(info.object);
+    const statements = [];
+
+    // Deletes first: a row marked deleted never also gets an UPDATE, and
+    // pendingResultChangeSummary already excludes it from updateRowKeys.
+    for (const rowKey of summary.deleteRowKeys) {
+      const originalRow = findOriginalRowByKey(rowKey);
+      if (!originalRow) {
+        setStatus('error', 'One or more rows marked for deletion are no longer in the loaded results. Re-run the query and try again.');
+        return;
+      }
+      const whereClause = info.keyColumns
+        .map((keyColumn) => `${bid(keyColumn)} = ${encodeResultEditValue(serializeCellValueForCopy(originalRow[keyColumn]), columnTypeByName.get(keyColumn.toLowerCase()))}`)
+        .join(' AND ');
+      statements.push(`DELETE FROM ${quotedObject}\nWHERE ${whereClause};`);
+    }
+
+    for (const rowKey of summary.updateRowKeys) {
+      const originalRow = findOriginalRowByKey(rowKey);
+      if (!originalRow) {
+        setStatus('error', 'One or more edited rows are no longer in the loaded results. Re-run the query and edit again.');
+        return;
+      }
+      const edits = state.results.pendingEdits[rowKey];
+      const setClause = Object.keys(edits)
+        .map((column) => `${bid(column)} = ${encodeResultEditValue(edits[column], columnTypeByName.get(column.toLowerCase()))}`)
+        .join(',\n    ');
+      const whereClause = info.keyColumns
+        .map((keyColumn) => `${bid(keyColumn)} = ${encodeResultEditValue(serializeCellValueForCopy(originalRow[keyColumn]), columnTypeByName.get(keyColumn.toLowerCase()))}`)
+        .join(' AND ');
+      statements.push(`UPDATE ${quotedObject}\nSET ${setClause}\nWHERE ${whereClause};`);
+    }
+
+    for (const newRow of summary.insertRows) {
+      const filledColumns = Object.keys(newRow.values || {}).filter((column) => String(newRow.values[column] ?? '').trim() !== '');
+      const columnList = filledColumns.map(bid).join(', ');
+      const valueList = filledColumns.map((column) => encodeResultEditValue(newRow.values[column], columnTypeByName.get(column.toLowerCase()))).join(', ');
+      statements.push(`INSERT INTO ${quotedObject} (${columnList})\nVALUES (${valueList});`);
+    }
+
+    const combinedQuery = statements.join('\n');
+    const changeLabel = `${summary.total} change${summary.total === 1 ? '' : 's'}`;
+    const breakdown = [
+      summary.deleteCount && `${summary.deleteCount} deleted`,
+      summary.updateCount && `${summary.updateCount} modified`,
+      summary.insertCount && `${summary.insertCount} new`
+    ].filter(Boolean).join(', ');
+
+    setStatus('loading', `Preparing to save ${changeLabel}...`);
+    resetResultsForRun(`Preparing to save ${changeLabel}...`);
+
+    try {
+      const payload = await api('/api/query', { method: 'POST', data: requestConnection({ query: combinedQuery }) });
+      if (!payload.requiresConfirmation) {
+        renderResultError(new Error('Unexpected response from server.'), { title: 'Save failed', operation: 'query', query: combinedQuery });
+        return;
+      }
+      setResults([], [], {
+        rowsAffected: Number(payload.rowsAffected || 0),
+        tabTitle: `Save ${changeLabel} to ${info.object}`,
+        tabKey: ''
+      });
+      setStatus('success', payload.message);
+      openConfirm({
+        type: 'resultEdit',
+        title: summary.total > 1 ? `Confirm ${changeLabel}` : 'Confirm row change',
+        message: payload.message,
+        confirmLabel: summary.total > 1 ? 'Save changes' : 'Save change',
+        expectedText: payload.expectedText || '',
+        metrics: [
+          { label: 'Action', value: payload.action },
+          { label: 'Changes', value: summary.total },
+          { label: 'Acknowledgement', value: payload.expectedText ? 'Required' : 'Button only' }
+        ],
+        review: [
+          { label: 'Object', value: info.object },
+          { label: 'Breakdown', value: breakdown },
+          { label: 'Execution path', value: '/api/query confirmation token' }
+        ],
+        request: { query: combinedQuery, confirmToken: payload.confirmationToken },
+        refreshQuery: info.query,
+        editedObject: info.object,
+        changeCount: summary.total
+      });
+    } catch (error) {
+      renderResultError(error, { title: 'Save failed', operation: 'query', query: combinedQuery });
+    }
+  }
+
 
   function copyText(text, message) {
     if (!text) {
@@ -6297,6 +6920,9 @@ window.createConsoleApp = function createConsoleApp() {
   }
 
   async function runQuery() {
+    if (!confirmDiscardPendingResultEdits('run a new query')) {
+      return;
+    }
     if (!ensureReadyConnection('running the query')) {
       return;
     }
@@ -6361,6 +6987,12 @@ window.createConsoleApp = function createConsoleApp() {
       const rowCount = Array.isArray(payload.rows) ? payload.rows.length : 0;
       const affected = Number(payload.rowsAffected || 0);
       setStatus('success', rowCount ? `Returned ${rowCount} rows${payload.truncated ? ' (truncated in app)' : ''}.` : `Completed. ${affected ? `${affected} row${affected === 1 ? '' : 's'} affected.` : 'No rows returned.'}`);
+      if (rowCount > 0) {
+        // Advisory, fire-and-forget: decides whether to show the Edit results
+        // button. See checkResultEditability's own comment for the staleness
+        // guard against a slower response landing after a newer run.
+        checkResultEditability(query);
+      }
     } catch (error) {
       renderQueryError(error, query);
     }
@@ -6420,8 +7052,17 @@ window.createConsoleApp = function createConsoleApp() {
   async function confirmPendingAction() {
     if (!state.pendingAction) return;
     const isProcedure = state.pendingAction.type === 'procedure';
-    setStatus('loading', isProcedure ? 'Executing stored procedure...' : 'Executing write...');
-    resetResultsForRun(isProcedure ? 'Executing stored procedure...' : 'Executing write...');
+    const isResultEdit = state.pendingAction.type === 'resultEdit';
+    setStatus('loading', isProcedure ? 'Executing stored procedure...' : (isResultEdit ? 'Saving changes...' : 'Executing write...'));
+    // Result-edit saves deliberately skip resetResultsForRun(): it wipes
+    // state.results (including pendingEdits/deletedRowKeys/insertedRows) back
+    // to defaults, which would discard the very edits being saved before we
+    // know whether the save succeeded. On success refreshEditableResultsAfterSave
+    // rebuilds the grid from the server; on failure the grid and pending edits
+    // are left exactly as the user had them.
+    if (!isResultEdit) {
+      resetResultsForRun(isProcedure ? 'Executing stored procedure...' : 'Executing write...');
+    }
     try {
       if (isProcedure) {
         const executedRequest = { ...state.pendingAction.request };
@@ -6446,6 +7087,16 @@ window.createConsoleApp = function createConsoleApp() {
       const acknowledgement = $('secondConfirmInput')?.value || '';
       const payload = await api('/api/query', { method: 'POST', data: requestConnection({ ...state.pendingAction.request, acknowledgement }) });
       const executedQuery = state.pendingAction.request.query;
+
+      if (isResultEdit) {
+        const { refreshQuery, editedObject, changeCount } = state.pendingAction;
+        closeConfirm();
+        addQueryHistory(executedQuery);
+        showToast(`Saved ${changeCount} change${changeCount === 1 ? '' : 's'} to ${editedObject}.`, 'success');
+        await refreshEditableResultsAfterSave(refreshQuery, editedObject);
+        return;
+      }
+
       closeConfirm();
       setResults(payload.columns || [], payload.rows || [], {
         rowsAffected: Number(payload.rowsAffected || 0),
@@ -6460,6 +7111,16 @@ window.createConsoleApp = function createConsoleApp() {
     } catch (error) {
       const failedAction = state.pendingAction;
       closeConfirm();
+      if (isResultEdit) {
+        // Deliberately do not call renderResultError()/resetResultsForRun(): both
+        // wipe state.results back to defaults, which would silently discard the
+        // pending edits this catch block is telling the user are still pending.
+        // The results grid and its pendingEdits/deletedRowKeys/insertedRows are
+        // left exactly as the user had them so they can retry or discard.
+        setStatus('error', error?.message ? `Save failed: ${error.message}` : 'Save failed.');
+        showToast('Save failed. Your edits are still pending.', 'error');
+        return;
+      }
       renderResultError(error, {
         title: isProcedure ? 'Procedure execution failed' : 'Write execution failed',
         operation: isProcedure ? 'procedure execution' : 'write execution',
@@ -6769,6 +7430,18 @@ window.createConsoleApp = function createConsoleApp() {
     }
     if ($('runProcedureScriptBtn')) {
       $('runProcedureScriptBtn').onclick = () => runProcedureScript().catch((error) => setStatus('error', error.message));
+    }
+    if ($('toggleEditResultsBtn')) {
+      $('toggleEditResultsBtn').onclick = toggleEditResultsMode;
+    }
+    if ($('saveResultEditsBtn')) {
+      $('saveResultEditsBtn').onclick = () => saveResultEdits().catch((error) => setStatus('error', error.message));
+    }
+    if ($('discardResultEditsBtn')) {
+      $('discardResultEditsBtn').onclick = discardResultEdits;
+    }
+    if ($('addResultRowBtn')) {
+      $('addResultRowBtn').onclick = addNewResultRow;
     }
     $('copyResultsBtn').onclick = copyResults;
     $('decreaseResultsTextBtn').onclick = () => changeResultsTextSize(-0.04);

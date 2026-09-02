@@ -6,7 +6,7 @@ Production-safe internal SQL workbench for Microsoft Fabric SQL endpoints, Fabri
 
 Data Workbench Console is built for controlled operational work: browse metadata, generate SQL, run read queries, preview writes before execution, run stored procedures from a dedicated flow, and keep an audit trail of important actions.
 
-Current app version: `1.4.26`. See [CHANGELOG.md](CHANGELOG.md) for release notes.
+Current app version: `1.4.27`. See [CHANGELOG.md](CHANGELOG.md) for release notes.
 
 <p>
   <img alt="Next.js" src="https://img.shields.io/badge/Next.js-15-111827?style=for-the-badge&logo=nextdotjs" />
@@ -735,6 +735,47 @@ Result tab behavior:
 - metadata actions for the same object can reuse a named tab
 - tabs are capped at five to avoid unbounded browser memory growth
 - the active tab is restored during the same browser session when the saved result set is small enough for session storage
+
+### Live Results Editor
+
+An `Edit results` button appears above a result set when it qualifies: a plain
+single-table `SELECT` (no `JOIN`, `UNION`, `GROUP BY`, subquery source, or aggregate) against
+an object that has a primary key or unique key the server can discover. The button stays
+hidden for anything else — multi-table results, DDL/DML output, procedure output, and any
+source that can't support row identification.
+
+Source support:
+
+| Source | Editable? | Why |
+| --- | --- | --- |
+| SQL Server | Yes | Full DML support and standard catalog metadata. |
+| Fabric SQL (Warehouse) | Yes | Full DML support and standard catalog metadata. |
+| Fabric Lakehouse (SQL analytics endpoint) | No | Microsoft's SQL analytics endpoint is read-only; `INSERT`/`UPDATE`/`DELETE` are rejected by the endpoint itself, so the button never appears for it. |
+
+Editing, once `Edit results` is on:
+
+- edit any non-key, editable-type cell directly in the grid; key columns and unsupported
+  types (`binary`/`varbinary`/`image`/`xml`/`geography`/`geometry`/`hierarchyid`/`sql_variant`/
+  `timestamp`/`rowversion`) render read-only
+- mark any row for deletion with a per-row `Delete` button (`Restore` undoes it); a
+  deleted row is shown struck through until you save or discard
+- add new rows with `+ New row`; leave a field blank to use the column's database default
+  or identity value
+- a pending-changes bar shows a live "N modified, M deleted, K new" breakdown and enables
+  `Save changes` / `Discard edits` only when there is something to save or discard
+- switching result tabs, closing a result tab, or running a new query while edits are
+  pending asks for confirmation first
+
+Saving:
+
+- `Save changes` builds one `DELETE`/`UPDATE`/`INSERT` statement per changed row and runs it
+  through the exact same classify → preview → confirm → execute pipeline as any other write —
+  single-row changes get a one-click preview, multiple statements require the same typed
+  `RUN BATCH` acknowledgement as any other multi-statement batch
+- on success the grid re-runs the original query and reloads in place, still in edit mode,
+  so you see your saved data rather than a generic write-result screen
+- a small toast notification confirms the save and its row count, then disappears on its own
+  after five seconds
 
 ### Themes
 

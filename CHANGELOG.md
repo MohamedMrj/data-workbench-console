@@ -5,6 +5,54 @@ All notable Data Workbench Console changes are tracked here.
 The in-app version is read from `package.json` and exposed through `/api/version`
 together with the current git commit and build information.
 
+## 1.4.27 - 2026-09-02
+
+A live editor for query results: modify, delete, and insert rows directly in the results
+grid, then save through the normal write-confirmation pipeline.
+
+### Added
+
+- `Edit results` button above a result set, shown only when it can actually be saved: a
+  plain single-table `SELECT` (no `JOIN`, `UNION`, `GROUP BY`, subquery source, or aggregate)
+  against an object with a discoverable primary or unique key. New server-side detection in
+  `lib/server/sql-classifier.js` (`analyzeSingleTableSelect`) and `lib/server/sql-metadata.js`
+  (`loadObjectKeyColumns`, `loadObjectKind`, `isInlineEditableColumnType`), exposed through a
+  new `editability` action on `POST /api/object-insights`.
+- Full row CRUD in edit mode: edit any non-key, supported-type cell in place; mark rows for
+  deletion with a per-row `Delete`/`Restore` button; add new rows with `+ New row` (leave a
+  field blank to use the column's default or identity value). A pending-changes bar shows a
+  live modified/deleted/new breakdown and gates `Save changes` / `Discard edits`.
+- `Save changes` builds one `DELETE`/`UPDATE`/`INSERT` per changed row and runs it through the
+  exact same classify → preview → confirm → execute pipeline as every other write — no new
+  execution path, no change to the confirmation or typed-acknowledgement rules. On success the
+  grid re-runs the original query and reloads in place, still in edit mode, instead of
+  replacing the grid with a generic write-result view.
+- A small, self-dismissing toast notification (`showToast`, top-level `#appToastContainer`)
+  confirms a successful save with the row count, then fades out after five seconds. Falls back
+  to the persistent status bar if the container is somehow missing.
+- Fabric Lakehouse is deliberately excluded: its SQL analytics endpoint is read-only per
+  Microsoft's documentation, so the button never appears for that source.
+
+### Fixed
+
+- The unsaved-edits confirmation guard (before running a new query, switching, or closing a
+  result tab) counted only staged cell edits, so a pending row deletion or a pending new row
+  with no accompanying cell edit could be silently discarded without asking. It now uses the
+  same modified/deleted/new total the Save button and pending-edits bar already agree on.
+
+### Verification
+
+- 15 new tests in `scripts/sql-classifier.test.mjs` for `analyzeSingleTableSelect` (bracketed
+  and aliased identifiers, `TOP`/`DISTINCT`/aggregates, CTEs, derived tables, table-valued
+  functions, joins/unions/group-by, write statements, query hints).
+- New tests in `scripts/sql-metadata.test.mjs` for key-column and object-kind discovery.
+- New `scripts/ui-smoke.mjs` coverage in an isolated window: the JOIN-rejection guard, a
+  single-cell edit through the single-click confirm path, and a combined delete+modify+insert
+  save through the typed `RUN BATCH` path, including the discard button clearing all three
+  kinds of pending change and the post-save toast and in-place grid refresh.
+- `npm run responsive:audit` stays green with the new row-actions column, new-row form, and
+  toast container in place.
+
 ## 1.4.26 - 2026-09-02
 
 The layout engine is now the single authority for the two-column studio.

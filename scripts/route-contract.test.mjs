@@ -295,6 +295,40 @@ try {
   assert.equal(lakehouseQueryPlan.response.status, 400);
   assert.match(lakehouseQueryPlan.payload.error, /not supported for Fabric Lakehouse/i);
 
+  // Row-editability check: the Fabric Lakehouse short-circuit must return before
+  // ever opening a connection, so this is safe to assert without a real DB.
+  const lakehouseEditability = await request('/api/object-insights', {
+    method: 'POST',
+    body: {
+      sourceType: 'fabric-lakehouse',
+      authMode: 'servicePrincipal',
+      server: 'demo',
+      database: 'lakehouse_db',
+      action: 'editability',
+      query: 'SELECT * FROM dbo.Table1'
+    }
+  });
+  assert.equal(lakehouseEditability.response.status, 200);
+  assert.equal(lakehouseEditability.payload.editable, false);
+  assert.match(lakehouseEditability.payload.reason, /read-only/i);
+
+  // A non-editable query shape must also short-circuit before touching a
+  // connection, since the shape check runs before withConnection.
+  const joinEditability = await request('/api/object-insights', {
+    method: 'POST',
+    body: { ...safeSqlLogin, action: 'editability', query: 'SELECT a.Id FROM dbo.A a JOIN dbo.B b ON a.Id = b.Id' }
+  });
+  assert.equal(joinEditability.response.status, 200);
+  assert.equal(joinEditability.payload.editable, false);
+  assert.match(joinEditability.payload.reason, /JOIN/i);
+
+  const emptyQueryEditability = await request('/api/object-insights', {
+    method: 'POST',
+    body: { ...safeSqlLogin, action: 'editability', query: '' }
+  });
+  assert.equal(emptyQueryEditability.response.status, 200);
+  assert.equal(emptyQueryEditability.payload.editable, false);
+
   const schemaCompare = await request('/api/schema-compare', {
     method: 'POST',
     body: {

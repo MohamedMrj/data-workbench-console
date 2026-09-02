@@ -364,6 +364,36 @@ function attachMocks(window) {
     }
 
     if (String(url).includes('/api/object-insights')) {
+      if (body.action === 'editability') {
+        const queryText = String(body.query || '');
+        if (/\bJOIN\b/i.test(queryText)) {
+          return new Response(JSON.stringify({
+            success: true,
+            action: 'editability',
+            editable: false,
+            reason: 'Only a plain single-table SELECT can be edited (no JOIN, UNION, GROUP BY, or subquery source).'
+          }), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' }
+          });
+        }
+        return new Response(JSON.stringify({
+          success: true,
+          action: 'editability',
+          editable: true,
+          object: 'dbo.Alerts',
+          keyColumns: ['AlertId'],
+          editableColumns: ['Status'],
+          columns: [
+            { name: 'AlertId', type: 'int', nullable: false },
+            { name: 'Status', type: 'varchar', nullable: true }
+          ]
+        }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
+
       if (body.action === 'rowCount') {
         return new Response(JSON.stringify({
           success: true,
@@ -573,6 +603,34 @@ function attachMocks(window) {
           headers: { 'Content-Type': 'application/json' }
         });
       }
+      // A single plain UPDATE ... WHERE (the shape the results-grid inline
+      // editor generates for one edited row) needs no typed acknowledgement,
+      // just the normal preview + single-click confirm. Scoped to a marker
+      // used only by the inline-editor test below: an existing test elsewhere
+      // in this file also runs a single builder-generated UPDATE and relies
+      // on the generic fallback response further down, so matching on the
+      // UPDATE keyword alone would change that unrelated test's mock response.
+      if (statementCount === 1 && /^\s*UPDATE\b/i.test(queryText) && queryText.includes('INLINE_EDIT_TEST') && !body.confirmToken) {
+        return new Response(JSON.stringify({
+          success: true,
+          mode: 'write-preview',
+          requiresConfirmation: true,
+          confirmationToken: 'query-update-token',
+          rowsAffected: 1,
+          action: 'UPDATE',
+          statementCount: 1,
+          actions: ['UPDATE'],
+          highRiskActions: [],
+          expectedText: '',
+          heightened: false,
+          reviewRequired: true,
+          warnings: [],
+          message: 'UPDATE preview complete. Review it, then click Continue to execute.'
+        }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
       if (body.confirmToken === 'query-batch-token' && String(body.acknowledgement || '').toUpperCase() !== 'RUN BATCH') {
         return new Response(JSON.stringify({
           success: false,
@@ -595,16 +653,19 @@ function attachMocks(window) {
         }
       }
       if (body.confirmToken) {
+        const executedAction = body.confirmToken === 'query-batch-token' ? 'BATCH' : body.confirmToken === 'query-update-token' ? 'UPDATE' : 'DDL';
         return new Response(JSON.stringify({
           success: true,
           mode: 'write',
           executed: true,
-          action: body.confirmToken === 'query-batch-token' ? 'BATCH' : 'DDL',
+          action: executedAction,
           columns: [],
           rows: [],
           totalRows: 0,
           rowsAffected: 0,
-          message: 'DDL completed successfully.'
+          // Matches the real server's `${action} completed successfully.` shape
+          // (lib/server/db-interface.js postQuery) closely enough for status-text assertions.
+          message: `${executedAction} completed successfully.`
         }), {
           status: 200,
           headers: { 'Content-Type': 'application/json' }
@@ -1747,6 +1808,206 @@ await waitForCondition(
 );
 if (autoHideWindow.localStorage.getItem('dataWorkbenchSidePanelVisibilityV1')) {
   throw new Error('Automatic side panel collapse should not overwrite the saved visibility preference.');
+}
+
+// Results-grid inline editor: full CRUD flow (modify a cell, delete a row,
+// insert a row, discard, then save and confirm) plus the JOIN-rejection
+// guard. Isolated in its own window rather than reusing sqlWindow above: a
+// confirmed save adds its generated statement to query history exactly like
+// any other write (confirmPendingAction's existing behavior), which would
+// otherwise become the newest entry and break the history-restore assertions
+// earlier in this file that depend on a specific earlier entry staying newest.
+{
+  const editorWindow = await createWindow('http://127.0.0.1:3100/');
+  editorWindow.document.getElementById('serverInput').value = 'demo';
+  editorWindow.document.getElementById('databaseInput').value = 'meta_store';
+  editorWindow.document.getElementById('serverInput').dispatchEvent(new editorWindow.Event('input', { bubbles: true }));
+  editorWindow.document.getElementById('databaseInput').dispatchEvent(new editorWindow.Event('input', { bubbles: true }));
+  const editor = editorWindow.document.getElementById('queryEditor');
+
+  // A JOIN result must never offer editing, even though the query itself is a
+  // plain read with no errors.
+  editor.value = 'SELECT a.AlertId, b.Name FROM dbo.Alerts a JOIN dbo.Users b ON a.UserId = b.Id';
+  editor.dispatchEvent(new editorWindow.Event('input', { bubbles: true }));
+  editorWindow.document.getElementById('runQueryBtn').click();
+  await flush();
+  if (!editorWindow.document.getElementById('toggleEditResultsBtn').classList.contains('hidden')) {
+    throw new Error('Edit results button should stay hidden for a JOIN result.');
+  }
+
+  editor.value = 'SELECT * FROM dbo.Alerts';
+  editor.dispatchEvent(new editorWindow.Event('input', { bubbles: true }));
+  editorWindow.document.getElementById('runQueryBtn').click();
+  await flush();
+  if (editorWindow.document.getElementById('toggleEditResultsBtn').classList.contains('hidden')) {
+    throw new Error('Edit results button should appear for an editable plain single-table SELECT.');
+  }
+
+  editorWindow.document.getElementById('toggleEditResultsBtn').click();
+  await flush();
+  if (editorWindow.document.getElementById('pendingEditsBar').classList.contains('hidden')) {
+    throw new Error('Pending edits bar should show once edit mode is active.');
+  }
+  if (editorWindow.document.getElementById('toggleEditResultsBtn').textContent !== 'Exit edit mode') {
+    throw new Error('Edit results button should switch to "Exit edit mode" while active.');
+  }
+  if (!editorWindow.document.querySelector('.row-actions-head')) {
+    throw new Error('Row-actions column should render in edit mode.');
+  }
+  if (editorWindow.document.querySelectorAll('[data-toggle-delete-row-key]').length !== 3) {
+    throw new Error('Expected one delete button per loaded row.');
+  }
+  if (editorWindow.document.querySelector('.result-edit-input[data-edit-column="AlertId"]')) {
+    throw new Error('The key column (AlertId) must never render as an editable input.');
+  }
+  if (editorWindow.document.querySelectorAll('.result-edit-input[data-edit-column="Status"]').length !== 3) {
+    throw new Error('The editable Status column should render as an input for every row.');
+  }
+
+  // --- A single modified cell (no delete, no insert) is a single-statement
+  // UPDATE and takes a different confirmation path than the multi-op save
+  // below: single-click confirm, no typed acknowledgement required. The typed
+  // value below is also the marker the mocked /api/query handler matches on
+  // to return a plain write-preview instead of colliding with the unrelated,
+  // marker-free single-UPDATE test elsewhere in this file.
+  const singleEditInput = editorWindow.document.querySelectorAll('.result-edit-input[data-edit-column="Status"]')[0];
+  singleEditInput.focus();
+  singleEditInput.value = 'INLINE_EDIT_TEST';
+  singleEditInput.dispatchEvent(new editorWindow.Event('input', { bubbles: true }));
+  editorWindow.document.getElementById('saveResultEditsBtn').click();
+  await flush();
+  if (editorWindow.document.getElementById('confirmModal').classList.contains('hidden')) {
+    throw new Error('Saving a single cell edit should open the confirmation modal.');
+  }
+  if (!editorWindow.document.getElementById('secondConfirmWrap').classList.contains('hidden')) {
+    throw new Error('A single plain UPDATE should not require a typed acknowledgement phrase.');
+  }
+  if (editorWindow.document.getElementById('confirmModalBtn').disabled) {
+    throw new Error('A single plain UPDATE confirmation button should be enabled immediately.');
+  }
+  editorWindow.document.getElementById('confirmModalBtn').click();
+  await flush();
+  const singleEditToast = editorWindow.document.querySelector('#appToastContainer .app-toast');
+  if (!singleEditToast || !singleEditToast.classList.contains('app-toast-success') || !singleEditToast.textContent.includes('Saved 1 change to dbo.Alerts.')) {
+    throw new Error(`A success toast should appear after saving a single cell edit. Toast: ${singleEditToast?.textContent}`);
+  }
+  if (!editorWindow.document.querySelector('.results-table') || editorWindow.document.getElementById('toggleEditResultsBtn').textContent !== 'Exit edit mode') {
+    throw new Error('Saving a single cell edit should refresh the grid in place and stay in edit mode.');
+  }
+
+  // --- Delete row 3 (AlertId=3); this rebuilds the table, so later steps
+  // re-query fresh elements rather than reusing references from before it.
+  editorWindow.document.querySelectorAll('[data-toggle-delete-row-key]')[2].click();
+  await flush();
+  if (editorWindow.document.querySelectorAll('tr.result-row-deleted').length !== 1) {
+    throw new Error('Deleting a row should mark exactly one row as deleted.');
+  }
+
+  // --- Modify row 1's Status cell.
+  const statusInput = editorWindow.document.querySelectorAll('.result-edit-input[data-edit-column="Status"]')[0];
+  statusInput.focus();
+  statusInput.value = 'RESOLVED';
+  statusInput.dispatchEvent(new editorWindow.Event('input', { bubbles: true }));
+  if (!statusInput.classList.contains('result-edit-dirty')) {
+    throw new Error('Editing a cell should mark it dirty.');
+  }
+
+  // --- Insert a new row.
+  editorWindow.document.getElementById('addResultRowBtn').click();
+  await flush();
+  if (editorWindow.document.getElementById('resultsNewRows').classList.contains('hidden')) {
+    throw new Error('New-row section should appear after clicking + New row.');
+  }
+  const newRowStatusInput = editorWindow.document.querySelector('#resultsNewRows [data-new-row-column="Status"]');
+  if (!newRowStatusInput) {
+    throw new Error('New row form should include an input for each insertable column.');
+  }
+  newRowStatusInput.value = 'PENDING';
+  newRowStatusInput.dispatchEvent(new editorWindow.Event('input', { bubbles: true }));
+
+  const summaryText = editorWindow.document.getElementById('pendingEditsSummary').textContent;
+  if (!summaryText.includes('3 unsaved changes') || !summaryText.includes('1 modified') || !summaryText.includes('1 deleted') || !summaryText.includes('1 new')) {
+    throw new Error(`Pending edits summary should report the modified/deleted/new breakdown. Got: ${summaryText}`);
+  }
+  if (editorWindow.document.getElementById('saveResultEditsBtn').disabled) {
+    throw new Error('Save changes should be enabled once changes are staged.');
+  }
+
+  // --- Discard must clear all three kinds of staged change.
+  editorWindow.document.getElementById('discardResultEditsBtn').click();
+  await flush();
+  if (editorWindow.document.getElementById('pendingEditsSummary').textContent !== 'No unsaved changes') {
+    throw new Error('Discarding edits should clear modified/deleted/new state.');
+  }
+  if (!editorWindow.document.getElementById('resultsNewRows').classList.contains('hidden')) {
+    throw new Error('Discarding edits should also clear staged new rows.');
+  }
+  if (editorWindow.document.querySelector('tr.result-row-deleted')) {
+    throw new Error('Discarding edits should un-mark deleted rows.');
+  }
+  if (editorWindow.document.querySelector('.result-edit-dirty')) {
+    throw new Error('Discarding edits should clear dirty cell styling.');
+  }
+
+  // --- Redo the same three changes, then save and confirm end to end.
+  editorWindow.document.querySelectorAll('[data-toggle-delete-row-key]')[2].click();
+  await flush();
+  const statusInput2 = editorWindow.document.querySelectorAll('.result-edit-input[data-edit-column="Status"]')[0];
+  statusInput2.value = 'RESOLVED';
+  statusInput2.dispatchEvent(new editorWindow.Event('input', { bubbles: true }));
+  editorWindow.document.getElementById('addResultRowBtn').click();
+  await flush();
+  editorWindow.document.querySelector('#resultsNewRows [data-new-row-column="Status"]').value = 'PENDING';
+  editorWindow.document.querySelector('#resultsNewRows [data-new-row-column="Status"]').dispatchEvent(new editorWindow.Event('input', { bubbles: true }));
+
+  editorWindow.document.getElementById('saveResultEditsBtn').click();
+  await flush();
+  if (editorWindow.document.getElementById('confirmModal').classList.contains('hidden')) {
+    throw new Error('Saving staged changes should open the confirmation modal.');
+  }
+  const reviewText = editorWindow.document.getElementById('modalReview').textContent;
+  if (!reviewText.includes('dbo.Alerts') || !reviewText.includes('1 deleted, 1 modified, 1 new')) {
+    throw new Error(`Save confirmation review should summarize the object and change breakdown. Got: ${reviewText}`);
+  }
+  if (editorWindow.document.getElementById('confirmModalBtn').disabled !== true) {
+    throw new Error('Save confirmation button should be disabled before the typed acknowledgement.');
+  }
+  const editSaveConfirmInput = editorWindow.document.getElementById('secondConfirmInput');
+  editSaveConfirmInput.value = 'nonsense';
+  editSaveConfirmInput.dispatchEvent(new editorWindow.Event('input', { bubbles: true }));
+  if (!editorWindow.document.getElementById('confirmModalBtn').disabled) {
+    throw new Error('Save confirmation button should stay disabled for the wrong acknowledgement phrase.');
+  }
+  editSaveConfirmInput.value = 'RUN BATCH';
+  editSaveConfirmInput.dispatchEvent(new editorWindow.Event('input', { bubbles: true }));
+  if (editorWindow.document.getElementById('confirmModalBtn').disabled) {
+    throw new Error('Save confirmation button should enable once the correct acknowledgement phrase is typed.');
+  }
+
+  editorWindow.document.getElementById('confirmModalBtn').click();
+  await flush();
+  if (!editorWindow.document.getElementById('confirmModal').classList.contains('hidden')) {
+    throw new Error('Confirming the save should close the modal.');
+  }
+  // Toasts fade out on a real 5s timer rather than being removed synchronously,
+  // so the single-cell-edit save above may have left its own toast in the DOM
+  // — take the most recently appended one, not the first match.
+  const toast = Array.from(editorWindow.document.querySelectorAll('#appToastContainer .app-toast')).pop();
+  if (!toast || !toast.classList.contains('app-toast-success') || !toast.textContent.includes('Saved 3 changes to dbo.Alerts.')) {
+    throw new Error(`A success toast naming the object and change count should appear after saving. Toast: ${toast?.textContent}`);
+  }
+  if (!toast.classList.contains('visible')) {
+    throw new Error('The success toast should be visible immediately after it is added.');
+  }
+  if (!editorWindow.document.querySelector('.results-table')) {
+    throw new Error('Saving should refresh the grid in place, not blank into a generic write-result view.');
+  }
+  if (editorWindow.document.getElementById('toggleEditResultsBtn').textContent !== 'Exit edit mode') {
+    throw new Error('A saved, refreshed grid should stay in edit mode automatically.');
+  }
+  if (editorWindow.document.getElementById('pendingEditsSummary').textContent !== 'No unsaved changes') {
+    throw new Error('Pending changes should be cleared once the refreshed grid loads after a save.');
+  }
 }
 
 console.log('UI smoke test passed.');

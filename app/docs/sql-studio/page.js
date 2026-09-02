@@ -268,6 +268,11 @@ WHERE <review scope before execution>;`}</pre>
           <li><strong>Copy rows</strong> and <strong>Export CSV</strong> use the current result data.</li>
           <li><strong>Audit log</strong> opens filters for event, outcome, action, source type, database, search text, and limit. Use it to review metadata reads, query previews, confirmations, executions, and errors.</li>
         </ul>
+        <div className="docs-callout">
+          <strong>Edit results</strong> appears when the current result is a plain single-table <code>SELECT</code> (no <code>JOIN</code>, <code>UNION</code>, <code>GROUP BY</code>, subquery, or aggregate) against an object with a discoverable primary or unique key. It never appears for Fabric Lakehouse: the Lakehouse SQL analytics endpoint is read-only, so there is nothing to save to.
+          Turning it on lets you edit cells in place, mark rows for deletion with a per-row button, and add new rows with <strong>+ New row</strong>. A pending-changes bar tracks the modified/deleted/new breakdown and enables <strong>Save changes</strong> / <strong>Discard edits</strong> only when there is something to act on.
+          Saving builds one <code>DELETE</code>/<code>UPDATE</code>/<code>INSERT</code> per changed row and runs it through the same classify, preview, and confirmation path as any other write — single-row changes get a one-click preview, multiple statements need the same typed <code>RUN BATCH</code> acknowledgement as any other batch. On success the grid reloads the same query in place (still in edit mode) instead of showing a generic write-result screen, and a toast confirms the save before fading out after five seconds.
+        </div>
       </DocsSection>
 
       <DocsSection id="history" title="History, State, And Themes" intro="The app keeps useful context locally so switching tasks does not erase your work.">

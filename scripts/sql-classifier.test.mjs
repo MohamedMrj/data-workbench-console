@@ -8,7 +8,7 @@
  */
 
 import assert from 'node:assert/strict';
-import { buildLimitedReadQuery, classifyQuery, stripCommentsAndTrim, tokenizeSql, splitStatements } from '../lib/server/sql-classifier.js';
+import { analyzeSingleTableSelect, buildLimitedReadQuery, classifyQuery, stripCommentsAndTrim, tokenizeSql, splitStatements } from '../lib/server/sql-classifier.js';
 
 let passed = 0;
 let failed = 0;
@@ -505,6 +505,89 @@ test('ORDER BY inside OVER does not trigger top-level ORDER BY handling', () => 
 test('ORDER BY inside a string does not trigger top-level ORDER BY handling', () => {
   const limited = buildLimitedReadQuery("SELECT 'ORDER BY Id' AS label FROM dbo.T", 25);
   assert.ok(limited.startsWith('SELECT TOP (25) * FROM ('));
+});
+
+// ─── analyzeSingleTableSelect — row-editability shape analysis ──────────────
+
+console.log('\nanalyzeSingleTableSelect');
+
+test('SELECT * FROM a bracketed table is editable with columns:null', () => {
+  const result = analyzeSingleTableSelect('SELECT * FROM [dbo].[Alerts]');
+  assert.equal(result.ok, true);
+  assert.equal(result.schemaName, 'dbo');
+  assert.equal(result.objectName, 'Alerts');
+  assert.equal(result.columns, null);
+});
+
+test('a generated builder-style SELECT with TOP, WHERE, ORDER BY is editable', () => {
+  const result = analyzeSingleTableSelect(
+    'SELECT TOP (100)\n       [AlertId],\n       [Status]\nFROM [dbo].[Alerts]\nWHERE [Status] = \'x\'\nORDER BY [AlertId] DESC;'
+  );
+  assert.equal(result.ok, true);
+  assert.deepEqual(result.columns, ['AlertId', 'Status']);
+});
+
+test('bare TOP n (no parens) is handled, including TOP n PERCENT', () => {
+  assert.equal(analyzeSingleTableSelect('SELECT TOP 50 AlertId FROM dbo.Alerts').ok, true);
+  assert.equal(analyzeSingleTableSelect('SELECT TOP 50 PERCENT AlertId FROM dbo.Alerts').ok, true);
+});
+
+test('SELECT ALL is editable like a plain SELECT', () => {
+  assert.equal(analyzeSingleTableSelect('SELECT ALL AlertId FROM dbo.Alerts').ok, true);
+});
+
+test('a plain column name that itself contains a dot, fully inside one bracket, is editable', () => {
+  const result = analyzeSingleTableSelect('SELECT [My.Column] FROM [sales].[My.Report]');
+  assert.equal(result.ok, true);
+  assert.equal(result.schemaName, 'sales');
+  assert.equal(result.objectName, 'My.Report');
+  assert.deepEqual(result.columns, ['My.Column']);
+});
+
+test('a table alias with or without AS is rejected', () => {
+  assert.equal(analyzeSingleTableSelect('SELECT AlertId FROM [dbo].[Alerts] t').ok, false);
+  assert.equal(analyzeSingleTableSelect('SELECT AlertId FROM dbo.Alerts AS t').ok, false);
+});
+
+test('JOIN, UNION, and GROUP BY are rejected', () => {
+  assert.equal(analyzeSingleTableSelect('SELECT AlertId FROM dbo.Alerts JOIN dbo.Other o ON 1=1').ok, false);
+  assert.equal(analyzeSingleTableSelect('SELECT * FROM dbo.A UNION SELECT * FROM dbo.B').ok, false);
+  assert.equal(analyzeSingleTableSelect('SELECT AlertId FROM dbo.Alerts GROUP BY AlertId').ok, false);
+});
+
+test('SELECT DISTINCT and aggregate results are rejected', () => {
+  assert.equal(analyzeSingleTableSelect('SELECT DISTINCT Status FROM dbo.Alerts').ok, false);
+  assert.equal(analyzeSingleTableSelect('SELECT COUNT(*) AS n FROM dbo.Alerts').ok, false);
+});
+
+test('a column AS alias or expression disables editing for the whole query', () => {
+  assert.equal(analyzeSingleTableSelect('SELECT AlertId, Status AS S FROM dbo.Alerts').ok, false);
+  assert.equal(analyzeSingleTableSelect('SELECT AlertId + 1 FROM dbo.Alerts').ok, false);
+});
+
+test('two dot-separated bracket groups in the select list is a schema-qualified reference, not a plain column, and is rejected', () => {
+  assert.equal(analyzeSingleTableSelect('SELECT [a].[b] FROM dbo.T').ok, false);
+});
+
+test('a leading CTE is rejected', () => {
+  assert.equal(analyzeSingleTableSelect('WITH q AS (SELECT 1 AS n) SELECT n FROM q').ok, false);
+});
+
+test('a derived-table FROM subquery is rejected', () => {
+  assert.equal(analyzeSingleTableSelect('SELECT * FROM (SELECT 1 AS n) x').ok, false);
+});
+
+test('a table-valued function call after FROM is rejected', () => {
+  assert.equal(analyzeSingleTableSelect('SELECT * FROM dbo.fn_Something(1)').ok, false);
+});
+
+test('a write statement is rejected', () => {
+  assert.equal(analyzeSingleTableSelect('UPDATE dbo.T SET a = 1').ok, false);
+});
+
+test('a trailing semicolon and a trailing OPTION query hint do not affect editability', () => {
+  assert.equal(analyzeSingleTableSelect('SELECT AlertId FROM dbo.Alerts;').ok, true);
+  assert.equal(analyzeSingleTableSelect('SELECT AlertId FROM dbo.Alerts OPTION (RECOMPILE)').ok, true);
 });
 
 // ─── summary ─────────────────────────────────────────────────────────────────

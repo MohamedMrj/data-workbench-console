@@ -1,5 +1,5 @@
 import assert from 'assert/strict';
-import { loadObjectDependencies, loadObjectRowCount, loadSchemaCompare, parseQualifiedObjectName, renderCreateTableFromSnapshot } from '../lib/server/sql-metadata.js';
+import { isInlineEditableColumnType, loadObjectDependencies, loadObjectKeyColumns, loadObjectKind, loadObjectRowCount, loadSchemaCompare, parseQualifiedObjectName, renderCreateTableFromSnapshot } from '../lib/server/sql-metadata.js';
 
 const snapshot = {
   object: 'dbo.Customer',
@@ -329,5 +329,99 @@ for (const name of [
 
 // An empty object name still yields an empty fullName.
 assert.equal(parseQualifiedObjectName('').fullName, '');
+
+// loadObjectKeyColumns / loadObjectKind / isInlineEditableColumnType — the
+// row-editability metadata backing the results-grid inline editor.
+
+function keyColumnsPool(rows) {
+  return {
+    request() {
+      return {
+        input() { return this; },
+        async query() { return { recordset: rows }; }
+      };
+    }
+  };
+}
+
+function throwingPool(message) {
+  return {
+    request() {
+      return {
+        input() { return this; },
+        async query() {
+          const error = new Error(message);
+          error.code = 'EREQUEST';
+          throw error;
+        }
+      };
+    }
+  };
+}
+
+assert.deepEqual(
+  await loadObjectKeyColumns(keyColumnsPool([
+    { constraint_type: 'PK', unique_index_id: 1, column_name: 'AlertId' }
+  ]), 'dbo.Alerts'),
+  { keyColumns: ['AlertId'], keyType: 'primary' }
+);
+
+// A composite primary key must keep key-ordinal order (the query orders by
+// ic.key_ordinal, and the fake pool rows are already in that order here).
+assert.deepEqual(
+  await loadObjectKeyColumns(keyColumnsPool([
+    { constraint_type: 'PK', unique_index_id: 1, column_name: 'TenantId' },
+    { constraint_type: 'PK', unique_index_id: 1, column_name: 'AlertId' }
+  ]), 'dbo.Alerts'),
+  { keyColumns: ['TenantId', 'AlertId'], keyType: 'primary' }
+);
+
+assert.deepEqual(
+  await loadObjectKeyColumns(keyColumnsPool([
+    { constraint_type: 'UQ', unique_index_id: 2, column_name: 'Email' }
+  ]), 'dbo.Users'),
+  { keyColumns: ['Email'], keyType: 'unique' }
+);
+
+// Two separate unique constraints: only the first constraint's columns are
+// used, never a mix of both.
+assert.deepEqual(
+  await loadObjectKeyColumns(keyColumnsPool([
+    { constraint_type: 'UQ', unique_index_id: 2, column_name: 'Email' },
+    { constraint_type: 'UQ', unique_index_id: 3, column_name: 'Username' }
+  ]), 'dbo.Users'),
+  { keyColumns: ['Email'], keyType: 'unique' }
+);
+
+assert.deepEqual(
+  await loadObjectKeyColumns(keyColumnsPool([]), 'dbo.Logs'),
+  { keyColumns: [], keyType: null }
+);
+
+assert.deepEqual(
+  await loadObjectKeyColumns(throwingPool("DMV (Dynamic Management View) 'sys.indexes' is not supported."), 'dbo.LakehouseTable'),
+  { keyColumns: [], keyType: null, unsupported: true }
+);
+
+function objectKindPool(tableType) {
+  return {
+    request() {
+      return {
+        input() { return this; },
+        async query() { return { recordset: tableType ? [{ TABLE_TYPE: tableType }] : [] }; }
+      };
+    }
+  };
+}
+
+assert.deepEqual(await loadObjectKind(objectKindPool('BASE TABLE'), 'dbo.Alerts'), { exists: true, objectType: 'table' });
+assert.deepEqual(await loadObjectKind(objectKindPool('VIEW'), 'dbo.AlertView'), { exists: true, objectType: 'view' });
+assert.deepEqual(await loadObjectKind(objectKindPool(null), 'dbo.Nope'), { exists: false, objectType: null });
+
+assert.equal(isInlineEditableColumnType('nvarchar'), true);
+assert.equal(isInlineEditableColumnType('int'), true);
+assert.equal(isInlineEditableColumnType('varbinary'), false);
+assert.equal(isInlineEditableColumnType('rowversion'), false);
+assert.equal(isInlineEditableColumnType('xml'), false);
 
 console.log('SQL metadata tests passed.');
