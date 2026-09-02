@@ -206,7 +206,6 @@ window.createConsoleApp = function createConsoleApp() {
     { id: 'windowsNtlm', label: 'Windows authentication' }
   ];
   const DEFAULT_QUERY = `-- Connect to a source and load the catalog to get started.\n-- Select a table or view from the explorer to generate SQL automatically.\n-- You can also write or paste SQL directly here.\nSELECT TOP 100 *\nFROM dbo.YourTableName;`;
-  const SNIPPETS = {};
   const SQL_HELPER_LABELS = {
     concat: 'CONCAT',
     replace: 'REPLACE',
@@ -1577,7 +1576,8 @@ window.createConsoleApp = function createConsoleApp() {
       return;
     }
 
-    const policy = state.health?.safetyPolicy || state.health?.policy || null;
+    const health = state.health || null;
+    const policy = health?.safety || null;
 
     if (!policy) {
       panel.innerHTML = `
@@ -1590,14 +1590,27 @@ window.createConsoleApp = function createConsoleApp() {
     }
 
     const lines = [];
-    if (policy.writeRequiresPreview !== undefined) {
-      lines.push(`Write preview required: ${policy.writeRequiresPreview ? 'Yes' : 'No'}`);
+    if (policy.writePreviewFirst !== undefined) {
+      lines.push(`Write preview first: ${policy.writePreviewFirst ? 'Yes' : 'No'}`);
     }
-    if (policy.secondConfirmationRequired !== undefined) {
-      lines.push(`Button confirmation only: ${policy.confirmWithButtonOnly ? 'Yes' : 'No'}`);
+    if (policy.confirmWithButtonOnly !== undefined) {
+      lines.push(`Button confirmation: ${policy.confirmWithButtonOnly ? 'Yes' : 'No'}`);
     }
-    if (Array.isArray(policy.blockedStatements) && policy.blockedStatements.length) {
-      lines.push(`Blocked: ${policy.blockedStatements.join(', ')}`);
+    lines.push('GO separators: blocked');
+
+    const limit = (value) => (Number.isFinite(Number(value)) ? Number(value) : null);
+    const limits = [];
+    if (limit(health.responseRowLimit) !== null) {
+      limits.push(`Row cap ${limit(health.responseRowLimit)}`);
+    }
+    if (limit(health.writePreviewLimit) !== null) {
+      limits.push(`Preview ${limit(health.writePreviewLimit)} row(s)`);
+    }
+    if (limit(health.heightenedConfirmLimit) !== null) {
+      limits.push(`Typed ack above ${limit(health.heightenedConfirmLimit)} row(s)`);
+    }
+    if (limit(health.confirmationTtlMs) !== null) {
+      limits.push(`Confirmation ${Math.round(limit(health.confirmationTtlMs) / 1000)}s`);
     }
 
     panel.innerHTML = `
@@ -1605,6 +1618,7 @@ window.createConsoleApp = function createConsoleApp() {
         <strong>Active policy</strong>
         <span>${esc(lines.join(' • ') || 'Safety checks are enabled.')}</span>
       </div>
+      ${limits.length ? `<div class="info-chip"><strong>Limits</strong><span>${esc(limits.join(' • '))}</span></div>` : ''}
     `;
   }
 
@@ -5867,7 +5881,9 @@ window.createConsoleApp = function createConsoleApp() {
       setStatus('error', 'No result rows to copy.');
       return;
     }
-    const lines = [state.results.columns.join('\t'), ...sortedRows().map((row) => state.results.columns.map((column) => String(row[column] ?? '')).join('\t'))];
+    // Use the same serializer as the single-cell copy action so SQL NULL stays
+    // distinguishable from an empty string, matching what the grid shows.
+    const lines = [state.results.columns.join('\t'), ...sortedRows().map((row) => state.results.columns.map((column) => serializeCellValueForCopy(row[column])).join('\t'))];
     copyText(lines.join('\n'), 'Result rows copied.');
   }
 
@@ -5875,7 +5891,8 @@ window.createConsoleApp = function createConsoleApp() {
   // starts with = + - @ tab or CR is treated as a formula by Excel/Sheets) while
   // leaving plain numbers untouched, then quote/escape per RFC 4180.
   function csvCell(value) {
-    let text = String(value ?? '');
+    // serializeCellValueForCopy keeps SQL NULL ("NULL") distinct from an empty string ("").
+    let text = serializeCellValueForCopy(value);
     const startsDangerous = /^[=+\-@\t\r]/.test(text);
     const isPlainNumber = /^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$/.test(text);
     if (startsDangerous && !isPlainNumber) {
@@ -6800,13 +6817,6 @@ window.createConsoleApp = function createConsoleApp() {
         if (event.target.id === 'supportDialog') closeSupportDialog();
       };
     }
-    document.querySelectorAll('[data-snippet]').forEach((button) => {
-      button.onclick = () => {
-        setWorkspace('sql');
-        setQuery(SNIPPETS[button.dataset.snippet] || DEFAULT_QUERY);
-        setStatus('success', 'Snippet loaded.');
-      };
-    });
     document.querySelectorAll('#queryModeSegment .segment-btn').forEach((button) => {
       button.onclick = () => setMode(button.dataset.mode);
     });

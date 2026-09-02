@@ -9,6 +9,9 @@ process.env.APP_DATA_DIR = path.join(tempRoot, 'data');
 process.env.SAVED_CONNECTIONS_FILE = 'saved-connections.json';
 process.env.AUDIT_LOG_FILE = path.join(tempRoot, 'audit.ndjson');
 process.env.CONFIRMATION_STORE_FILE = path.join(tempRoot, 'confirmations.json');
+// Deliberately tiny so the audit byte cap and the rate-limit pruning window are observable.
+process.env.AUDIT_LOG_MAX_BYTES = '1024';
+process.env.RATE_LIMIT_WINDOW_MS = '1';
 
 await fs.mkdir(path.dirname(process.env.CONFIRMATION_STORE_FILE), { recursive: true });
 await fs.writeFile(process.env.CONFIRMATION_STORE_FILE, JSON.stringify([
@@ -103,6 +106,14 @@ assert.equal(rateLimit.checkRateLimit(rateKey, { maxRequests: 2, windowMs: 60_00
 assert.equal(rateLimit.checkRateLimit(rateKey, { maxRequests: 2, windowMs: 60_000 }).remaining, 0);
 assert.equal(rateLimit.checkRateLimit(rateKey, { maxRequests: 2, windowMs: 60_000 }).allowed, false);
 
+// Bucket pruning must respect the widest window a caller asked for. RATE_LIMIT_WINDOW_MS is 1ms
+// here, so pruning with the module default would discard both hits and wrongly re-allow.
+const wideRateKey = `server-unit-wide-${Date.now()}`;
+assert.equal(rateLimit.checkRateLimit(wideRateKey, { maxRequests: 2, windowMs: 60_000 }).allowed, true);
+assert.equal(rateLimit.checkRateLimit(wideRateKey, { maxRequests: 2, windowMs: 60_000 }).allowed, true);
+await new Promise((resolve) => setTimeout(resolve, 30));
+assert.equal(rateLimit.checkRateLimit(wideRateKey, { maxRequests: 2, windowMs: 60_000 }).allowed, false);
+
 auditStore.addAuditEntry({
   event: 'query',
   outcome: 'success',
@@ -127,6 +138,41 @@ assert.equal(auditQuery.totalMatched, 1);
 assert.equal(auditQuery.entries[0].sourceType, 'sql-server');
 assert.equal(auditQuery.entries[0].rowCount, 1);
 assert.equal(auditStore.getAuditEntries(10, { search: 'blocked' }).totalMatched, 1);
+// Alias filters still resolve, but an unrecognised source type must match nothing rather than
+// normalizing into the default source and returning its rows.
+assert.equal(auditStore.getAuditEntries(10, { sourceType: 'mssql' }).totalMatched, 1);
+assert.equal(auditStore.getAuditEntries(10, { sourceType: 'sql-server' }).totalMatched, 1);
+assert.equal(auditStore.getAuditEntries(10, { sourceType: 'nonsense' }).totalMatched, 0);
+assert.equal(auditStore.getAuditEntries(10, { sourceType: 'nonsense' }).entries.length, 0);
+
+// The persisted audit file must honour AUDIT_LOG_MAX_BYTES (1024 above) by dropping the
+// oldest entries, while never writing an empty file.
+const auditProbeCount = 12;
+for (let index = 0; index < auditProbeCount; index += 1) {
+  auditStore.addAuditEntry({
+    event: 'query',
+    outcome: 'success',
+    action: 'SELECT',
+    sourceType: 'sql-server',
+    server: 'demo',
+    database: 'meta_store',
+    detail: `byte cap probe ${index} ${'x'.repeat(80)}`
+  });
+}
+// Each entry queues a serialized full rewrite; let the queue drain before inspecting the file
+// (and before the temp directory is removed at the end of this suite).
+await new Promise((resolve) => setTimeout(resolve, 600));
+const auditFileSize = (await fs.stat(process.env.AUDIT_LOG_FILE)).size;
+assert.ok(auditFileSize > 0, 'audit file should never be emptied by the byte cap');
+assert.ok(
+  auditFileSize <= Number(process.env.AUDIT_LOG_MAX_BYTES),
+  `audit file (${auditFileSize} bytes) should stay within AUDIT_LOG_MAX_BYTES`
+);
+const auditFileLines = (await fs.readFile(process.env.AUDIT_LOG_FILE, 'utf8')).split('\n').filter(Boolean);
+assert.ok(auditFileLines.length > 0);
+// Oldest overflow is dropped, so the newest entry must survive.
+assert.match(auditFileLines.at(-1), new RegExp(`byte cap probe ${auditProbeCount - 1}\\b`));
+assert.ok(auditFileLines.length < auditProbeCount, 'oldest entries should have been trimmed');
 
 assert.equal(await confirmationStore.getConfirmation('expired-token'), null);
 const confirmationHashA = confirmationStore.hashConfirmationParts({ b: 2, a: 1 });

@@ -458,6 +458,45 @@ FROM q;`);
   assert.ok(!limited.includes('__rowlimit_wrapper'));
 });
 
+test('CTE with a top-level UNION ALL is not given an invalid inline TOP', () => {
+  const sql = 'WITH q AS (SELECT 1 AS n) SELECT n FROM q UNION ALL SELECT 2 AS n';
+  const limited = buildLimitedReadQuery(sql, 250);
+  // `... UNION ALL TOP (250) SELECT ...` is rejected outright by SQL Server.
+  assert.ok(!/UNION\s+ALL\s+TOP/i.test(limited));
+  assert.equal(limited, `${sql};`);
+});
+
+test('CTE with a top-level set operator is left uncapped, not capped on one branch', () => {
+  for (const operator of ['UNION', 'EXCEPT', 'INTERSECT']) {
+    const sql = `WITH q AS (SELECT 1 AS n) SELECT n FROM q ${operator} SELECT 2 AS n`;
+    const limited = buildLimitedReadQuery(sql, 250);
+    assert.equal(limited, `${sql};`, `${operator} should not be rewritten`);
+    assert.ok(!/TOP \(250\)/.test(limited), `${operator} must not cap only the first branch`);
+  }
+});
+
+test('CTE with SELECT DISTINCT still receives the row cap after the modifier', () => {
+  const limited = buildLimitedReadQuery('WITH q AS (SELECT 1 AS n) SELECT DISTINCT n FROM q', 25);
+  assert.equal(limited, 'WITH q AS (SELECT 1 AS n) SELECT DISTINCT TOP (25) n FROM q;');
+});
+
+test('CTE with a set operator and top-level ORDER BY still gets an OFFSET/FETCH cap', () => {
+  const limited = buildLimitedReadQuery(
+    'WITH q AS (SELECT 1 AS n) SELECT n FROM q UNION ALL SELECT 2 AS n ORDER BY n',
+    25
+  );
+  assert.ok(limited.endsWith('OFFSET 0 ROWS FETCH NEXT 25 ROWS ONLY;'));
+  assert.ok(!/UNION\s+ALL\s+TOP/i.test(limited));
+});
+
+test('a set operator inside a subquery does not disable the CTE row cap', () => {
+  const limited = buildLimitedReadQuery(
+    'WITH q AS (SELECT 1 AS n UNION ALL SELECT 2 AS n) SELECT n FROM q',
+    25
+  );
+  assert.equal(limited, 'WITH q AS (SELECT 1 AS n UNION ALL SELECT 2 AS n) SELECT TOP (25) n FROM q;');
+});
+
 test('ORDER BY inside OVER does not trigger top-level ORDER BY handling', () => {
   const limited = buildLimitedReadQuery('SELECT ROW_NUMBER() OVER (ORDER BY Id) AS rn FROM dbo.T', 25);
   assert.ok(limited.startsWith('SELECT TOP (25) * FROM ('));

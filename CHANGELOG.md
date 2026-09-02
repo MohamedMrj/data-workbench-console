@@ -5,6 +5,63 @@ All notable Data Workbench Console changes are tracked here.
 The in-app version is read from `package.json` and exposed through `/api/version`
 together with the current git commit and build information.
 
+## 1.4.25 - 2026-09-02
+
+Correctness fixes found by an audit of the read row-cap, identifier handling, result export,
+audit filtering and rate limiting.
+
+### Fixed
+
+- Fixed CTE reads containing a top-level `UNION ALL` producing invalid T-SQL. The row cap
+  inserted `TOP (n)` after the `ALL` of the `UNION ALL` — emitting
+  `... UNION ALL TOP (250) SELECT ...` — because the `SELECT DISTINCT`/`ALL` modifier lookup
+  was not bounded to the select list. Any `WITH ... SELECT ... UNION ALL SELECT ...` query
+  failed with a syntax error.
+- Fixed CTE reads containing a top-level `UNION`, `EXCEPT` or `INTERSECT` applying the row cap
+  to the first branch only, so the combined result was not capped. A CTE cannot be wrapped in
+  a derived table, so these statements are now left unmodified and the response cap in
+  `mapRecordset` bounds the result instead.
+- Fixed the left-panel `Safety Policy` section always showing its fallback text.
+  `/api/health` reports the policy as `safety`, but the browser read the non-existent
+  `safetyPolicy`/`policy`, so the real values were never displayed. The panel now shows the
+  active policy plus the response row cap, write preview limit, typed-acknowledgement
+  threshold and confirmation lifetime.
+- Fixed object names containing a `.` being corrupted after the first request. Parsing
+  `[My.Table]` was correct, but the composed `fullName` (`dbo.My.Table`) re-parsed as schema
+  `My`, object `Table`, so every follow-up request — column load, profile, row count,
+  scripting, schema compare — targeted the wrong object. `fullName` is now bracket-quoted when
+  a part contains a delimiter, and the object and procedure catalogs compose names the same
+  way so the client and server agree.
+- Fixed an unrecognised `Source type` audit filter returning Fabric SQL rows instead of no
+  rows, because the filter value was normalized with the same fallback used for connections.
+- Fixed `POST_RATE_LIMIT_WINDOW_MS` values above 60 seconds being silently ignored. Bucket
+  pruning used the separate `RATE_LIMIT_WINDOW_MS` default, capping the effective window at
+  60 seconds however the setting was configured.
+- Fixed `AUDIT_LOG_MAX_BYTES` having no effect. It is now enforced when the audit file is
+  written, dropping the oldest entries to stay within the limit while never emptying the file.
+
+### Changed
+
+- `Copy rows` and `Export CSV` now render SQL `NULL` as `NULL` instead of an empty field, so
+  missing data is distinguishable from blank data and all three copy/export surfaces agree
+  with the result grid. Spreadsheet formula escaping and RFC 4180 quoting are unchanged.
+
+### Removed
+
+- Removed the unreachable `SNIPPETS` / `[data-snippet]` client code path. No markup emitted
+  `data-snippet`, and the `|| DEFAULT_QUERY` fallback made it look functional.
+
+### Verification
+
+- Added SQL classifier coverage for CTE reads with `UNION ALL`, `UNION`, `EXCEPT`,
+  `INTERSECT`, a set operator combined with `ORDER BY`, a set operator inside a subquery, and
+  `SELECT DISTINCT`.
+- Added `parseQualifiedObjectName` round-trip coverage for dotted and bracketed identifiers.
+- Added server-unit coverage for the audit byte cap, unknown source-type filters and
+  rate-limit pruning across a window wider than the module default.
+- Added UI smoke coverage for the Safety Policy payload and for `NULL` versus empty-string
+  fidelity in `Copy rows`.
+
 ## 1.4.24 - 2026-07-08
 
 Self-update launcher reliability fix.

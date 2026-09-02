@@ -57,6 +57,14 @@ function attachMocks(window) {
         writePreviewLimit: 10,
         heightenedConfirmLimit: 3,
         responseRowLimit: 250,
+        confirmationTtlMs: 300000,
+        safety: {
+          deleteRequiresWhere: false,
+          writePreviewFirst: true,
+          procedureExecutionRequiresTypedConfirmation: false,
+          confirmWithButtonOnly: true,
+          fullUserControl: true
+        },
         sidePanels: {
           autoHideEnabled: true,
           idleMs: 10000,
@@ -607,9 +615,10 @@ function attachMocks(window) {
         columns: ['AlertId', 'Status', 'JsonPayload'],
         rows: [
           { AlertId: 1, Status: null, JsonPayload: '{"severity":"low","nested":{"ok":true}}' },
-          { AlertId: 2, Status: 'FAILED', JsonPayload: '{"severity":"high","nested":{"ok":false}}' }
+          { AlertId: 2, Status: 'FAILED', JsonPayload: '{"severity":"high","nested":{"ok":false}}' },
+          { AlertId: 3, Status: '', JsonPayload: '{"severity":"none","nested":{"ok":true}}' }
         ],
-        totalRows: 2,
+        totalRows: 3,
         rowsAffected: 0,
         truncated: false
       }), {
@@ -818,6 +827,20 @@ if (sqlWindow.document.documentElement.dataset.tooltips !== 'enabled') {
 }
 if (sqlWindow.document.documentElement.style.getPropertyValue('--tooltip-delay-ms') !== '0ms') {
   throw new Error('Tooltip delay from health should be applied as a CSS variable.');
+}
+{
+  // The Safety Policy panel must render the policy and limits /api/health actually reports,
+  // not the hardcoded fallback sentence.
+  const policyText = sqlWindow.document.getElementById('policySummary').textContent;
+  if (policyText.includes('Default policy')) {
+    throw new Error('Safety Policy panel fell back to default text despite health returning a safety payload.');
+  }
+  if (!policyText.includes('Active policy') || !policyText.includes('Write preview first: Yes')) {
+    throw new Error(`Safety Policy panel did not render the server safety payload. Got: ${policyText}`);
+  }
+  if (!policyText.includes('Row cap 250') || !policyText.includes('Typed ack above 3 row(s)')) {
+    throw new Error(`Safety Policy panel did not render the server safety limits. Got: ${policyText}`);
+  }
 }
 ['saveConnectionBtn', 'testConnectionBtn', 'loadTablesBtn', 'runQueryBtn', 'clearHistoryBtn', 'toggleAdvancedOperationsBtn', 'insertSelectTemplateBtn', 'updateJoinTemplateBtn', 'mergePreviewBtn', 'profileObjectBtn', 'dependencyViewBtn', 'insertSqlHelperBtn', 'wrapSqlHelperBtn', 'openWorkbenchToolsBtn', 'openEnvSettingsBtn', 'openSupportBtn', 'scrollResultsLeftBtn', 'scrollResultsRightBtn', 'scrollResultsDockLeftBtn', 'scrollResultsDockRightBtn'].forEach((id) => {
   const element = sqlWindow.document.getElementById(id);
@@ -1259,6 +1282,27 @@ if (!sqlWindow.document.querySelector('.result-null')) {
 }
 if (!sqlWindow.document.querySelector('.row-index')) {
   throw new Error('Results table row indexes are missing.');
+}
+{
+  // Copy rows must keep SQL NULL distinguishable from an empty string, matching the grid and
+  // the single-cell copy action.
+  sqlWindow.document.getElementById('copyResultsBtn').click();
+  await flush();
+  const copiedLines = sqlWindow.__lastClipboardText.split('\n');
+  if (copiedLines[0] !== 'AlertId\tStatus\tJsonPayload') {
+    throw new Error(`Copy rows did not emit the column header row. Got: ${copiedLines[0]}`);
+  }
+  const nullRow = copiedLines.find((line) => line.startsWith('1\t'));
+  const blankRow = copiedLines.find((line) => line.startsWith('3\t'));
+  if (!nullRow || !blankRow) {
+    throw new Error(`Copy rows did not emit both the NULL and empty-string rows. Got: ${sqlWindow.__lastClipboardText}`);
+  }
+  if (!nullRow.startsWith('1\tNULL\t')) {
+    throw new Error(`Copy rows should render SQL NULL as NULL. Got: ${nullRow}`);
+  }
+  if (!blankRow.startsWith('3\t\t')) {
+    throw new Error(`Copy rows should render an empty string as an empty field. Got: ${blankRow}`);
+  }
 }
 assertVisibleAffordance(sqlWindow, '.result-tab.active', 'active result tab');
 assertVisibleAffordance(sqlWindow, '.table-header-btn', 'result table header button');

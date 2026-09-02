@@ -292,19 +292,42 @@ assert.deepEqual(
   parseQualifiedObjectName('[dbo].[Customer]'),
   { schemaName: 'dbo', objectName: 'Customer', fullName: 'dbo.Customer' }
 );
-// A single identifier that legitimately contains a dot must stay intact.
+// A single identifier that legitimately contains a dot must stay intact, and fullName must
+// bracket-quote it so the value survives being parsed again — the client stores fullName and
+// sends it back on every follow-up request.
 assert.deepEqual(
   parseQualifiedObjectName('[My.Table]'),
-  { schemaName: 'dbo', objectName: 'My.Table', fullName: 'dbo.My.Table' }
+  { schemaName: 'dbo', objectName: 'My.Table', fullName: 'dbo.[My.Table]' }
 );
 assert.deepEqual(
   parseQualifiedObjectName('[sales].[My.Report]'),
-  { schemaName: 'sales', objectName: 'My.Report', fullName: 'sales.My.Report' }
+  { schemaName: 'sales', objectName: 'My.Report', fullName: 'sales.[My.Report]' }
 );
 // An escaped closing bracket (]]) resolves to a single ] in the identifier.
 assert.deepEqual(
   parseQualifiedObjectName('[wei]]rd]'),
-  { schemaName: 'dbo', objectName: 'wei]rd', fullName: 'dbo.wei]rd' }
+  { schemaName: 'dbo', objectName: 'wei]rd', fullName: 'dbo.[wei]]rd]' }
 );
+
+// fullName must round-trip: parsing it again yields the same schema/object.
+for (const name of [
+  'dbo.Customer',
+  'Customer',
+  '[dbo].[Customer]',
+  '[My.Table]',
+  '[sales].[My.Report]',
+  '[wei]]rd]',
+  '[odd.schema].[odd.object]'
+]) {
+  const first = parseQualifiedObjectName(name);
+  assert.deepEqual(
+    parseQualifiedObjectName(first.fullName),
+    first,
+    `fullName for ${name} must survive a second parse`
+  );
+}
+
+// An empty object name still yields an empty fullName.
+assert.equal(parseQualifiedObjectName('').fullName, '');
 
 console.log('SQL metadata tests passed.');
