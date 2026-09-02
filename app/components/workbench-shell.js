@@ -304,6 +304,7 @@ function ResultsCard() {
       </div>
       <div id="resultTabs" className="result-tabs" aria-label="Result tabs" />
       <div id="resultsMeta" className="results-meta">No results yet.</div>
+      <div id="resultEditModeNote" className="edit-mode-note hidden" role="note" />
       <div id="pendingEditsBar" className="pending-edits-bar hidden" aria-live="polite">
         <span id="pendingEditsSummary">0 unsaved edits</span>
         <div className="button-row wrap right">

@@ -5998,7 +5998,8 @@ window.createConsoleApp = function createConsoleApp() {
     if (!info || !row) {
       return '';
     }
-    return info.keyColumns.map((column) => serializeCellValueForCopy(row?.[column])).join(String.fromCharCode(1));
+    const identityColumns = (info.matchColumns && info.matchColumns.length) ? info.matchColumns : info.keyColumns;
+    return identityColumns.map((column) => serializeCellValueForCopy(row?.[column])).join(String.fromCharCode(1));
   }
 
   function findOriginalRowByKey(rowKey) {
@@ -6069,10 +6070,23 @@ window.createConsoleApp = function createConsoleApp() {
     };
   }
 
+  function renderEditModeNote() {
+    const note = $('resultEditModeNote');
+    if (!note) {
+      return;
+    }
+    const showNote = Boolean(state.results.editMode && state.results.editableInfo?.keyType === 'all-columns');
+    note.classList.toggle('hidden', !showNote);
+    if (showNote) {
+      note.textContent = 'This table has no primary key or unique constraint, so edits are matched by every visible column’s value instead. Each changed row is checked to still be uniquely identifiable right before saving.';
+    }
+  }
+
   function renderPendingEditsBar() {
     const bar = $('pendingEditsBar');
     const summaryEl = $('pendingEditsSummary');
     const insertButton = $('addResultRowBtn');
+    renderEditModeNote();
     if (!bar || !summaryEl) {
       return;
     }
@@ -6233,6 +6247,19 @@ window.createConsoleApp = function createConsoleApp() {
     return `'${text.replace(/'/g, "''")}'`;
   }
 
+  // Builds one column's fragment of a WHERE clause matching a row's original
+  // (pre-edit) value, used for both the real UPDATE/DELETE statements and the
+  // row-uniqueness pre-check query below. `col = NULL` never matches in SQL —
+  // a NULL original value needs `IS NULL` instead, an easy bug to reintroduce
+  // since every actual key value happens to be NOT NULL, and unique
+  // constraints (unlike primary keys) can allow a NULL column.
+  function buildMatchClause(column, columnType, originalValue) {
+    if (originalValue === null || originalValue === undefined) {
+      return `${bid(column)} IS NULL`;
+    }
+    return `${bid(column)} = ${encodeResultEditValue(serializeCellValueForCopy(originalValue), columnType)}`;
+  }
+
   // Runs after every successful direct SELECT (never after procedure runs or
   // metadata actions) to decide whether to show the Edit results button.
   // Fire-and-forget and non-blocking: results render immediately, and the
@@ -6255,6 +6282,12 @@ window.createConsoleApp = function createConsoleApp() {
       state.results.editableInfo = payload.editable ? {
         object: payload.object,
         keyColumns: payload.keyColumns || [],
+        // The columns actually used to build a row's WHERE clause: the real
+        // declared key when there is one, or every comparable visible column
+        // when there isn't (see keyType). Falls back to keyColumns for safety
+        // if an older/mocked server response omits it.
+        matchColumns: payload.matchColumns || payload.keyColumns || [],
+        keyType: payload.keyType || (payload.keyColumns?.length ? 'primary' : null),
         editableColumns: payload.editableColumns || [],
         columns: payload.columns || [],
         query
@@ -6384,32 +6417,63 @@ window.createConsoleApp = function createConsoleApp() {
     const quotedObject = quoteFullObjectName(info.object);
     const statements = [];
 
+    const rowsNeedingMatch = [...new Set([...summary.deleteRowKeys, ...summary.updateRowKeys])].map((rowKey) => ({
+      rowKey,
+      originalRow: findOriginalRowByKey(rowKey)
+    }));
+    const missingRow = rowsNeedingMatch.find((entry) => !entry.originalRow);
+    if (missingRow) {
+      setStatus('error', 'One or more edited rows are no longer in the loaded results. Re-run the query and try again.');
+      return;
+    }
+
+    // This table has no declared primary key or unique constraint, so rows are
+    // matched by every comparable visible column's original value instead —
+    // inherently weaker than a real key, since two distinct rows could hold
+    // identical values in every one of those columns. Verify, right before
+    // writing anything, that each row being changed still matches exactly one
+    // row in the table; refuse the whole save otherwise rather than risk an
+    // UPDATE/DELETE silently touching more rows than the user intended.
+    if (info.keyType === 'all-columns' && rowsNeedingMatch.length) {
+      setStatus('loading', 'Checking that edited rows are still uniquely identifiable...');
+      const checkQuery = rowsNeedingMatch.map((entry, index) => {
+        const conditions = info.matchColumns
+          .map((column) => buildMatchClause(column, columnTypeByName.get(column.toLowerCase()), entry.originalRow[column]))
+          .join(' AND ');
+        return `SELECT ${index} AS row_index, (SELECT COUNT(*) FROM ${quotedObject} WHERE ${conditions}) AS match_count`;
+      }).join('\nUNION ALL\n');
+
+      try {
+        const checkPayload = await api('/api/query', { method: 'POST', data: requestConnection({ query: checkQuery }) });
+        const ambiguousCount = (checkPayload.rows || []).filter((row) => Number(row.match_count) !== 1).length;
+        if (ambiguousCount) {
+          setStatus('error', `This table has no primary key, so edits are matched by full row content. ${ambiguousCount} of the changed row(s) no longer match exactly one row in the table (duplicate or already-changed data) — re-run the query and try again.`);
+          return;
+        }
+      } catch (error) {
+        setStatus('error', `Could not verify the edited rows are still unique before saving: ${error.message}`);
+        return;
+      }
+    }
+
     // Deletes first: a row marked deleted never also gets an UPDATE, and
     // pendingResultChangeSummary already excludes it from updateRowKeys.
     for (const rowKey of summary.deleteRowKeys) {
-      const originalRow = findOriginalRowByKey(rowKey);
-      if (!originalRow) {
-        setStatus('error', 'One or more rows marked for deletion are no longer in the loaded results. Re-run the query and try again.');
-        return;
-      }
-      const whereClause = info.keyColumns
-        .map((keyColumn) => `${bid(keyColumn)} = ${encodeResultEditValue(serializeCellValueForCopy(originalRow[keyColumn]), columnTypeByName.get(keyColumn.toLowerCase()))}`)
+      const originalRow = rowsNeedingMatch.find((entry) => entry.rowKey === rowKey).originalRow;
+      const whereClause = info.matchColumns
+        .map((column) => buildMatchClause(column, columnTypeByName.get(column.toLowerCase()), originalRow[column]))
         .join(' AND ');
       statements.push(`DELETE FROM ${quotedObject}\nWHERE ${whereClause};`);
     }
 
     for (const rowKey of summary.updateRowKeys) {
-      const originalRow = findOriginalRowByKey(rowKey);
-      if (!originalRow) {
-        setStatus('error', 'One or more edited rows are no longer in the loaded results. Re-run the query and edit again.');
-        return;
-      }
+      const originalRow = rowsNeedingMatch.find((entry) => entry.rowKey === rowKey).originalRow;
       const edits = state.results.pendingEdits[rowKey];
       const setClause = Object.keys(edits)
         .map((column) => `${bid(column)} = ${encodeResultEditValue(edits[column], columnTypeByName.get(column.toLowerCase()))}`)
         .join(',\n    ');
-      const whereClause = info.keyColumns
-        .map((keyColumn) => `${bid(keyColumn)} = ${encodeResultEditValue(serializeCellValueForCopy(originalRow[keyColumn]), columnTypeByName.get(keyColumn.toLowerCase()))}`)
+      const whereClause = info.matchColumns
+        .map((column) => buildMatchClause(column, columnTypeByName.get(column.toLowerCase()), originalRow[column]))
         .join(' AND ');
       statements.push(`UPDATE ${quotedObject}\nSET ${setClause}\nWHERE ${whereClause};`);
     }

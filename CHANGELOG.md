@@ -32,8 +32,26 @@ grid, then save through the normal write-confirmation pipeline.
   to the persistent status bar if the container is somehow missing.
 - Fabric Lakehouse is deliberately excluded: its SQL analytics endpoint is read-only per
   Microsoft's documentation, so the button never appears for that source.
+- Fallback row matching for tables with no declared primary key or unique constraint — common
+  on Fabric Warehouse, which doesn't enforce them. Instead of hiding the button outright, the
+  app matches a row by every visible, comparable column's original value; every column
+  (including the ones used for matching) stays editable, since matching always uses the
+  pre-edit value. A note above the grid explains when this fallback is in effect. Because two
+  distinct rows could in principle hold identical values in every comparable column, each
+  changed row is re-checked — one batched `SELECT COUNT(*)` per save, not one round trip per
+  row — right before writing anything, to confirm it still matches exactly one row in the
+  table; the whole save is refused, with the staged edits kept, if any row now matches zero
+  (changed elsewhere since the grid loaded) or more than one (indistinguishable duplicate
+  content). `POST /api/object-insights` (`editability` action) now returns `matchColumns` and
+  `keyType` alongside the existing `keyColumns`.
 
 ### Fixed
+
+- The generated `UPDATE`/`DELETE` `WHERE` clause encoded a `NULL` key value as `col = NULL`,
+  which never matches in SQL (`IS NULL` is required). Unreachable for a real primary key
+  (never `NULL` by definition) but live for a `NULL`-able unique-constraint column, and now
+  also for the all-columns fallback above. Fixed with a shared `buildMatchClause()` helper
+  used everywhere a row is matched: the real statements and the new uniqueness check alike.
 
 - The unsaved-edits confirmation guard (before running a new query, switching, or closing a
   result tab) counted only staged cell edits, so a pending row deletion or a pending new row
@@ -52,6 +70,17 @@ grid, then save through the normal write-confirmation pipeline.
   kinds of pending change and the post-save toast and in-place grid refresh.
 - `npm run responsive:audit` stays green with the new row-actions column, new-row form, and
   toast container in place.
+- New `scripts/ui-smoke.mjs` coverage in a second isolated window for a keyless table: every
+  column renders editable with no read-only key marker, the fallback note is shown, a
+  uniquely-identifiable row saves normally, and an edit to a row with duplicate content across
+  every column is refused before the confirmation modal ever opens, with the staged edit kept.
+- The `editable: true` success path in `postObjectInsight`'s `editability` action (both the
+  real-key and the new all-columns-fallback branch) is exercised only through the client-facing
+  contract asserted by the `ui-smoke.mjs` mocks above, not against a live database — this repo's
+  automated suites have no real SQL Server/Fabric connection to test against
+  (`scripts/route-contract.test.mjs` only reaches the validation paths that return before
+  `withConnection()`). Worth a manual check with `npm run verify:live` or by hand against a real
+  keyless table before relying on this in production.
 
 ## 1.4.26 - 2026-09-02
 

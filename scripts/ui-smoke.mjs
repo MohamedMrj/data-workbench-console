@@ -377,12 +377,35 @@ function attachMocks(window) {
             headers: { 'Content-Type': 'application/json' }
           });
         }
+        // A table with no declared primary key or unique constraint: the
+        // client falls back to matching rows by every visible column.
+        if (/LegacyImport/i.test(queryText)) {
+          return new Response(JSON.stringify({
+            success: true,
+            action: 'editability',
+            editable: true,
+            object: 'dbo.LegacyImport',
+            keyColumns: [],
+            matchColumns: ['ImportId', 'Payload'],
+            keyType: 'all-columns',
+            editableColumns: ['ImportId', 'Payload'],
+            columns: [
+              { name: 'ImportId', type: 'int', nullable: false },
+              { name: 'Payload', type: 'varchar', nullable: true }
+            ]
+          }), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' }
+          });
+        }
         return new Response(JSON.stringify({
           success: true,
           action: 'editability',
           editable: true,
           object: 'dbo.Alerts',
           keyColumns: ['AlertId'],
+          matchColumns: ['AlertId'],
+          keyType: 'primary',
           editableColumns: ['Status'],
           columns: [
             { name: 'AlertId', type: 'int', nullable: false },
@@ -556,6 +579,46 @@ function attachMocks(window) {
           code: 'EREQUEST'
         }), {
           status: 400,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
+      // The results-grid editor's row-uniqueness pre-check for keyless tables
+      // (buildMatchClause/saveResultEdits in console-core.js): one UNION ALL of
+      // "SELECT <index> AS row_index, (SELECT COUNT(*) ...) AS match_count"
+      // per row being saved. Reports 2 matches for the row whose original
+      // Payload was 'DUP' (two physically identical rows in the mocked table)
+      // and 1 for 'UNQ' (the only row with that value).
+      if (queryText.includes('AS match_count')) {
+        const matchCount = queryText.includes("[Payload] = 'DUP'") ? 2 : 1;
+        return new Response(JSON.stringify({
+          success: true,
+          columns: ['row_index', 'match_count'],
+          rows: [{ row_index: 0, match_count: matchCount }],
+          totalRows: 1,
+          rowsAffected: 0,
+          truncated: false
+        }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
+      // A keyless table's own data, always the same two identical rows and one
+      // unique row regardless of any staged edit (this mock is static, like
+      // the generic Alerts read below).
+      if (/^\s*SELECT \* FROM dbo\.LegacyImport\s*$/i.test(queryText.trim()) && !body.confirmToken) {
+        return new Response(JSON.stringify({
+          success: true,
+          columns: ['ImportId', 'Payload'],
+          rows: [
+            { ImportId: 1, Payload: 'DUP' },
+            { ImportId: 1, Payload: 'DUP' },
+            { ImportId: 2, Payload: 'UNQ' }
+          ],
+          totalRows: 3,
+          rowsAffected: 0,
+          truncated: false
+        }), {
+          status: 200,
           headers: { 'Content-Type': 'application/json' }
         });
       }
@@ -2007,6 +2070,83 @@ if (autoHideWindow.localStorage.getItem('dataWorkbenchSidePanelVisibilityV1')) {
   }
   if (editorWindow.document.getElementById('pendingEditsSummary').textContent !== 'No unsaved changes') {
     throw new Error('Pending changes should be cleared once the refreshed grid loads after a save.');
+  }
+}
+
+// Fallback row-matching for a table with no declared primary key or unique
+// constraint (common on Fabric Warehouse, which does not enforce them): rows
+// are matched by every visible column's original value instead, and each
+// changed row must be verified unique in the table right before saving.
+// Isolated in its own window for the same reason as editorWindow above.
+{
+  const noKeyWindow = await createWindow('http://127.0.0.1:3100/');
+  noKeyWindow.document.getElementById('serverInput').value = 'demo';
+  noKeyWindow.document.getElementById('databaseInput').value = 'meta_store';
+  noKeyWindow.document.getElementById('serverInput').dispatchEvent(new noKeyWindow.Event('input', { bubbles: true }));
+  noKeyWindow.document.getElementById('databaseInput').dispatchEvent(new noKeyWindow.Event('input', { bubbles: true }));
+  const noKeyEditor = noKeyWindow.document.getElementById('queryEditor');
+
+  noKeyEditor.value = 'SELECT * FROM dbo.LegacyImport';
+  noKeyEditor.dispatchEvent(new noKeyWindow.Event('input', { bubbles: true }));
+  noKeyWindow.document.getElementById('runQueryBtn').click();
+  await flush();
+  if (noKeyWindow.document.getElementById('toggleEditResultsBtn').classList.contains('hidden')) {
+    throw new Error('A keyless table should still offer editing via the all-columns fallback.');
+  }
+
+  noKeyWindow.document.getElementById('toggleEditResultsBtn').click();
+  await flush();
+  if (noKeyWindow.document.getElementById('resultEditModeNote').classList.contains('hidden')) {
+    throw new Error('The no-primary-key note should show while editing a keyless table.');
+  }
+  if (!noKeyWindow.document.getElementById('resultEditModeNote').textContent.includes('no primary key')) {
+    throw new Error('The no-primary-key note should explain the fallback matching behavior.');
+  }
+  if (noKeyWindow.document.querySelector('.result-edit-key-marker')) {
+    throw new Error('A keyless table has no declared key column, so no cell should show the read-only key marker.');
+  }
+  const payloadInputs = noKeyWindow.document.querySelectorAll('.result-edit-input[data-edit-column="Payload"]');
+  if (payloadInputs.length !== 3) {
+    throw new Error('Every column should be editable on a keyless table, including columns used for row matching.');
+  }
+
+  // Row 3 (ImportId=2, Payload='UNQ') is unique across every visible column —
+  // editing and saving it should pass the uniqueness check and proceed
+  // through the normal single-click confirm path, same as a real key.
+  const uniqueRowInput = payloadInputs[2];
+  uniqueRowInput.focus();
+  uniqueRowInput.value = 'INLINE_EDIT_TEST';
+  uniqueRowInput.dispatchEvent(new noKeyWindow.Event('input', { bubbles: true }));
+  noKeyWindow.document.getElementById('saveResultEditsBtn').click();
+  await flush();
+  if (noKeyWindow.document.getElementById('confirmModal').classList.contains('hidden')) {
+    throw new Error('Saving a uniquely-identifiable row on a keyless table should pass the uniqueness check and open the confirmation modal.');
+  }
+  noKeyWindow.document.getElementById('confirmModalBtn').click();
+  await flush();
+  const noKeyToast = noKeyWindow.document.querySelector('#appToastContainer .app-toast');
+  if (!noKeyToast || !noKeyToast.textContent.includes('Saved 1 change to dbo.LegacyImport.')) {
+    throw new Error(`Saving the unique row on a keyless table should succeed and toast. Toast: ${noKeyToast?.textContent}`);
+  }
+
+  // Rows 1 and 2 (ImportId=1, Payload='DUP') are identical across every
+  // visible column — the app cannot tell them apart, so editing either one
+  // and saving must be refused by the uniqueness check rather than risk the
+  // generated UPDATE silently touching both rows.
+  const dupRowInput = noKeyWindow.document.querySelectorAll('.result-edit-input[data-edit-column="Payload"]')[0];
+  dupRowInput.focus();
+  dupRowInput.value = 'RENAMED';
+  dupRowInput.dispatchEvent(new noKeyWindow.Event('input', { bubbles: true }));
+  noKeyWindow.document.getElementById('saveResultEditsBtn').click();
+  await flush();
+  if (!noKeyWindow.document.getElementById('confirmModal').classList.contains('hidden')) {
+    throw new Error('Saving an ambiguous (duplicate-content) row on a keyless table must not open the confirmation modal.');
+  }
+  if (!noKeyWindow.document.getElementById('statusText').textContent.includes('no longer match exactly one row')) {
+    throw new Error(`Saving an ambiguous row should explain that it could not be uniquely matched. Status: ${noKeyWindow.document.getElementById('statusText').textContent}`);
+  }
+  if (!dupRowInput.classList.contains('result-edit-dirty')) {
+    throw new Error('A blocked save should leave the staged edit in place so the user does not lose their change.');
   }
 }
 

@@ -1873,6 +1873,17 @@ html[data-ambient-motion='enabled'] .shell-orbit-b {
   line-height: 1.5;
 }
 
+.edit-mode-note {
+  margin: 0 0 8px;
+  padding: 6px 10px;
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 24%, transparent);
+  color: var(--muted);
+  font-size: 0.78rem;
+  line-height: 1.4;
+}
+
 .pending-edits-bar {
   display: flex;
   flex-wrap: wrap;

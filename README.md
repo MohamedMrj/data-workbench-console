@@ -740,9 +740,9 @@ Result tab behavior:
 
 An `Edit results` button appears above a result set when it qualifies: a plain
 single-table `SELECT` (no `JOIN`, `UNION`, `GROUP BY`, subquery source, or aggregate) against
-an object that has a primary key or unique key the server can discover. The button stays
-hidden for anything else — multi-table results, DDL/DML output, procedure output, and any
-source that can't support row identification.
+an object where at least one column can be used to identify a specific row (see Row matching
+below). The button stays hidden for anything else — multi-table results, DDL/DML output,
+procedure output, and any source that can't support row identification at all.
 
 Source support:
 
@@ -752,11 +752,28 @@ Source support:
 | Fabric SQL (Warehouse) | Yes | Full DML support and standard catalog metadata. |
 | Fabric Lakehouse (SQL analytics endpoint) | No | Microsoft's SQL analytics endpoint is read-only; `INSERT`/`UPDATE`/`DELETE` are rejected by the endpoint itself, so the button never appears for it. |
 
+Row matching:
+
+- when the table has a primary key or unique constraint, that key identifies each row —
+  those key column(s) render read-only in the grid (they identify the row rather than
+  describe it)
+- when it doesn't — common on Fabric Warehouse, which doesn't enforce these constraints —
+  the app falls back to matching a row by every visible, comparable column's original value
+  instead. A note above the grid explains this is active. Every column stays editable in
+  this mode, including ones used for matching, since editing uses the column's value
+  *before* the edit to find the row
+- either way, unsupported column types
+  (`binary`/`varbinary`/`image`/`xml`/`geography`/`geometry`/`hierarchyid`/`sql_variant`/
+  `timestamp`/`rowversion`) always render read-only and are never used to match a row
+- in fallback mode, right before saving, each changed row is re-checked against the table
+  (`SELECT COUNT(*) WHERE <every matched column> = <original value>`) to confirm it still
+  matches exactly one row. If it matches zero (already changed or deleted since the grid
+  loaded) or more than one (the table has duplicate rows the app can't tell apart), the
+  whole save is refused with an explanation, and the staged edit is kept so nothing is lost
+
 Editing, once `Edit results` is on:
 
-- edit any non-key, editable-type cell directly in the grid; key columns and unsupported
-  types (`binary`/`varbinary`/`image`/`xml`/`geography`/`geometry`/`hierarchyid`/`sql_variant`/
-  `timestamp`/`rowversion`) render read-only
+- edit any non-key, editable-type cell directly in the grid
 - mark any row for deletion with a per-row `Delete` button (`Restore` undoes it); a
   deleted row is shown struck through until you save or discard
 - add new rows with `+ New row`; leave a field blank to use the column's database default
