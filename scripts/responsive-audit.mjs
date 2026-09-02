@@ -333,7 +333,12 @@ async function inspectViewport(page) {
       const shouldFitOwnBox = element.matches('button, a, input, select, textarea') ||
         element.classList.contains('builder-panel') ||
         element.classList.contains('param-card');
-      if (shouldFitOwnBox && !insideManagedScroller && element.scrollWidth > element.clientWidth + 3) {
+      // A single-line input holding a value longer than its box scrolls natively, which is
+      // normal field behaviour rather than a clipped layout — the same reason #queryEditor is
+      // exempted above. Still flag an input that overflows while empty, because that does mean
+      // the box itself is broken.
+      const valueDrivenInputScroll = element.matches('input') && String(element.value || '') !== '';
+      if (shouldFitOwnBox && !valueDrivenInputScroll && !insideManagedScroller && element.scrollWidth > element.clientWidth + 3) {
         problems.push({
           type: 'own-overflow',
           tag: element.tagName,
@@ -456,6 +461,27 @@ async function inspectViewport(page) {
       }
     }
 
+    // The studio grid template must agree with the JS-owned data-studio-mode. A viewport
+    // breakpoint that forces a different column count than the layout engine computed is the
+    // class of bug that previously made the two-column studio unreachable, and jsdom cannot
+    // catch it because it does not evaluate media or container queries.
+    const studioGridEl = document.querySelector('#sqlWorkspace:not(.hidden) .studio-grid');
+    let studioColumns = null;
+    if (studioGridEl && shell?.dataset.studioMode) {
+      const template = String(getComputedStyle(studioGridEl).gridTemplateColumns || '').trim();
+      studioColumns = template ? template.split(/\s+/).length : 0;
+      const expectedColumns = shell.dataset.studioMode === 'wide' ? 2 : 1;
+      if (studioColumns !== expectedColumns) {
+        problems.push({
+          type: 'studio-grid-columns-disagree-with-mode',
+          studioMode: shell.dataset.studioMode,
+          expectedColumns,
+          actualColumns: studioColumns,
+          template
+        });
+      }
+    }
+
     const builder = document.querySelector('.builder-primary-grid');
     const operationPanel = document.querySelector('.builder-panel-operation');
     const columnsPanel = document.querySelector('.builder-panel-columns');
@@ -520,6 +546,7 @@ async function inspectViewport(page) {
       layoutMode: shell?.dataset.layoutMode || '',
       workspaceMode: shell?.dataset.workspaceMode || '',
       studioMode: shell?.dataset.studioMode || '',
+      studioColumns,
       procedureLayoutMode: shell?.dataset.procedureLayoutMode || '',
       documentOverflow: document.documentElement.scrollWidth - viewportWidth,
       problems
@@ -629,6 +656,13 @@ async function runCase(browser, routePath, width, options = {}) {
     await page.waitForTimeout(150);
   }
 
+  // Collapsing only the connection rail is the state that frees enough width for the studio
+  // to reach `wide` while the themes/history panel is still visible.
+  if (options.collapseControlRailOnly) {
+    await page.locator('#toggleControlRailBtn').click().catch(() => {});
+    await page.waitForTimeout(250);
+  }
+
   const result = await inspectViewport(page);
   result.problems.push(...await inspectFocusAffordance(page));
   result.problems.push(...await inspectHoverStability(page));
@@ -671,6 +705,23 @@ try {
     for (const width of [390, 1200]) {
       results.push(await runCase(browser, routePath, width, { screenshot: true }));
     }
+  }
+
+  // The studio only reaches `wide` when the connection rail is collapsed and enough width is
+  // left over. Pin that the wide template actually renders two columns, and sweep the band
+  // just under the old `max-width: 2200px` blanket where the breakpoint used to override the
+  // layout engine back to a single column.
+  const wideStudio = await runCase(browser, '/', 2400, { collapseControlRailOnly: true, screenshot: true });
+  results.push(wideStudio);
+  if (wideStudio.studioMode !== 'wide') {
+    throw new Error(`Expected studio=wide at 2400px with the connection rail collapsed, got "${wideStudio.studioMode}".`);
+  }
+  if (wideStudio.studioColumns !== 2) {
+    throw new Error(`Expected the studio grid to render two columns in wide mode, got ${wideStudio.studioColumns}.`);
+  }
+
+  for (const width of [2180, 2100]) {
+    results.push(await runCase(browser, '/', width, { collapseControlRailOnly: true }));
   }
 } finally {
   await browser.close();

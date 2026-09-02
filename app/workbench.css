@@ -689,6 +689,18 @@ html[data-ambient-motion='enabled'] .shell-orbit-b {
    absorb the extra height so there's no empty shell inside the
    studio-stack. The textarea flex-grows to use whatever space the
    row gives it. */
+/* The studio grids are single-column by default (see .studio-grid) so the pre-JS paint cannot
+   flash two columns. getLayoutMode() owns the decision and opts in here, which keeps the
+   template in step with data-studio-mode instead of a separate viewport breakpoint guessing
+   at the available studio width. */
+.app-shell[data-studio-mode="wide"] .studio-grid {
+  grid-template-columns: minmax(0, 1.18fr) minmax(420px, 0.82fr);
+}
+
+.app-shell[data-studio-mode="wide"] .editor-controls-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
 .app-shell[data-studio-mode="wide"] .studio-panel-sql {
   flex: 1 1 auto;
   display: flex;
@@ -1070,9 +1082,13 @@ html[data-ambient-motion='enabled'] .shell-orbit-b {
   pointer-events: none;
 }
 
+/* Single column is the default so the server-rendered first paint matches the JS `stacked`
+   state. data-studio-mode is written by applyPanelLayout() after console-core.js runs, so a
+   wide default would paint two columns and then collapse. The wide layout is opted into by
+   .app-shell[data-studio-mode="wide"] instead. */
 .studio-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 520px), 1fr));
+  grid-template-columns: 1fr;
   align-items: start;
   gap: 18px;
 }
@@ -1122,9 +1138,10 @@ html[data-ambient-motion='enabled'] .shell-orbit-b {
   min-height: clamp(220px, 26vh, 360px);
 }
 
+/* Narrow by default for the same reason as .studio-grid above. */
 .editor-controls-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: 1fr;
   gap: 12px;
   align-items: start;
 }
@@ -1140,36 +1157,6 @@ html[data-ambient-motion='enabled'] .shell-orbit-b {
 
 .procedure-studio-grid .results-panel {
   min-height: 260px;
-}
-
-@media (min-width: 1180px) {
-  .studio-grid {
-    grid-template-columns: minmax(0, 1.18fr) minmax(420px, 0.82fr);
-  }
-}
-
-@media (max-width: 2200px) {
-  .app-shell:not(.activity-panel-collapsed) .studio-grid {
-    grid-template-columns: 1fr !important;
-  }
-
-  .app-shell:not(.activity-panel-collapsed) .editor-controls-grid {
-    grid-template-columns: 1fr !important;
-  }
-
-  .app-shell:not(.activity-panel-collapsed) .builder-primary-grid {
-    grid-template-columns: 1fr !important;
-  }
-
-  .app-shell:not(.activity-panel-collapsed) .builder-primary-grid > [data-resize-handle="builder"] {
-    display: none;
-  }
-
-  .app-shell:not(.activity-panel-collapsed) .editor-card,
-  .app-shell:not(.activity-panel-collapsed) .builder-card {
-    width: 100%;
-    max-width: 100%;
-  }
 }
 
 .builder-grid {

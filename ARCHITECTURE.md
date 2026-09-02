@@ -935,9 +935,11 @@ with an explicit fallback for sources lacking the DMV, return
 
 ### Genuine issues
 
-Open, reproduced defects live in **[BUGS.md](BUGS.md)** — one entry each, with a reproduction,
-root cause, suggested fix and the regression test to add. That file is the single source of
-truth; entries are deleted from it when fixed and recorded in [CHANGELOG.md](CHANGELOG.md).
+**None currently tracked.** The defects found in the 1.4.25/1.4.26 audit are fixed and
+recorded in [CHANGELOG.md](CHANGELOG.md), which is the permanent history.
 
-Do not duplicate the list here. If an entry there turns out to be intended behaviour, move the
-explanation into the "Intentional" table above and delete it from `BUGS.md`.
+When a defect is found and not fixed immediately, record it in a `BUGS.md` at the repository
+root — one entry per defect with a reproduction, root cause, suggested fix and the regression
+test to add — and delete the entry once it is fixed. See
+[AGENTS.md §10](AGENTS.md#10-known-issues) for the convention. Do not keep a duplicate list
+here; this section is for the "Intentional" table above.

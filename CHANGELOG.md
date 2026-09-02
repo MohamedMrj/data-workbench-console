@@ -5,6 +5,42 @@ All notable Data Workbench Console changes are tracked here.
 The in-app version is read from `package.json` and exposed through `/api/version`
 together with the current git commit and build information.
 
+## 1.4.26 - 2026-09-02
+
+The layout engine is now the single authority for the two-column studio.
+
+### Fixed
+
+- Fixed the two-column Query Builder / SQL Editor layout being unreachable while the
+  themes/history panel was visible. A `@media (max-width: 2200px)` rule applied
+  `grid-template-columns: 1fr !important`, overriding the `data-studio-mode` decision the
+  layout engine had already made. The two disagreed in a narrow band just under 2200px with
+  the connection rail collapsed — for example a 2180px window, where `getLayoutMode()`
+  computed `wide` but the breakpoint still forced a single column.
+
+### Changed
+
+- `.studio-grid` and `.editor-controls-grid` are now single-column by default and opt into the
+  wide template through `.app-shell[data-studio-mode="wide"]`. `data-studio-mode` is written
+  client-side after the shell paints, so a wide default would flash two columns and then
+  collapse; narrow-by-default keeps the first paint and the engine's `stacked` state in
+  agreement.
+- Removed the unreachable `@media (min-width: 1180px)` studio rule and the whole
+  `@media (max-width: 2200px)` block. Every rule in that block is already covered by the base
+  rules and the existing `[data-studio-mode="stacked"]` rules.
+
+### Verification
+
+- The responsive audit now asserts `.studio-grid`'s computed column count agrees with
+  `data-studio-mode` at every audited viewport, so a viewport breakpoint can no longer
+  silently override the layout engine. jsdom cannot catch this class of bug because it does
+  not evaluate media or container queries.
+- Added audit scenarios that collapse only the connection rail: 2400px pins that wide mode
+  renders two columns, and 2180/2100px sweep the band under the old breakpoint.
+- Narrowed the audit's `own-overflow` heuristic so a single-line input holding a value longer
+  than its box is no longer reported — that is native field scrolling, consistent with the
+  existing `#queryEditor` exemption. An input that overflows while empty is still reported.
+
 ## 1.4.25 - 2026-09-02
 
 Correctness fixes found by an audit of the read row-cap, identifier handling, result export,

@@ -203,21 +203,25 @@ retry logic all assume it.
 
 ## 10. Known issues
 
-**[BUGS.md](BUGS.md) is the list of open, reproduced defects.** Each entry carries a
-reproduction, root cause, suggested fix and the regression test to add.
+**No open defects are currently tracked.** The ones found in the 1.4.25/1.4.26 audit are fixed;
+`CHANGELOG.md` has the history.
 
-Rules:
+If you find a defect and are not fixing it in the same change, open a `BUGS.md` at the
+repository root and follow this convention:
 
-- Do not "fix" a `BUGS.md` entry incidentally while doing unrelated work. Fix it as its own
-  change, with the named regression test, or leave it alone.
-- When you do fix one: add the test, record it in `CHANGELOG.md`, then **delete the entry from
-  `BUGS.md`** (including its index row). Do not mark it done or move it to a "fixed" section.
-- Do not add unverified suspicions to `BUGS.md`. Reproduce first, paste the reproduction in.
+- **Reproduce it first.** Paste the reproduction (a command, or exact steps) into the entry.
+  Never file unverified suspicions.
+- One entry per defect: ID, severity, location, symptom, reproduction, root cause, suggested
+  fix, and the specific regression test to add. Never recycle an ID.
+- Severity `decision` means it needs the maintainer's intent before any code change — ask, do
+  not guess.
+- Do not fix an entry incidentally while doing unrelated work. Fix it as its own change with
+  the named regression test, or leave it alone.
+- When you fix one: add the test, record it in `CHANGELOG.md`, then **delete the entry**
+  (including its index row). Do not mark it done or move it to a "fixed" section. When the file
+  is empty, delete the file and update the pointers in `ARCHITECTURE.md §21` and here.
 - If an entry turns out to be intended behaviour, move the explanation into
-  [ARCHITECTURE.md §21](ARCHITECTURE.md#21-known-issues-and-intentional-oddities) and delete it
-  from `BUGS.md`.
-- One entry is filed as `decision` — it needs the maintainer's intent before any code change.
-  Ask; do not guess.
+  [ARCHITECTURE.md §21](ARCHITECTURE.md#21-known-issues-and-intentional-oddities) instead.
 
 Conversely, several things look like bugs but are deliberate — `GO` blocking,
 `git reset --hard` in the updater, the full audit-log rewrite on every entry, treating a
