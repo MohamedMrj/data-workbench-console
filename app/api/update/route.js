@@ -6,6 +6,7 @@ import { execFile } from 'child_process';
 import { NextResponse } from 'next/server';
 import { isLocalLifecycleRequest } from '../../../lib/server/lifecycle-store';
 import { buildUpdaterLaunchCommand, waitForUpdaterStart } from '../../../lib/server/update-launcher';
+import { writeUpdateStatusPending } from '../../../lib/server/update-status-store';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -119,6 +120,11 @@ export async function POST(req) {
   });
   let child;
   try {
+    // apply-update.ps1 only writes its own outcome once it finishes (or fails), so a
+    // failure that happens after the old server is stopped but before that write would
+    // otherwise leave a stale 'success' from a previous run in place. Reset to 'pending'
+    // here, synchronously, before anything can go wrong.
+    await writeUpdateStatusPending(projectDir);
     await writeUpdateLaunchLog(projectDir, `Launching updater for ${shortCommit(localCommit)} -> ${shortCommit(latestCommit)}.`);
     child = spawn('cmd.exe', ['/d', '/s', '/c', launchCommand], {
       cwd: projectDir,

@@ -5,6 +5,43 @@ All notable Data Workbench Console changes are tracked here.
 The in-app version is read from `package.json` and exposed through `/api/version`
 together with the current git commit and build information.
 
+## 1.4.28 - 2026-09-15
+
+Self-update reliability and a friendlier first-run experience for machines without Node.js.
+
+### Fixed
+
+- Fixed the `Update` button silently doing nothing when the updater itself failed partway
+  through (a `git fetch`/network problem, or an `npm install`/`npm run build` error).
+  `scripts/apply-update.ps1`'s outer `try/catch` always restarts *a* server on its way out so
+  the app is never left down — on success that's the freshly built update, but on a caught
+  failure it's a fallback restart of whatever code is currently on disk. Both looked identical
+  to the client: the server goes down, comes back up, and the page reloads, so a real failure
+  was indistinguishable from a real success and the user was left thinking `Update` just did
+  nothing (still on the old version, no error, `Update available` still showing on reload).
+  The updater now writes its outcome to `.data/update-status.json`
+  (`{ outcome, error, commitBefore, commitAfter, finishedAt }`) right before that restart,
+  reset to `pending` by `POST /api/update` before the updater is even launched. A new
+  local-only `GET /api/update-status` exposes it, and `waitForUpdateRestart()` in
+  `public/console-core.js` reads it once the server answers again: `outcome: 'failed'` now
+  shows a clear `Update failed` message with the captured error instead of reloading, so a
+  broken update surfaces instead of hiding.
+
+### Added
+
+- `Start Data Workbench.ps1` now checks for Node.js before doing any install/build/start work.
+  If Node.js is missing, it shows a clear explanation that Node.js is required and offers to
+  open the Node.js download page. Applies to first-time installs and any launch that can't
+  reuse an already-running server. `Run Data Workbench.bat` (the visible-console fallback
+  launcher) got the same check and prompt.
+
+### Verification
+
+- New `scripts/server-unit.test.mjs` coverage for `lib/server/update-status-store.js`
+  (pending/failed round-trip through a temp project directory).
+- New `scripts/route-contract.test.mjs` coverage asserting `GET /api/update-status` is
+  local-only and returns `status: null` before any update has run.
+
 ## 1.4.27 - 2026-09-02
 
 A live editor for query results: modify, delete, and insert rows directly in the results

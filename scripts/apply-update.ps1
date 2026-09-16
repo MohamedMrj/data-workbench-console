@@ -12,10 +12,37 @@ $ErrorActionPreference = 'Stop'
 $logDir = Join-Path $ProjectDir '.data\logs'
 $updateLog = Join-Path $logDir 'data-workbench-update.log'
 $serverLog = Join-Path $logDir 'data-workbench-server.log'
+$statusPath = Join-Path $ProjectDir '.data\update-status.json'
+$commitBefore = ''
 
 function Write-UpdateLog {
     param([string]$Message)
     Add-Content -LiteralPath $updateLog -Value "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] $Message"
+}
+
+# The API resets this file to 'pending' before launching this script. Every exit path
+# (success, or a caught failure that falls back to restarting the old server) must
+# overwrite it, otherwise a silently-failed update leaves the server running again
+# with no visible error and the client has no way to tell it apart from a real success.
+function Write-UpdateStatus {
+    param(
+        [string]$Outcome,
+        [string]$ErrorMessage = ''
+    )
+    $commitAfter = ''
+    try { $commitAfter = (git rev-parse HEAD 2>$null) } catch {}
+    $status = [ordered]@{
+        outcome      = $Outcome
+        error        = $ErrorMessage
+        commitBefore = $commitBefore
+        commitAfter  = $commitAfter
+        finishedAt   = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
+    }
+    try {
+        ($status | ConvertTo-Json) | Set-Content -LiteralPath $statusPath -Encoding utf8
+    } catch {
+        Write-UpdateLog "Could not write update status file: $($_.Exception.Message)"
+    }
 }
 
 function Get-FileHashOrEmpty {
@@ -104,6 +131,8 @@ try {
         throw 'This folder is not a Git checkout. Self-update requires a cloned repository.'
     }
 
+    $commitBefore = (git rev-parse HEAD 2>$null)
+
     $npm = Find-NpmCommand
     $lockPath = Join-Path $ProjectDir 'package-lock.json'
     $lockBefore = Get-FileHashOrEmpty -Path $lockPath
@@ -131,10 +160,12 @@ try {
     }
 
     Invoke-LoggedCommand -FilePath $npm -Arguments @('run', 'build')
+    Write-UpdateStatus -Outcome 'success'
     Start-WorkbenchServer
     Write-UpdateLog 'Data Workbench self-update completed.'
 } catch {
     Write-UpdateLog "Update failed: $($_.Exception.Message)"
+    Write-UpdateStatus -Outcome 'failed' -ErrorMessage $_.Exception.Message
     try {
         Start-WorkbenchServer
     } catch {

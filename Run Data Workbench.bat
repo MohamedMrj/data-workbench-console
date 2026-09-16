@@ -3,9 +3,15 @@ setlocal
 echo Starting Data Workbench Console...
 
 :: Check if Node is installed
-where npm >nul 2>nul
+where node >nul 2>nul
 if %errorlevel% neq 0 (
-    echo Error: Node.js is not installed or not in your system PATH. Please ask your colleague to install Node.js first.
+    echo Node.js was not found on this computer.
+    echo Data Workbench Console requires Node.js ^(version 20 or newer^) to run.
+    echo.
+    choice /c YN /n /m "Open the Node.js download page now? [Y/N] "
+    if errorlevel 2 goto :nodeMissingDone
+    start https://nodejs.org/en/download
+    :nodeMissingDone
     pause
     exit /b
 )

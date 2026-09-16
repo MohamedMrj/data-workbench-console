@@ -289,6 +289,40 @@ function Fail-Launch {
     exit 1
 }
 
+function Test-NodeInstalled {
+    $node = Get-Command node.exe -ErrorAction SilentlyContinue
+    if (-not $node) {
+        $node = Get-Command node -ErrorAction SilentlyContinue
+    }
+    return [bool]$node
+}
+
+function Confirm-NodeInstalled {
+    if (Test-NodeInstalled) {
+        return
+    }
+
+    Add-Content -LiteralPath $launchLog -Value 'Node.js was not found on this computer.'
+    Update-Progress -Status 'Node.js is missing' -Value 0 -Detail 'Node.js is required to run Data Workbench.'
+
+    $choice = [System.Windows.Forms.MessageBox]::Show(
+        "Node.js was not found on this computer.`n`nData Workbench Console needs Node.js (version 20 or newer) installed before it can run. Would you like to open the Node.js download page now?",
+        $launcherTitle,
+        [System.Windows.Forms.MessageBoxButtons]::YesNo,
+        [System.Windows.Forms.MessageBoxIcon]::Warning
+    )
+
+    if ($choice -eq [System.Windows.Forms.DialogResult]::Yes) {
+        Start-Process 'https://nodejs.org/en/download'
+    }
+
+    if ($ui -and $ui.Form) {
+        $ui.Form.Close()
+        $ui.Form.Dispose()
+    }
+    exit 1
+}
+
 function Get-NpmCommand {
     $npm = Get-Command npm.cmd -ErrorAction SilentlyContinue
     if (-not $npm) {
@@ -348,6 +382,12 @@ try {
         Start-Sleep -Milliseconds 500
         exit 0
     }
+
+    # Nothing already running to reuse, so this launch needs npm install/build/start,
+    # all of which need Node.js. Check now, before doing any of that work, so a
+    # first-time install on a machine without Node.js gets one clear explanation
+    # instead of a generic failure partway through.
+    Confirm-NodeInstalled
 
     if (-not $buildCurrent) {
         Add-Content -LiteralPath $launchLog -Value 'Production build is missing or older than source files.'

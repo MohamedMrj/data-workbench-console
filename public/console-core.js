@@ -1185,6 +1185,15 @@ window.createConsoleApp = function createConsoleApp() {
     }
   }
 
+  async function checkUpdateOutcome() {
+    try {
+      const result = await api('/api/update-status');
+      return result.status || null;
+    } catch {
+      return null;
+    }
+  }
+
   function waitForUpdateRestart() {
     const startedAt = Date.now();
     let sawOffline = false;
@@ -1198,6 +1207,21 @@ window.createConsoleApp = function createConsoleApp() {
           credentials: 'same-origin'
         });
         if (response.ok && (sawOffline || Date.now() - startedAt > 20_000)) {
+          // The server being back up only means *a* server is answering again — it
+          // could be the freshly built update, or the old build the updater fell
+          // back to after a failed git/npm/build step. Ask which one happened
+          // before reloading, otherwise a silent failure looks identical to success.
+          const outcome = await checkUpdateOutcome();
+          if (outcome?.outcome === 'failed') {
+            state.updateInProgress = false;
+            renderVersionInfo(state.versionInfo);
+            const detail = outcome.error
+              ? `The update could not be completed: ${outcome.error}`
+              : 'The update could not be completed.';
+            showShutdownOverlay('Update failed', `${detail}\n\nData Workbench restarted on the previous version. Check .data/logs/data-workbench-update.log for details.`, true);
+            setStatus('error', 'Data Workbench update failed. See the update log for details.');
+            return;
+          }
           window.location.reload();
           return;
         }

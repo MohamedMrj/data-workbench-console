@@ -91,6 +91,7 @@ lib/server/                   The real backend — all logic lives here
   lifecycle-store.js          Heartbeat sessions and shutdown watchdog
   rate-limit.js               Sliding-window limiter
   update-launcher.js          Updater command construction + spawn probe
+  update-status-store.js      Read/write apply-update.ps1's success/failed outcome
 
 public/
   console-core.js             The application (7060 lines, one closure)
@@ -214,9 +215,10 @@ caught centrally and mapped through `error.httpStatus` (default 500).
 | `/api/version` | GET | inline | Cached + de-duplicated git/remote check |
 | `/api/env-settings` | GET POST | inline | Local-only; POST requires Origin/Referer |
 | `/api/update` | POST | inline | Local-only; requires a Git checkout |
+| `/api/update-status` | GET | inline | Local-only; reads `.data/update-status.json` |
 | `/api/lifecycle/{heartbeat,status,exit}` | POST/GET/POST | inline | Local-only |
 
-The last four groups **bypass `runHandler`** and implement their own `isLocalLifecycleRequest`
+The last five groups **bypass `runHandler`** and implement their own `isLocalLifecycleRequest`
 guard, because they control the host machine rather than a database.
 
 ---
@@ -329,6 +331,13 @@ Extracted from the update route purely for testability: `buildUpdaterLaunchComma
 composes the `start "" /min powershell -WindowStyle Hidden -File ...` argument string, and
 `waitForUpdaterStart(child, timeoutMs)` resolves on `spawn` and — critically — **does not
 reject if the process then exits quickly**, which was the 1.4.24 bug fix.
+
+### `update-status-store.js` (23 lines)
+
+`writeUpdateStatusPending()` / `readUpdateStatus()` around `.data/update-status.json`, the
+`outcome`/`error`/`commitBefore`/`commitAfter`/`finishedAt` record `apply-update.ps1` writes
+on its way out (see §17) so a git/npm/build failure inside the updater is distinguishable
+from a genuine success once the server comes back up.
 
 ---
 
@@ -802,8 +811,22 @@ a stray edit), which previously left the old build running with the Update butto
 showing. Untracked `.env` and `.data/` are untouched by a hard reset;
 [.gitattributes](.gitattributes) normalizes the repo to LF so the drift cannot recur.
 
+The script's outer `try/catch` always restarts a server on the way out — on success that is
+the newly built one, but on a caught failure (git auth/network, `npm install`, `npm run
+build`) it is a fallback restart of whatever code is currently on disk, so the app is never
+left down. Restarting looks identical from a bare TCP/health check either way, so the script
+writes its outcome to `.data/update-status.json` (`{ outcome, error, commitBefore,
+commitAfter, finishedAt }`) right before that restart — success or failed, never left as the
+`pending` marker `POST /api/update` wrote before launching it. `GET /api/update-status`
+(local-only, like every lifecycle endpoint) reads it back.
+
 Client side, `waitForUpdateRestart()` polls `/api/health` until it has seen the server go
-down and come back (or 20s elapse), then reloads; after ~180 attempts it surfaces the log path.
+down and come back (or 20s elapse), then reads `/api/update-status` before doing anything
+else: `outcome: 'failed'` shows the failed-update overlay with the captured error instead of
+reloading, so a git/npm/build failure surfaces as a clear message rather than a silent reload
+back onto the old version with the Update button still there and no explanation. Only then
+does it reload. After ~180 attempts with no server response at all, it surfaces the log path
+instead.
 
 ---
 

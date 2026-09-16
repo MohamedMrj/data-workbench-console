@@ -35,6 +35,7 @@ const lifecycleStore = await import('../lib/server/lifecycle-store.js');
 const nextHandler = await import('../lib/server/next-handler.js');
 const envSettingsStore = await import('../lib/server/env-settings-store.js');
 const updateLauncher = await import('../lib/server/update-launcher.js');
+const updateStatusStore = await import('../lib/server/update-status-store.js');
 
 function makeReq(url, options = {}) {
   return new Request(url, {
@@ -277,6 +278,24 @@ const failedUpdater = new EventEmitter();
 const failedUpdaterPromise = updateLauncher.waitForUpdaterStart(failedUpdater, 50);
 failedUpdater.emit('error', new Error('powershell missing'));
 await assert.rejects(failedUpdaterPromise, /powershell missing/);
+
+// Guards the fix for a silently-failed self-update: apply-update.ps1's outer try/catch
+// always restarts a server on the way out, so the API resets this to 'pending' before
+// launching it and the client refuses to treat "server responded" as "update succeeded"
+// until it reads back a definite outcome.
+const updateStatusProjectDir = path.join(tempRoot, 'update-status-project');
+assert.equal(await updateStatusStore.readUpdateStatus(updateStatusProjectDir), null);
+await updateStatusStore.writeUpdateStatusPending(updateStatusProjectDir);
+const pendingStatus = await updateStatusStore.readUpdateStatus(updateStatusProjectDir);
+assert.equal(pendingStatus.outcome, 'pending');
+await fs.writeFile(
+  path.join(updateStatusProjectDir, '.data', 'update-status.json'),
+  JSON.stringify({ outcome: 'failed', error: 'npm run build failed', finishedAt: Date.now() }),
+  'utf8'
+);
+const failedStatus = await updateStatusStore.readUpdateStatus(updateStatusProjectDir);
+assert.equal(failedStatus.outcome, 'failed');
+assert.equal(failedStatus.error, 'npm run build failed');
 
 assert.deepEqual(envSettingsStore.validateEnvSettingsForTest({
   PORT: '3001',

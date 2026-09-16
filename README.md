@@ -6,7 +6,7 @@ Production-safe internal SQL workbench for Microsoft Fabric SQL endpoints, Fabri
 
 Data Workbench Console is built for controlled operational work: browse metadata, generate SQL, run read queries, preview writes before execution, run stored procedures from a dedicated flow, and keep an audit trail of important actions.
 
-Current app version: `1.4.27`. See [CHANGELOG.md](CHANGELOG.md) for release notes.
+Current app version: `1.4.28`. See [CHANGELOG.md](CHANGELOG.md) for release notes.
 
 <p>
   <img alt="Next.js" src="https://img.shields.io/badge/Next.js-15-111827?style=for-the-badge&logo=nextdotjs" />
@@ -159,6 +159,8 @@ Create Desktop Shortcut.bat
 
 After this, start the app from the `Data Workbench Console` Desktop shortcut.
 
+If Node.js is not installed yet, the shortcut detects this on first launch, explains that Node.js is required, and offers to open the Node.js download page for you.
+
 ### First Startup
 
 The first startup can take longer because the app may need to build the production version. The launcher shows progress while it prepares the local server.
@@ -196,6 +198,8 @@ When a new version is available, an `Update` button appears in the app header. C
 - reload the browser
 
 If the `Update` button does not appear, the app is either already current or the update check cannot reach the Git repository.
+
+If an update itself fails partway through (for example a network problem during `git fetch` or a dependency install/build error), Data Workbench restarts on the previous version automatically and shows a clear `Update failed` message with the reason instead of silently reloading as if nothing went wrong. Check `.data/logs/data-workbench-update.log` for the full detail and try `Update` again once the underlying problem (for example network access) is resolved.
 
 ### If Something Goes Wrong
 

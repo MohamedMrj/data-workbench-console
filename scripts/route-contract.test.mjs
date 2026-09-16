@@ -131,6 +131,11 @@ try {
   assert.equal(updateDisabled.response.status, 403);
   assert.match(updateDisabled.payload.error, /Self-update is disabled/);
 
+  const updateStatus = await request('/api/update-status');
+  assert.equal(updateStatus.response.status, 200);
+  assert.equal(updateStatus.payload.success, true);
+  assert.equal(updateStatus.payload.status, null);
+
   const tablesMissingConnection = await request('/api/tables', {
     method: 'POST',
     body: {}
