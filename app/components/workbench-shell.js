@@ -493,6 +493,7 @@ export default function WorkbenchShell({ pageMode = 'sql' }) {
                 <Link href="/procedures" className={`workspace-mode-link page-link${isProceduresPage ? ' active' : ''}`}>Procedure Runner</Link>
               </nav>
               <div className="eyebrow">{isProceduresPage ? 'Procedure execution' : 'SQL execution'}</div>
+              <div id="activeSource" className="active-source" data-state="empty" data-tooltip="Enter a server and database, or pick a saved profile, to set the data source.">No data source configured</div>
               <div id="activeTarget" className="active-target">No object or procedure selected</div>
               <div id="activeMeta" className="active-meta">
                 {isProceduresPage

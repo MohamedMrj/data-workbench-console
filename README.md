@@ -37,6 +37,7 @@ the copyright owner.
 | Object scripting | Load CREATE or ALTER/Edit scripts for tables, views, and procedures into the SQL editor for review. |
 | Metadata tools | Profile objects, inspect dependencies, compare schemas, estimate read-query plans, inspect result shape, row counts, and top values. |
 | Mode switching | Switch between SQL Studio and Procedure Runner from the top workspace header, even when the connection panel is hidden. |
+| Active source | The top workspace header shows the current data source directly above the selected object or procedure, so the target stays visible with the connection panel hidden. It shows the saved profile name when the connection matches a saved profile, and the source type, server and database otherwise. |
 | Workspace restore | Return to each mode with the editor, filters, selected procedure, parameter values, result tabs, pagination, and local result filters restored for the current browser tab. |
 | Mode-specific history | SQL Studio shows SQL history. Procedure Runner shows procedure run history and can restore saved parameter values. |
 | Connection profiles | Save reusable connection details without storing passwords or client secrets. |

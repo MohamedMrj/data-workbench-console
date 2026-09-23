@@ -5,6 +5,42 @@ All notable Data Workbench Console changes are tracked here.
 The in-app version is read from `package.json` and exposed through `/api/version`
 together with the current git commit and build information.
 
+## Unreleased
+
+The workspace header now always shows which data source you are working against.
+
+### Added
+
+- Added an active-source line to the top workspace header, directly above the selected object or
+  procedure name. When the connection fields match a saved profile it shows that profile's name
+  (with source, server and database on hover); otherwise it shows the source type, server and
+  database (for example `Fabric SQL endpoint • myserver • mydb`). Before this, the only place to
+  see the current connection was the connection panel, so hiding that panel for more space left
+  no way to tell which server or database a query would run against. The profile is recognised by
+  matching the connection fields, not by remembering the last click, so it survives a reload and
+  switches back to raw details as soon as a field is edited away from the saved values. The line
+  shows `No data source configured` until both server and database are set.
+
+### Fixed
+
+- Fixed a large empty space opening under the `Connection` heading when the connection panel was
+  dragged wider than about 370px. The rail is always under the 760px container query that stacks
+  section title rows as columns, and the generic `flex: 1 1 260px` title basis then becomes a
+  260px *height*; a narrower 340px query reset it, which is why the gap only appeared past that
+  width. The Saved Profiles and Safety Policy title rows were already switched to a grid for this
+  reason; the Connection title row now is too.
+
+### Verification
+
+- `ui-smoke.mjs` asserts the header source line follows the server and database fields, shows the
+  saved profile name once the connection is saved, and falls back to raw details when a field is
+  edited.
+- `responsive-audit.mjs` now drags the real connection-rail handle to its maximum on both routes
+  (setting `--control-rail-width` directly is reset by the layout engine, so the existing 420px
+  case never actually widened the rail) and flags an over-tall Connection title row, since the
+  old gap check measured from the title's bottom edge and could not see space inside it. Confirmed
+  the new case fails without the fix (`titleHeight: 260`) and passes with it.
+
 ## 1.4.28 - 2026-09-15
 
 Self-update reliability and a friendlier first-run experience for machines without Node.js.

@@ -462,6 +462,10 @@ html[data-ambient-motion='enabled'] .shell-orbit-b {
   align-content: start;
 }
 
+/* Grid, not flex: the rail is always under the 760px container query that turns title rows into
+   columns, so the generic `flex: 1 1 260px` title basis would become a 260px height once the rail
+   is dragged wider than the 340px query that resets it. */
+.control-rail .connection-section > .section-title-row,
 .control-rail .grow-section > .section-title-row,
 .control-rail .safety-section > .section-title-row {
   display: grid;
@@ -469,6 +473,8 @@ html[data-ambient-motion='enabled'] .shell-orbit-b {
   justify-content: stretch;
 }
 
+.control-rail .connection-section > .section-title-row > :first-child,
+.control-rail .connection-section > .section-title-row > :last-child,
 .control-rail .grow-section > .section-title-row > :first-child,
 .control-rail .grow-section > .section-title-row > :last-child,
 .control-rail .safety-section > .section-title-row > :first-child,
@@ -644,6 +650,57 @@ html[data-ambient-motion='enabled'] .shell-orbit-b {
 
 .panel-toggle-group > * {
   flex: 0 1 auto;
+}
+
+.active-source {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  margin-top: 6px;
+  max-width: 100%;
+  font-size: 0.82rem;
+  line-height: 1.4;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.active-source[data-state='ready']::before,
+.active-source[data-state='profile']::before {
+  content: '';
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent);
+  flex: 0 0 auto;
+}
+
+.active-source-type {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.active-source-profile {
+  min-width: 0;
+  color: var(--text);
+  font-weight: 600;
+}
+
+.active-source-server,
+.active-source-database {
+  min-width: 0;
+}
+
+.active-source-server::before,
+.active-source-database::before {
+  content: '•';
+  margin-right: 8px;
+  opacity: 0.6;
+}
+
+.active-source-database {
+  color: var(--text);
+  font-weight: 600;
 }
 
 .active-target {

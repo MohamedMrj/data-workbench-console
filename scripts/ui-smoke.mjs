@@ -1188,6 +1188,12 @@ sqlWindow.document.getElementById('serverInput').value = 'demo';
 sqlWindow.document.getElementById('databaseInput').value = 'meta_store';
 sqlWindow.document.getElementById('serverInput').dispatchEvent(new sqlWindow.Event('input', { bubbles: true }));
 sqlWindow.document.getElementById('databaseInput').dispatchEvent(new sqlWindow.Event('input', { bubbles: true }));
+{
+  const activeSource = sqlWindow.document.getElementById('activeSource');
+  if (!activeSource || activeSource.dataset.state !== 'ready' || !activeSource.textContent.includes('demo') || !activeSource.textContent.includes('meta_store')) {
+    throw new Error('Hero active-source line did not follow the connection fields.');
+  }
+}
 sqlWindow.document.getElementById('saveConnectionBtn').click();
 sqlWindow.document.getElementById('testConnectionBtn').click();
 await flush();
@@ -1196,6 +1202,23 @@ if (!sqlWindow.document.getElementById('testConnectionResult').textContent.inclu
 }
 if (!sqlWindow.document.getElementById('testConnectionResult').textContent.includes('meta_store')) {
   throw new Error('Connection test did not render the tested database details.');
+}
+{
+  const activeSource = sqlWindow.document.getElementById('activeSource');
+  if (activeSource.dataset.state !== 'profile' || !activeSource.querySelector('.active-source-profile')) {
+    throw new Error('Hero active-source line should show the saved profile name when the connection matches a saved profile.');
+  }
+  const serverInput = sqlWindow.document.getElementById('serverInput');
+  serverInput.value = 'demo-edited';
+  serverInput.dispatchEvent(new sqlWindow.Event('input', { bubbles: true }));
+  if (activeSource.dataset.state !== 'ready' || !activeSource.textContent.includes('demo-edited')) {
+    throw new Error('Hero active-source line should fall back to raw connection details once the fields no longer match a saved profile.');
+  }
+  serverInput.value = 'demo';
+  serverInput.dispatchEvent(new sqlWindow.Event('input', { bubbles: true }));
+  if (activeSource.dataset.state !== 'profile') {
+    throw new Error('Hero active-source line did not return to the saved profile name when the fields matched again.');
+  }
 }
 sqlWindow.document.getElementById('loadTablesBtn').click();
 await flush();

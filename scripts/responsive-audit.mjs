@@ -415,10 +415,13 @@ async function inspectViewport(page) {
       const connectionGap = connectionTitle && firstConnectionField ? firstConnectionField.top - connectionTitle.bottom : 0;
       const savedGap = savedTitle && savedList ? savedList.top - savedTitle.bottom : 0;
 
-      if (connectionGap > 28) {
+      // The gap can also open *inside* the title row (a column flex basis turning into height),
+      // which the title-bottom-to-field distance cannot see, so the title height is checked too.
+      if (connectionGap > 28 || (connectionTitle && connectionTitle.height > 96)) {
         problems.push({
           type: 'control-rail-connection-gap',
           gap: Math.round(connectionGap),
+          titleHeight: Math.round(connectionTitle?.height || 0),
           titleBottom: Math.round(connectionTitle.bottom),
           firstFieldTop: Math.round(firstConnectionField.top)
         });
@@ -650,6 +653,20 @@ async function runCase(browser, routePath, width, options = {}) {
     await page.waitForTimeout(100);
   }
 
+  // Setting --control-rail-width directly is reset by the layout engine, so drag the real handle.
+  if (options.dragControlRailBy) {
+    const handle = await page.locator('[data-resize-handle="controlRail"]').boundingBox();
+    if (handle) {
+      const x = handle.x + handle.width / 2;
+      const y = handle.y + Math.min(200, handle.height / 2);
+      await page.mouse.move(x, y);
+      await page.mouse.down();
+      await page.mouse.move(x + options.dragControlRailBy, y, { steps: 12 });
+      await page.mouse.up();
+      await page.waitForTimeout(150);
+    }
+  }
+
   if (options.hidePanels) {
     await page.locator('#toggleControlRailBtn').click().catch(() => {});
     await page.locator('#toggleActivityPanelBtn').click().catch(() => {});
@@ -696,6 +713,10 @@ try {
   }
 
   results.push(await runCase(browser, '/', 1920, { controlRailWidth: 420, screenshot: true }));
+
+  for (const routePath of ['/', '/procedures']) {
+    results.push(await runCase(browser, routePath, 1400, { dragControlRailBy: 200 }));
+  }
 
   for (const routePath of ['/', '/procedures']) {
     results.push(await runCase(browser, routePath, 1200, { hidePanels: true, screenshot: true }));

@@ -1612,7 +1612,41 @@ window.createConsoleApp = function createConsoleApp() {
     }
   }
 
+  function renderActiveSource() {
+    const line = $('activeSource');
+    if (!line) {
+      return;
+    }
+
+    const current = connection();
+    const sourceLabel =
+      sourceOptions().find((source) => source.id === current.sourceType)?.label || current.sourceType;
+    const ready = Boolean(current.server && current.database);
+    // Matched by field signature rather than remembered on click, so the profile name survives reloads and disappears as soon as a field is edited away from it.
+    const signature = savedProfileSignature(current);
+    const profile = ready ? state.connectionHistory.find((item) => savedProfileSignature(item) === signature) : null;
+    const details = `${sourceLabel} • ${current.server} • ${current.database}`;
+
+    line.dataset.state = !ready ? 'empty' : profile ? 'profile' : 'ready';
+    line.dataset.tooltip = !ready
+      ? 'Enter a server and database, or pick a saved profile, to set the data source.'
+      : profile ? `Saved profile ${profile.profileName || current.database}: ${details}` : details;
+    if (!ready) {
+      line.textContent = 'No data source configured';
+    } else if (profile) {
+      line.innerHTML = `<span class="active-source-profile">${esc(profile.profileName || current.database)}</span>`;
+    } else {
+      line.innerHTML = `<span class="active-source-type">${esc(sourceLabel)}</span><span class="active-source-server">${esc(current.server)}</span><span class="active-source-database">${esc(current.database)}</span>`;
+    }
+  }
+
+  function savedProfileSignature(item) {
+    return [item.sourceType, item.authMode, item.server, item.port, item.database, item.domain, item.username].join('|');
+  }
+
   function renderConnectionSummary() {
+    // Every connection-field change funnels through here, so the hero source line stays in step even when the connection panel is hidden.
+    renderActiveSource();
     const panel = $('connectionSummary');
     if (!panel) {
       return;
@@ -2899,6 +2933,7 @@ window.createConsoleApp = function createConsoleApp() {
   }
 
   function renderConnectionHistory() {
+    renderActiveSource();
     const container = $('savedConnections');
     if (!state.connectionHistory.length) {
       container.innerHTML = '<div class="empty-note">Saved connections will appear here. They are stored in the app database and survive restarts.</div>';
@@ -3027,8 +3062,8 @@ window.createConsoleApp = function createConsoleApp() {
           throw error;
         }
       }
-      const signature = [saved.sourceType, saved.authMode, saved.server, saved.port, saved.database, saved.domain, saved.username].join('|');
-      state.connectionHistory = [saved, ...state.connectionHistory.filter((item) => [item.sourceType, item.authMode, item.server, item.port, item.database, item.domain, item.username].join('|') !== signature)].slice(0, CONNECTION_HISTORY_MAX);
+      const signature = savedProfileSignature(saved);
+      state.connectionHistory = [saved, ...state.connectionHistory.filter((item) => savedProfileSignature(item) !== signature)].slice(0, CONNECTION_HISTORY_MAX);
       saveStoredConnectionHistory(state.connectionHistory);
       renderConnectionHistory();
       // Clear the profile name input after a successful save.
