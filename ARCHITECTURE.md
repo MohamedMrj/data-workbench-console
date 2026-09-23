@@ -240,8 +240,12 @@ Notable internals:
 - `sanitizeConnectionForPersistence()` — strips `password` before a confirmation record is
   written to disk. The stored connection is never used at execute time; the request re-supplies
   it. See [§18](#18-security-model).
-- `acknowledgementForClassification()` — derives the typed phrase (`RUN BATCH` for batches,
-  `EXECUTE <ACTION>` otherwise).
+- `resolveWriteAcknowledgement()` (in `write-acknowledgement.js`) — derives the typed phrase
+  (`RUN BATCH` for batches, `EXECUTE <ACTION>` otherwise, plus the row-count escalation). A
+  previewed write's phrase is resolved **before** its confirmation record is created, because
+  the confirm step only enforces what the record stores.
+- `limitReadQuery()` re-classifies and refuses anything that is not a read, as a second guard
+  behind routing.
 - `canReadAudit(req)` — `same-origin` mode allows everything that passed the middleware;
   `loopback` mode additionally requires the request URL host to be a loopback name.
 
@@ -345,33 +349,46 @@ from a genuine success once the server comes back up.
 
 ### Tokenizer
 
-`tokenizeSql(query)` walks the string character by character and **skips the contents of**
-single-quoted strings (honouring `''` escapes), `[bracketed]` identifiers, `--` line comments
-and `/* */` block comments. Words are emitted uppercased; `(`, `)`, `,` and `;` are emitted as
-their own tokens. This is what makes `SELECT 'please DROP this'` and `SELECT [TRUNCATE] FROM t`
-correctly classify as reads.
+Every scanner is built on one internal function, `scanSqlRegions(query)`, which splits the text
+into code, `'strings'` (`''` escapes), `[bracketed]` identifiers (`]]` escapes),
+`"double-quoted"` identifiers (`""` escapes), `--` line comments and `/* */` block comments,
+which **nest** as they do in T-SQL. Until 1.4.29 each scanner was a separate loop that missed
+double quotes, `]]` and nesting, so a stray `'` inside one of them opened a fake string that hid
+real keywords (an `; EXEC` after a nested comment was classified as part of a single UPDATE).
+Build any new scanning on `scanSqlRegions` rather than adding another loop.
 
-`stripCommentsAndTrim` does the same elision but preserves string contents and returns text
-(used for hashing and previews). `splitStatements` splits on `;` outside string literals.
+`tokenizeSql(query)` emits the words of code regions uppercased; `(`, `)`, `,` and `;` are
+emitted as their own tokens. This is what makes `SELECT 'please DROP this'` and
+`SELECT [TRUNCATE] FROM t` correctly classify as reads. `stripCommentsAndTrim` replaces comments
+with a space and keeps everything else (used for hashing and previews). `splitStatements` splits
+on `;` in code regions only.
 
 ### `classifyQuery(query)` decision order
 
 1. Empty/comment-only → `{ kind: 'empty' }`.
 2. Contains a line matching `/^\s*GO(\s+\d+)?\s*$/im` → `{ kind: 'blocked' }`. **The only
    blocked construct.** `GO` is a client-tool separator, not something Tedious can execute.
+   An unterminated string, quoted identifier or block comment **fails closed** to a
+   `directConfirmOnly` write with typed acknowledgement: the classifier cannot know where the
+   author meant it to end, and SQL Server rejects such text anyway.
 3. `CREATE|ALTER [OR ALTER] PROC[EDURE]` → single module definition. Internal semicolons are
    *not* treated as a batch. Requires typed `EXECUTE CREATE`/`EXECUTE ALTER`.
 4. More than one statement → `action: 'BATCH'`, `requiresAcknowledgement`, with `actions[]`
    and `highRiskActions[]` surfaced for the review dialog. Phrase: `RUN BATCH`.
 5. Single statement → `statementInfo()` decides:
-   - `SELECT` / `WITH` (after walking CTE definitions via `leadingKeywordFromTokens`) → read.
+   - `SELECT` / `WITH` (after walking CTE definitions via `leadingKeywordFromTokens`) → read,
+     **unless an `INTO` token appears anywhere**. `SELECT ... INTO` creates a table, so it
+     becomes action `SELECT INTO` (high-risk, phrase `EXECUTE SELECT INTO`). No legal read
+     contains `INTO` at any depth, so the check needs no nesting logic and fails closed.
    - Leading keyword in `HIGH_RISK_ACTIONS`, **or any high-risk keyword anywhere in a
      non-read statement** (`INSERT ... EXEC`), or an unrecognised leading keyword →
      `directConfirmOnly` + typed acknowledgement.
    - `UPDATE`/`DELETE` with no `WHERE` token → warning + typed acknowledgement.
-   - Otherwise a plain write → preview then single-click confirm.
+   - Otherwise a plain write → preview then single-click confirm, **unless the preview touches
+     more than `HEIGHTENED_CONFIRM_LIMIT` rows**; then `resolveWriteAcknowledgement`
+     (`write-acknowledgement.js`) stores `EXECUTE <ACTION>` in the confirmation record.
 
-`HIGH_RISK_ACTIONS = {MERGE, TRUNCATE, DROP, ALTER, CREATE, GRANT, REVOKE, EXEC, EXECUTE}`.
+`HIGH_RISK_ACTIONS = {SELECT INTO, MERGE, TRUNCATE, DROP, ALTER, CREATE, GRANT, REVOKE, EXEC, EXECUTE}`.
 
 ### Truth table
 
@@ -954,7 +971,7 @@ with an explicit fallback for sources lacking the DMV, return
 | Textarea + highlight backdrop instead of a real editor | Zero dependencies, no bundler, preserves native textarea behaviour. |
 | Passwords excluded from the connection fingerprint | Fingerprints are used for pool reuse and client-side scoping, where a password would leak into storage keys. |
 | `data-workspace-mode="wide"` restated at higher specificity | It must beat the older `@container` fallbacks below it (1.4.22). |
-| `INSERT` requires no typed phrase | It cannot destroy existing rows; the rollback preview already shows the row count. |
+| A small `INSERT` requires no typed phrase | It cannot destroy existing rows and the rollback preview shows the row count. Above `HEIGHTENED_CONFIRM_LIMIT` rows it needs `EXECUTE INSERT`, like any other large write. |
 
 ### Genuine issues
 

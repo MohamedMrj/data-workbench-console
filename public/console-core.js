@@ -3033,6 +3033,8 @@ window.createConsoleApp = function createConsoleApp() {
     // Use the profile name input if the user filled it in, else fall back to database name.
     const profileNameRaw = ($('profileNameInput')?.value || '').trim();
     const profileName = profileNameRaw || current.database;
+    const currentSignature = savedProfileSignature(current);
+    const existingProfile = state.connectionHistory.find((item) => savedProfileSignature(item) === currentSignature);
 
     try {
       let saved;
@@ -3041,6 +3043,7 @@ window.createConsoleApp = function createConsoleApp() {
           method: 'POST',
           data: {
             ...current,
+            id: existingProfile?.id || '',
             profileName
           }
         });

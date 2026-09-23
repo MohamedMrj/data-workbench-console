@@ -5,7 +5,52 @@ All notable Data Workbench Console changes are tracked here.
 The in-app version is read from `package.json` and exposed through `/api/version`
 together with the current git commit and build information.
 
-## Unreleased
+## 1.4.29 - 2026-09-23
+
+Closes three ways SQL could reach the database with less confirmation than it needed, and shows
+which data source you are working against at all times.
+
+### Security
+
+- Fixed the SQL classifier missing statements hidden behind `"double-quoted"` identifiers, `]]`
+  escapes inside `[brackets]`, and nested `/* /* */ */` comments. Each of the four scanners
+  (`tokenizeSql`, `stripCommentsAndTrim`, `splitStatements`, `topLevelSqlWords`) was a separate
+  hand-rolled loop that handled only `'strings'`, plain `[brackets]` and flat comments, so a stray
+  `'` inside one of those constructs opened a fake string literal that hid every keyword after it.
+  For example, `UPDATE dbo.T SET /* /* */ ' */ a = 1 WHERE b = 'z'; EXEC dbo.p` was classified as
+  a single previewed UPDATE: the `EXEC` ran inside the preview and again on a one-click confirm.
+  All four now share one region scanner that understands every T-SQL quoting and comment form,
+  and SQL whose string, quoted identifier or comment never closes now fails closed to a typed
+  `EXECUTE QUERY` confirmation instead of being guessed at.
+- Fixed `SELECT ... INTO` being classified as a read. It creates a table, and for ordered or
+  CTE-led queries the row-capped read path runs the statement as written, so the table was
+  created with no confirmation at all. It is now a high-risk write that needs `EXECUTE SELECT
+  INTO`, and the read path re-checks the classification before running anything as a second
+  guard. `Estimated plan` and `Result shape` now refuse `SELECT ... INTO` like other writes.
+- Fixed the Safety panel's "Typed ack above N row(s)" promise not being enforced.
+  `HEIGHTENED_CONFIRM_LIMIT` only changed the review wording, so a previewed `UPDATE` or `DELETE`
+  with a `WHERE` clause went through on a single click however many rows it touched. The phrase
+  is now resolved from the preview's row count *before* the confirmation record is created (the
+  confirm step only enforces what the record stores), so a write above the limit needs
+  `EXECUTE <ACTION>`. Live results editor saves of a single row are unaffected unless the data
+  changed underneath and the row now matches more rows than the limit.
+- Updated `next` 15.5.20 → 15.5.26 and raised the `postcss` override 8.5.10 → 8.5.28, and added a
+  `sharp` 0.35.4 override. Advisories published since 1.4.28 made `npm audit --omit=dev` fail the
+  release gate, including a critical Next.js "unauthenticated remote code execution on
+  Windows-hosted servers" (GHSA-p293-qw3h-jr36), which applies directly to this app. All are
+  patch-level updates within the existing ranges; no new runtime dependency was added.
+- Fixed `package-lock.json` still reporting version 1.4.27 after the 1.4.28 release.
+
+### Fixed
+
+- Fixed saving a connection profile adding a duplicate every time. The client never sent the
+  profile's id, so the server always created a new row. The client now sends the id of the
+  matching profile, and the server also matches an id-less save against existing profiles by
+  connection details.
+- Fixed the saved-connections file being written in place. A crash mid-write left torn JSON,
+  which reads back as an empty list and silently lost every profile. It now uses the same
+  write-to-temp-then-rename (with the Windows lock retry) as the confirmation store, shared
+  through a new `lib/server/atomic-file.js`.
 
 The workspace header now always shows which data source you are working against.
 
@@ -32,6 +77,14 @@ The workspace header now always shows which data source you are working against.
 
 ### Verification
 
+- `sql-classifier.test.mjs` gains 33 cases: each lexer bypass, unterminated input of every kind,
+  `SELECT ... INTO` in every shape (ORDER BY, TOP, DISTINCT, `#tmp`, bracketed target, UNION,
+  CTE-led, and behind each bypass), and the look-alikes that must stay reads (`'INTO'`, `[INTO]`,
+  `"INTO"`, a commented INTO, `FOR XML PATH('into')`). 25 of them fail against 1.4.28.
+- `server-unit.test.mjs` covers the typed-phrase threshold, saved-profile dedupe, and that parallel
+  profile saves leave no temp files behind. `route-contract.test.mjs` asserts `SELECT ... INTO`
+  comes back as a typed-confirmation review. `ui-smoke.mjs` asserts a write above the row limit
+  keeps Continue disabled until the phrase is typed.
 - `ui-smoke.mjs` asserts the header source line follows the server and database fields, shows the
   saved profile name once the connection is saved, and falls back to raw details when a field is
   edited.

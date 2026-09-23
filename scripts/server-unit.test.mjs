@@ -244,6 +244,64 @@ assert.equal(Object.hasOwn(savedWindows, 'password'), false);
 assert.equal(await savedStore.deleteSavedConnection(savedWindows.id), true);
 assert.equal((await savedStore.listSavedConnections()).length, 0);
 
+// A re-save without an id updates the matching profile instead of appending a duplicate.
+const dedupeInput = {
+  profileName: 'Dedupe',
+  sourceType: 'sql-server',
+  authMode: 'sqlLogin',
+  server: 'demo',
+  database: 'dedupe_db',
+  username: 'tester'
+};
+const dedupeFirst = await savedStore.upsertSavedConnection(dedupeInput);
+const dedupeSecond = await savedStore.upsertSavedConnection({ ...dedupeInput, profileName: 'Dedupe renamed' });
+assert.equal(dedupeSecond.id, dedupeFirst.id);
+assert.equal(dedupeSecond.createdAt, dedupeFirst.createdAt);
+assert.equal(dedupeSecond.profileName, 'Dedupe renamed');
+assert.equal((await savedStore.listSavedConnections()).length, 1);
+const distinctDatabase = await savedStore.upsertSavedConnection({ ...dedupeInput, database: 'other_db' });
+assert.notEqual(distinctDatabase.id, dedupeFirst.id);
+assert.equal((await savedStore.listSavedConnections()).length, 2);
+
+// Parallel saves go through temp-file + rename and must leave no temp files behind.
+await Promise.all(Array.from({ length: 8 }, (_, index) => savedStore.upsertSavedConnection({
+  ...dedupeInput,
+  database: `parallel_${index}`
+})));
+assert.equal((await savedStore.listSavedConnections()).length, 10);
+const savedDirEntries = await fs.readdir(process.env.APP_DATA_DIR);
+assert.deepEqual(savedDirEntries.filter((name) => name.endsWith('.tmp')), []);
+for (const item of await savedStore.listSavedConnections()) {
+  assert.equal(await savedStore.deleteSavedConnection(item.id), true);
+}
+assert.equal((await savedStore.listSavedConnections()).length, 0);
+
+// Typed acknowledgement: statement-implied phrases, plus the row-count escalation.
+const writeAck = await import('../lib/server/write-acknowledgement.js');
+const previewedUpdate = { kind: 'write', action: 'UPDATE', requiresAcknowledgement: false };
+assert.deepEqual(writeAck.resolveWriteAcknowledgement({ classification: previewedUpdate, rowsAffected: 3, heightenedLimit: 3 }), {
+  expectedText: '',
+  heightened: false
+});
+assert.deepEqual(writeAck.resolveWriteAcknowledgement({ classification: previewedUpdate, rowsAffected: 4, heightenedLimit: 3 }), {
+  expectedText: 'EXECUTE UPDATE',
+  heightened: true
+});
+assert.equal(writeAck.resolveWriteAcknowledgement({
+  classification: { action: 'UPDATE', requiresAcknowledgement: true },
+  rowsAffected: 1,
+  heightenedLimit: 3
+}).expectedText, 'EXECUTE UPDATE');
+assert.equal(writeAck.resolveWriteAcknowledgement({
+  classification: { action: 'BATCH', multiStatement: true, requiresAcknowledgement: true },
+  rowsAffected: 50,
+  heightenedLimit: 3
+}).expectedText, 'RUN BATCH');
+assert.deepEqual(writeAck.resolveWriteAcknowledgement({ classification: previewedUpdate, rowsAffected: null, heightenedLimit: 3 }), {
+  expectedText: '',
+  heightened: false
+});
+
 assert.equal(lifecycleStore.recordHeartbeat({ sessionId: 'bad' }).ok, false);
 const heartbeat = lifecycleStore.recordHeartbeat({ sessionId: 'session_1234567890', event: 'active', userAgent: 'unit' });
 assert.equal(heartbeat.ok, true);

@@ -673,6 +673,38 @@ function attachMocks(window) {
       // in this file also runs a single builder-generated UPDATE and relies
       // on the generic fallback response further down, so matching on the
       // UPDATE keyword alone would change that unrelated test's mock response.
+      // A previewed write above HEIGHTENED_CONFIRM_LIMIT: the server now returns a typed
+      // phrase for it, and the client must gate Continue on that phrase.
+      if (statementCount === 1 && queryText.includes('HEIGHTENED_EDIT_TEST') && !body.confirmToken) {
+        return new Response(JSON.stringify({
+          success: true,
+          mode: 'write-preview',
+          requiresConfirmation: true,
+          confirmationToken: 'query-heightened-token',
+          rowsAffected: 5,
+          action: 'UPDATE',
+          statementCount: 1,
+          actions: ['UPDATE'],
+          highRiskActions: [],
+          expectedText: 'EXECUTE UPDATE',
+          heightened: true,
+          reviewRequired: true,
+          warnings: [],
+          message: 'UPDATE requires explicit acknowledgement. This write touches 5 rows. Review the SQL, type EXECUTE UPDATE, then click Continue to execute.'
+        }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
+      if (body.confirmToken === 'query-heightened-token') {
+        const acknowledged = String(body.acknowledgement || '').trim().toUpperCase() === 'EXECUTE UPDATE';
+        return new Response(JSON.stringify(acknowledged
+          ? { success: true, mode: 'write', executed: true, action: 'UPDATE', columns: [], rows: [], totalRows: 0, truncated: false, rowsAffected: 5, message: 'UPDATE completed successfully.' }
+          : { success: false, error: 'Type the confirmation phrase exactly before executing this operation: EXECUTE UPDATE' }), {
+          status: acknowledged ? 200 : 400,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
       if (statementCount === 1 && /^\s*UPDATE\b/i.test(queryText) && queryText.includes('INLINE_EDIT_TEST') && !body.confirmToken) {
         return new Response(JSON.stringify({
           success: true,
@@ -1560,6 +1592,31 @@ if (!sqlWindow.document.querySelector('[data-mode="update"]')?.classList.contain
 }
 if (!sqlWindow.document.getElementById('queryModeHint').textContent.includes('Update')) {
   throw new Error('Loading SQL history did not update the visible query mode hint.');
+}
+
+editor.value = "UPDATE dbo.Alerts SET Status = 'HEIGHTENED_EDIT_TEST' WHERE AlertId > 0";
+editor.dispatchEvent(new sqlWindow.Event('input', { bubbles: true }));
+sqlWindow.document.getElementById('runQueryBtn').click();
+await flush();
+if (sqlWindow.document.getElementById('confirmModal').classList.contains('hidden')) {
+  throw new Error('A write above the heightened row limit did not open the confirmation modal.');
+}
+if (sqlWindow.document.getElementById('secondConfirmWrap').classList.contains('hidden')) {
+  throw new Error('A write above the heightened row limit must show the typed acknowledgement box.');
+}
+if (!sqlWindow.document.getElementById('confirmModalBtn').disabled) {
+  throw new Error('A write above the heightened row limit must keep Continue disabled until the phrase is typed.');
+}
+const heightenedConfirmInput = sqlWindow.document.getElementById('secondConfirmInput');
+heightenedConfirmInput.value = 'EXECUTE UPDATE';
+heightenedConfirmInput.dispatchEvent(new sqlWindow.Event('input', { bubbles: true }));
+if (sqlWindow.document.getElementById('confirmModalBtn').disabled) {
+  throw new Error('Continue stayed disabled after typing the heightened write phrase.');
+}
+sqlWindow.document.getElementById('confirmModalBtn').click();
+await flush();
+if (!sqlWindow.document.getElementById('confirmModal').classList.contains('hidden')) {
+  throw new Error('Confirming a heightened write with the correct phrase should close the modal.');
 }
 
 const proceduresHtml = await readBuiltHtml(['procedures']);

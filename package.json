@@ -1,6 +1,6 @@
 {
   "name": "db_interface",
-  "version": "1.4.28",
+  "version": "1.4.29",
   "type": "module",
   "description": "Production-safe multi-source SQL and procedure workbench for Fabric and SQL Server",
   "engines": {
@@ -32,7 +32,7 @@
     "@azure/keyvault-secrets": "^4.11.2",
     "dotenv": "^16.4.7",
     "mssql": "^12.5.5",
-    "next": "^15.5.19",
+    "next": "^15.5.26",
     "react": "^19.2.7",
     "react-dom": "^19.2.7"
   },
@@ -42,7 +42,8 @@
     "sql.js": "^1.13.0"
   },
   "overrides": {
-    "postcss": "8.5.10",
+    "postcss": "8.5.28",
+    "sharp": "0.35.4",
     "@azure/msal-node": "5.2.5"
   }
 }

@@ -306,15 +306,17 @@ WHERE <review scope before execution>;`}</pre>
           <p>Use this table to know exactly what to expect before you click Run query. The acknowledgement phrase is typed into the confirmation dialog and is <strong>not case-sensitive</strong>.</p>
           <div className="docs-table">
             <div><strong>SELECT / WITH</strong><span>Runs directly and is row-limited. No preview and no confirmation.</span></div>
-            <div><strong>INSERT, or UPDATE / DELETE with a WHERE clause</strong><span>Previewed in a rollback transaction, then released with a single <strong>Continue</strong> click. No phrase to type.</span></div>
+            <div><strong>INSERT, or UPDATE / DELETE with a WHERE clause</strong><span>Previewed in a rollback transaction, then released with a single <strong>Continue</strong> click — as long as the preview touches no more than the heightened row limit (3 by default). Above that, type <code>EXECUTE INSERT</code>, <code>EXECUTE UPDATE</code> or <code>EXECUTE DELETE</code>.</span></div>
             <div><strong>UPDATE / DELETE without a WHERE clause</strong><span>Allowed, but treated as high-impact: preview, then type <code>EXECUTE UPDATE</code> or <code>EXECUTE DELETE</code> to acknowledge it affects every row.</span></div>
             <div><strong>DROP, TRUNCATE, ALTER, CREATE, MERGE, GRANT, REVOKE, EXEC / EXECUTE</strong><span>Allowed through confirmation. After preview, type <code>EXECUTE &lt;ACTION&gt;</code> — for example <code>EXECUTE DROP</code> or <code>EXECUTE TRUNCATE</code>.</span></div>
+            <div><strong>SELECT … INTO</strong><span>Creates a new table, so it is treated as a high-risk write, not a read. Type <code>EXECUTE SELECT INTO</code> to run it.</span></div>
+            <div><strong>Unfinished string, quoted name or comment</strong><span>If a <code>'</code>, <code>[</code>, <code>"</code> or <code>/*</code> is never closed, the app cannot tell where it ends, so it asks for <code>EXECUTE QUERY</code> instead of guessing. Usually this means the SQL has a typo.</span></div>
             <div><strong>Multiple statements separated by <code>;</code></strong><span>Run together as one confirmed <strong>BATCH</strong>. Review every statement, then type <code>RUN BATCH</code>.</span></div>
             <div><strong>GO batch separators</strong><span>Blocked. <code>GO</code> is a client-tool separator, not a SQL statement the driver can run. Remove <code>GO</code> lines and run a driver-compatible batch.</span></div>
           </div>
         </DocsMiniSection>
         <div className="docs-callout docs-callout-info">
-          Writes that touch more than a few rows (3 by default) show a clear row-count warning in the preview so a large change is never a surprise. The threshold is configurable in Settings.
+          Writes that touch more than a few rows (3 by default) show the row count and require typing the acknowledgement phrase, so a large change can never go through on a single click. The threshold is configurable in Settings.
         </div>
         <div className="docs-callout docs-callout-warning">
           The confirmation dialog shows a live countdown. Confirmation tokens are short-lived (about 5 minutes by default) and tied to the exact query and connection. If the countdown runs out, click <strong>Run query</strong> again to create a fresh preview.

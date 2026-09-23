@@ -181,6 +181,17 @@ try {
   assert.equal(batchReview.payload.expectedText, 'RUN BATCH');
   assert.equal(batchReview.payload.statementCount, 2);
 
+  // SELECT ... INTO creates a table, so it must come back as a typed-confirmation review
+  // (which never touches the database) instead of running on the read path.
+  const selectIntoReview = await request('/api/query', {
+    method: 'POST',
+    body: { ...safeSqlLogin, query: 'SELECT * INTO dbo.NewCopy FROM dbo.Alerts ORDER BY AlertId' }
+  });
+  assert.equal(selectIntoReview.response.status, 200);
+  assert.equal(selectIntoReview.payload.mode, 'write-review');
+  assert.equal(selectIntoReview.payload.action, 'SELECT INTO');
+  assert.equal(selectIntoReview.payload.expectedText, 'EXECUTE SELECT INTO');
+
   const missingWindowsDomain = await request('/api/query', {
     method: 'POST',
     body: {

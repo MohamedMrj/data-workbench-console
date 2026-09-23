@@ -6,7 +6,7 @@ Production-safe internal SQL workbench for Microsoft Fabric SQL endpoints, Fabri
 
 Data Workbench Console is built for controlled operational work: browse metadata, generate SQL, run read queries, preview writes before execution, run stored procedures from a dedicated flow, and keep an audit trail of important actions.
 
-Current app version: `1.4.28`. See [CHANGELOG.md](CHANGELOG.md) for release notes.
+Current app version: `1.4.29`. See [CHANGELOG.md](CHANGELOG.md) for release notes.
 
 <p>
   <img alt="Next.js" src="https://img.shields.io/badge/Next.js-15-111827?style=for-the-badge&logo=nextdotjs" />
@@ -899,6 +899,12 @@ available execution path:
 - `DROP`, `TRUNCATE`, `ALTER`, `CREATE`, `MERGE`, `GRANT`, `REVOKE`, `EXEC`,
   and `EXECUTE` require direct confirmation and typed acknowledgement
 - `UPDATE` or `DELETE` without `WHERE` require typed acknowledgement
+- a previewed `INSERT`, `UPDATE` or `DELETE` that touches more rows than the typed
+  confirmation threshold (default `3`) requires typing `EXECUTE <ACTION>`
+- `SELECT ... INTO` creates a table, so it is a high-risk write that requires
+  typing `EXECUTE SELECT INTO`, never a read
+- SQL with an unterminated string, quoted identifier or comment cannot be
+  classified reliably, so it requires typing `EXECUTE QUERY`
 - multiple semicolon-separated statements run as a confirmed `BATCH` and require
   typing `RUN BATCH`
 

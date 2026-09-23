@@ -590,6 +590,122 @@ test('a trailing semicolon and a trailing OPTION query hint do not affect editab
   assert.equal(analyzeSingleTableSelect('SELECT AlertId FROM dbo.Alerts OPTION (RECOMPILE)').ok, true);
 });
 
+// ─── lexer: quoted identifiers, ]] escapes, nested comments ─────────────────
+//
+// Each of these used to let a stray quote open a fake string literal that hid
+// the real keywords after it from the classifier.
+
+console.log('\nlexer hardening');
+
+test('an EXEC after a nested block comment containing a quote is not hidden inside a single UPDATE', () => {
+  const result = classifyQuery("UPDATE dbo.T SET /* /* */ ' */ a = 1 WHERE b = 'z'; EXEC dbo.p");
+  assert.equal(result.kind, 'write');
+  assert.equal(result.action, 'BATCH');
+  assert.equal(result.statementCount, 2);
+  assert.ok(result.highRiskActions.includes('EXEC'));
+});
+
+test('nested block comments are stripped as one comment', () => {
+  assert.equal(stripCommentsAndTrim('SELECT /* a /* b */ DROP */ 1'), 'SELECT   1');
+  assert.ok(!tokenizeSql('SELECT /* a /* b */ DROP */ 1').includes('DROP'));
+});
+
+test('a quote inside a double-quoted identifier does not open a string', () => {
+  const tokens = tokenizeSql('SELECT 1 AS "it\'s" INTO dbo.New FROM dbo.T');
+  assert.ok(tokens.includes('INTO'));
+  assert.ok(tokens.includes('NEW'));
+});
+
+test('a quote after a ]] escape inside a bracket identifier does not open a string', () => {
+  const tokens = tokenizeSql("SELECT 1 AS [a]]'b] INTO dbo.New FROM dbo.T WHERE c = 'x'");
+  assert.ok(tokens.includes('INTO'));
+});
+
+test('INSERT ... EXEC with a quote in a double-quoted column still sees the EXEC', () => {
+  const result = classifyQuery('INSERT INTO dbo.T ("it\'s") EXEC dbo.Proc \'x\'');
+  assert.equal(result.kind, 'write');
+  assert.equal(result.directConfirmOnly, true);
+  assert.equal(result.requiresAcknowledgement, true);
+});
+
+test('semicolons inside bracket and double-quoted identifiers are not splitters', () => {
+  assert.equal(splitStatements('SELECT [a;b] FROM t').length, 1);
+  assert.equal(splitStatements('SELECT "a;b" FROM t').length, 1);
+  assert.equal(classifyQuery('SELECT [a;b] FROM t').kind, 'read');
+});
+
+test('keywords inside quoted identifiers are not tokens', () => {
+  assert.ok(!tokenizeSql('SELECT "DROP" FROM t').includes('DROP'));
+  assert.equal(classifyQuery('SELECT "DROP" FROM t').kind, 'read');
+});
+
+for (const [label, query] of [
+  ['string', "SELECT 'abc FROM t"],
+  ['bracket identifier', 'SELECT [abc FROM t'],
+  ['double-quoted identifier', 'SELECT "abc FROM t'],
+  ['block comment', 'SELECT 1 /* never closed']
+]) {
+  test(`an unterminated ${label} fails closed to a confirmed write`, () => {
+    const result = classifyQuery(query);
+    assert.equal(result.kind, 'write');
+    assert.equal(result.directConfirmOnly, true);
+    assert.equal(result.requiresAcknowledgement, true);
+  });
+}
+
+// ─── SELECT ... INTO ─────────────────────────────────────────────────────────
+
+console.log('\nSELECT ... INTO');
+
+for (const query of [
+  'SELECT * INTO dbo.New FROM dbo.T',
+  'SELECT * INTO dbo.New FROM dbo.T ORDER BY Id',
+  'SELECT * INTO dbo.New FROM dbo.T WHERE Id > 5',
+  'SELECT TOP (5) * INTO dbo.New FROM dbo.T',
+  'SELECT DISTINCT a INTO dbo.New FROM dbo.T',
+  'SELECT * INTO [dbo].[New] FROM dbo.T',
+  'SELECT * INTO #tmp FROM dbo.T',
+  'select *\n-- copy\ninto dbo.New from dbo.T',
+  'SELECT a INTO dbo.N FROM dbo.T UNION SELECT a FROM dbo.U',
+  'WITH x AS (SELECT 1 AS n) SELECT * INTO dbo.New FROM x',
+  'SELECT 1 AS "it\'s" INTO dbo.New FROM dbo.T WHERE x = \'y\'',
+  "SELECT 1 AS [a]]'b] INTO dbo.New FROM dbo.T WHERE c = 'x'",
+  "SELECT /* /* */ ' */ * INTO dbo.N FROM dbo.T WHERE a = 'z'"
+]) {
+  test(`SELECT INTO is a confirmed high-risk write: ${query.replace(/\s+/g, ' ').slice(0, 60)}`, () => {
+    const result = classifyQuery(query);
+    assert.equal(result.kind, 'write');
+    assert.equal(result.action, 'SELECT INTO');
+    assert.equal(result.directConfirmOnly, true);
+    assert.equal(result.requiresAcknowledgement, true);
+    assert.deepEqual(result.highRiskActions, ['SELECT INTO']);
+  });
+}
+
+for (const query of [
+  "SELECT 'INTO' FROM t",
+  'SELECT [INTO] FROM t',
+  'SELECT "INTO" FROM t',
+  '-- INTO x\nSELECT 1',
+  "SELECT * FROM t FOR XML PATH('into')",
+  'SELECT (SELECT 1 FOR XML PATH) AS x',
+  'SELECT @v = a FROM t'
+]) {
+  test(`stays a read: ${query.replace(/\s+/g, ' ')}`, () => {
+    assert.equal(classifyQuery(query).kind, 'read');
+  });
+}
+
+test('a batch containing SELECT INTO lists it as a high-risk action', () => {
+  const result = classifyQuery('SELECT 1; SELECT * INTO dbo.N FROM t');
+  assert.equal(result.action, 'BATCH');
+  assert.ok(result.highRiskActions.includes('SELECT INTO'));
+});
+
+test('SELECT INTO results are not editable', () => {
+  assert.equal(analyzeSingleTableSelect('SELECT * INTO dbo.N FROM dbo.T').ok, false);
+});
+
 // ─── summary ─────────────────────────────────────────────────────────────────
 
 console.log(`\n${'─'.repeat(50)}`);
