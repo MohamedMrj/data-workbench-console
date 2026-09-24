@@ -147,6 +147,8 @@ function SqlWorkspace({ hidden = false }) {
               <button id="formatQueryBtn" className="ghost-btn small">Format</button>
               <button id="copyQueryBtn" className="ghost-btn small">Copy</button>
               <button id="clearQueryBtn" className="ghost-btn small">Clear</button>
+              <button id="runAllQueryBtn" className="ghost-btn small" type="button">Run all</button>
+              <button id="cancelQueryBtn" className="ghost-btn small cancel-query-btn hidden" type="button">Cancel</button>
               <button id="runQueryBtn" className="primary-btn">Run query</button>
             </div>
           </div>
@@ -217,12 +219,14 @@ function SqlWorkspace({ hidden = false }) {
             <button id="insertSqlHelperBtn" className="ghost-btn" type="button">Insert helper</button>
             <button id="wrapSqlHelperBtn" className="ghost-btn" type="button">Wrap selection</button>
           </div>
+          <div id="editorTabs" className="editor-tabs" role="tablist" aria-label="SQL editor tabs" />
           <div id="editorContainer" className="editor-container">
             <div id="queryEditorBackdrop" className="editor-backdrop" aria-hidden="true"></div>
-            <textarea id="queryEditor" spellCheck="false" />
+            <textarea id="queryEditor" spellCheck="false" aria-autocomplete="list" aria-controls="editorSuggest" />
+            <div id="editorSuggest" className="editor-suggest hidden" role="listbox" aria-label="SQL suggestions" />
           </div>
           <div className="helper-row">
-            <span id="editorHint">Shortcuts: Ctrl+Enter to run, Ctrl+Shift+F to format. Stored procedures run from the dedicated page.</span>
+            <span id="editorHint">Ctrl+Enter runs the selection or the statement under the cursor, Ctrl+Shift+Enter runs everything, Ctrl+Space suggests names. Press ? for all shortcuts.</span>
             <span id="editorStats">0 lines • 0 chars</span>
             <span id="queryModeHint">Mode: Select</span>
           </div>
@@ -823,6 +827,16 @@ export default function WorkbenchShell({ pageMode = 'sql' }) {
             <button id="syncEnvSettingsBtn" className="secondary-btn hidden" type="button" data-tooltip="Append defaults for new app settings that are missing from .env. Existing values are preserved.">Sync new settings</button>
             <button id="applyEnvSettingsBtn" className="primary-btn" type="button" data-tooltip="Write these values to .env. Most changes take effect after restarting Data Workbench.">Apply settings</button>
           </div>
+        </div>
+      </div>
+
+      <div id="shortcutsDialog" className="modal-backdrop hidden" aria-hidden="true">
+        <div className="modal-card shortcuts-card" role="dialog" aria-modal="true" aria-labelledby="shortcutsDialogTitle">
+          <div className="modal-header">
+            <h2 id="shortcutsDialogTitle">Keyboard shortcuts</h2>
+            <button id="closeShortcutsBtn" className="icon-btn" type="button" aria-label="Close">×</button>
+          </div>
+          <div id="shortcutsList" className="shortcuts-list" />
         </div>
       </div>
 

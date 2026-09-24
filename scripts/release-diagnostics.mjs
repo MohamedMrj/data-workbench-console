@@ -89,6 +89,7 @@ const routeFiles = [
   'app/api/version/route.js',
   'app/api/update/route.js',
   'app/api/query/route.js',
+  'app/api/query/cancel/route.js',
   'app/api/audit/route.js',
   'app/api/object-definition/route.js',
   'app/api/object-insights/route.js',

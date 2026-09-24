@@ -192,6 +192,30 @@ try {
   assert.equal(selectIntoReview.payload.action, 'SELECT INTO');
   assert.equal(selectIntoReview.payload.expectedText, 'EXECUTE SELECT INTO');
 
+  const cancelBadId = await request('/api/query/cancel', { method: 'POST', body: { runId: 'nope' } });
+  assert.equal(cancelBadId.response.status, 400);
+  const cancelUnknown = await request('/api/query/cancel', {
+    method: 'POST',
+    body: { runId: '0c9d8e7f-6a5b-4c3d-9e2f-1a0b9c8d7e6f' }
+  });
+  assert.equal(cancelUnknown.response.status, 404);
+  const queryBadRunId = await request('/api/query', {
+    method: 'POST',
+    body: { ...safeSqlLogin, query: 'SELECT 1; SELECT 2', runId: 'not-a-uuid' }
+  });
+  assert.equal(queryBadRunId.response.status, 400);
+  assert.match(queryBadRunId.payload.error, /Run id/);
+  // A valid run id on a query that never reaches the database is released again, so the
+  // same id can be reused straight away.
+  const reviewRunId = '1b2c3d4e-5f6a-4b7c-8d9e-0f1a2b3c4d5e';
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const reviewed = await request('/api/query', {
+      method: 'POST',
+      body: { ...safeSqlLogin, query: 'SELECT 1; SELECT 2', runId: reviewRunId }
+    });
+    assert.equal(reviewed.response.status, 200);
+  }
+
   const missingWindowsDomain = await request('/api/query', {
     method: 'POST',
     body: {

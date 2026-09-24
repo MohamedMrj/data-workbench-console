@@ -171,6 +171,31 @@ and `syncEditorBackdrop()` mirrors scroll position on every `input`/`scroll`. An
 `window.monaco` is present — **the app never loads Monaco**; the adapter is forward-looking
 only. The Procedure Runner has an independent copy of the same textarea+backdrop pair.
 
+What **Run query / Ctrl+Enter** sends is decided by `queryRunTarget(scope)`: the selection if
+there is one, otherwise the statement under the cursor when `sqlStatementRanges()` finds more
+than one, otherwise the whole editor (`scope: 'all'` — **Run all**, Ctrl+Shift+Enter, and
+`runProcedureScript` — always sends everything). `sqlRegions()` is a client copy of the
+server's `scanSqlRegions` because `public/` cannot import `lib/`; it only chooses which text is
+sent, and the server re-classifies whatever arrives, so a disagreement can pick the wrong
+statement but never skip a confirmation. Statements split on top-level `;` only — **not blank
+lines**, which could cut a `WHERE` off an `UPDATE`. `state.runHighlight` wraps the executed range
+in a `.sql-run-range` span in the backdrop for 1.6 s; it has no padding or border so the
+backdrop glyphs stay aligned with the transparent textarea on top.
+
+**Autocomplete** (`updateSuggestions` / `buildSuggestions` / `acceptSuggestion`) uses only loaded
+metadata: `state.objects` for tables/views, `state.objectColumnIndex` for columns, fetching a
+missing object's columns once through `/api/columns`. Alias resolution scans the current
+statement's `FROM/JOIN/UPDATE/INTO/APPLY` list; an unqualified name resolves only when exactly
+one schema has it. The `#editorSuggest` listbox is positioned with a mirror-div caret
+measurement and flips above the line near the bottom, because `.editor-container` clips
+overflow. Items use `mousedown` (not `click`) so accepting does not blur the textarea first. It
+is textarea-only and switched off by `APP_EDITOR_AUTOCOMPLETE_ENABLED=false`.
+
+**Editor tabs** (`state.editorTabs`, up to 8) share the one textarea. The active tab's text is
+copied back into its tab by `syncActiveEditorTab()` inside `currentBuilderSnapshot()`, which
+runs on every persist, so tabs never fall behind the editor. `closeEditorTab` does not reuse
+`activateEditorTab`, which would first copy the closed tab's text into the neighbour.
+
 ---
 
 ## 5. Request lifecycle
@@ -210,7 +235,8 @@ caught centrally and mapped through `error.httpStatus` (default 500).
 | `/api/object-definition` | POST | `postObjectDefinition` | CREATE/ALTER scripting |
 | `/api/schema-compare` | POST | `postSchemaCompare` | Takes two full connection payloads |
 | `/api/query-plan` | POST | `postQueryPlan` | Read queries only; blocked for Lakehouse |
-| `/api/query` | POST | `postQuery` | The main execution path |
+| `/api/query` | POST | `postQuery` | The main execution path; optional `runId` makes the run cancellable |
+| `/api/query/cancel` | POST | `postQueryCancel` | `{ runId }` → 202 cancelled, 404 unknown/other session, 409 committing |
 | `/api/saved-connections` | GET POST DELETE | `*SavedConnections` | |
 | `/api/version` | GET | inline | Cached + de-duplicated git/remote check |
 | `/api/env-settings` | GET POST | inline | Local-only; POST requires Origin/Referer |
@@ -280,10 +306,28 @@ in 1.4.12. External origins and differing ports are still rejected.
 the rate-limit key; otherwise every request buckets as `local`, so a spoofed header cannot
 grant a fresh quota.
 
+### `run-registry.js` and `write-execution.js` — query cancel
+
+`run-registry.js` keeps running queries in a `Map` keyed `sessionId:runId` (a client UUID v4),
+stored on `globalThis[Symbol.for('dataWorkbench.runRegistry')]` because Next bundles each route
+separately and `/api/query` and `/api/query/cancel` must share one registry. A session can only
+see or cancel its own runs; unknown and foreign run ids both return 404.
+
+`write-execution.js` holds `runRead`, `previewWrite` and `executeWrite` (moved out of
+`db-interface.js` so fake pools can unit-test them). Each attaches its mssql `Request` to the run
+handle and calls `throwIfCancelled()` **between attach and `query()`**: mssql resets a request's
+cancel flag when its query starts, so a cancel that lands during `begin()` would otherwise be
+lost. `executeWrite` checks again after the statement and before `COMMIT`, then sets the phase
+to `committing`; from then on `cancelRun` refuses, because a cancel can no longer undo the
+write. A TDS attention does not roll a transaction back, so every cancel path rolls back
+explicitly and reports `rolledBack` (an `EABORT` from rollback counts as rolled back). The run
+id is optional: without one a query simply cannot be cancelled.
+
 ### `confirmation-store.js` (215 lines)
 
 `Map<token, record>` mirrored to `CONFIRMATION_STORE_FILE` through a serialized write queue,
-using write-to-temp-then-rename with a Windows `EPERM`/`EACCES` retry loop.
+using write-to-temp-then-rename with a Windows `EPERM`/`EACCES` retry loop (shared with the
+saved-connections store through `atomic-file.js`).
 
 `claimConfirmation(token)` is the security-relevant function: it performs `get` then `delete`
 **with no `await` in between**, so Node runs the block to completion and only the first of two
@@ -648,7 +692,13 @@ One `state` object in `console-core.js`. Notable slices: `health`, `versionInfo`
 `envSettings`, `workspace` (`'sql'|'procedure'`), `explorer`, `objects`/`filteredObjects`,
 `procedures`/`filteredProcedures`, `activeObject`/`activeColumns`/`selectedColumns` (a `Set`),
 `activeProcedure`/`procedureParameters`/`procedureValues`, `pinnedItems`/`recentItems`,
-`resultTabs` + `activeResultTabId`, `results`, `pendingAction`, `sidePanels`, `lifecycle`.
+`resultTabs` + `activeResultTabId`, `results`, `pendingAction`, `sidePanels`, `lifecycle`,
+`editorTabs` + `activeEditorTabId`, `activeRun` (the one query allowed in flight: its run id,
+abort controller and elapsed-time ticker), and `suggest` (the open autocomplete list).
+
+The workspace snapshot gained `editorTabs`/`activeEditorTabId` and results gained `elapsedMs`
+without a storage-key bump: both are optional with defaults, so an older snapshot still restores
+and nothing is lost on upgrade.
 
 ### Persistence map
 
@@ -667,7 +717,7 @@ One `state` object in `console-core.js`. Notable slices: `health`, `versionInfo`
 | localStorage | `dataWorkbenchScratchpadsV1` | up to 10 saved SQL drafts |
 | sessionStorage | `dataWorkbenchActiveConnectionV1` | connection form **without password** |
 | sessionStorage | `dataWorkbenchCatalogStateV1` | catalog + active selections, fingerprint-gated |
-| sessionStorage | `dataWorkbenchWorkspaceStateV1` | per-mode snapshot: editor text, caret, scroll, filters, sort, result tabs, pagination |
+| sessionStorage | `dataWorkbenchWorkspaceStateV1` | per-mode snapshot: editor text, caret, scroll, editor tabs, filters, sort, result tabs, pagination |
 | sessionStorage | `dataWorkbenchLifecycleSessionV1` | heartbeat session id |
 | memory only | `window.__dataWorkbenchSessionPassword` | password for the tab's lifetime |
 

@@ -392,7 +392,8 @@ html[data-ambient-motion='enabled'] .shell-orbit-b {
   text-decoration: none;
 }
 
-.exit-workbench-btn {
+.exit-workbench-btn,
+.cancel-query-btn {
   border-color: color-mix(in srgb, var(--danger) 45%, var(--line));
   color: color-mix(in srgb, var(--danger) 82%, var(--text));
 }
@@ -2291,6 +2292,49 @@ html[data-ambient-motion='enabled'] .shell-orbit-b {
   border-top: 1px solid color-mix(in srgb, var(--line) 72%, transparent);
   background: color-mix(in srgb, var(--surface) 86%, transparent);
   backdrop-filter: blur(10px);
+}
+
+.modal-card.shortcuts-card {
+  width: min(560px, calc(100vw - 32px));
+  max-height: min(84vh, 720px);
+  overflow-y: auto;
+}
+
+.shortcuts-list {
+  display: grid;
+  gap: 14px;
+  margin-top: 12px;
+}
+
+.shortcuts-group h3 {
+  margin-bottom: 6px;
+  font-size: 0.78rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.shortcuts-row {
+  display: grid;
+  grid-template-columns: minmax(150px, auto) minmax(0, 1fr);
+  gap: 12px;
+  align-items: baseline;
+  padding: 5px 0;
+  border-bottom: 1px solid color-mix(in srgb, var(--line) 60%, transparent);
+}
+
+.shortcuts-row kbd {
+  justify-self: start;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.78rem;
+  white-space: nowrap;
+}
+
+@media (max-width: 520px) {
+  .shortcuts-row {
+    grid-template-columns: 1fr;
+    gap: 2px;
+  }
 }
 
 .modal-card.workbench-tools-card {
@@ -4266,6 +4310,138 @@ body {
   color: transparent;
 }
 
+.editor-tabs {
+  display: flex;
+  align-items: flex-end;
+  gap: 4px;
+  min-width: 0;
+  /* Cancels the editor card's 16px flex gap so the tabs sit on the editor's top edge. */
+  margin-bottom: -16px;
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
+.editor-tab {
+  display: inline-flex;
+  align-items: stretch;
+  flex: 0 0 auto;
+  max-width: 200px;
+  color: var(--muted);
+}
+
+/* Each button carries its own border and height (not the wrapper) so every control meets
+   the 30px / visible-border affordance rule the responsive audit enforces. */
+.editor-tab-main,
+.editor-tab-close,
+.editor-tab-new {
+  min-height: 30px;
+  border: 1px solid var(--control-border);
+  border-bottom: 0;
+  background: var(--control-bg);
+  color: inherit;
+  font: inherit;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+.editor-tab-main {
+  min-width: 0;
+  padding: 4px 10px;
+  border-radius: 8px 0 0 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.editor-tab-main:last-child {
+  border-radius: 8px 8px 0 0;
+}
+
+.editor-tab-close {
+  padding: 4px 8px;
+  border-left: 0;
+  border-radius: 0 8px 0 0;
+}
+
+.editor-tab.active > .editor-tab-main,
+.editor-tab.active > .editor-tab-close {
+  border-color: var(--accent);
+  background: var(--input-bg);
+  color: var(--text);
+}
+
+.editor-tab-close:hover,
+.editor-tab-close:focus-visible {
+  color: var(--danger);
+}
+
+.editor-tab-new {
+  flex: 0 0 auto;
+  padding: 4px 12px;
+  border-style: dashed;
+  border-radius: 8px 8px 0 0;
+  color: var(--muted);
+}
+
+.editor-tab-new:hover:not(:disabled),
+.editor-tab-new:focus-visible {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.editor-tab-new:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.editor-tabs + .editor-container {
+  border-top-left-radius: 0;
+}
+
+.editor-suggest {
+  position: absolute;
+  z-index: 5;
+  min-width: 220px;
+  max-width: min(420px, calc(100% - 16px));
+  max-height: 232px;
+  overflow-y: auto;
+  padding: 4px;
+  border: 1px solid var(--control-border, var(--line-strong));
+  border-radius: 8px;
+  background: var(--surface-raised);
+  box-shadow: var(--shadow);
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.82rem;
+}
+
+.editor-suggest-item {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 4px 8px;
+  border-radius: 5px;
+  color: var(--text);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.editor-suggest-item.active,
+.editor-suggest-item:hover {
+  background: var(--accent-soft);
+}
+
+.editor-suggest-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.editor-suggest-kind {
+  flex: none;
+  color: var(--muted);
+  font-size: 0.72rem;
+}
+
 /* SYNTAX HIGHLIGHTING (SQL) */
 .sql-keyword { color: var(--accent); font-weight: 600; }
 .sql-string { color: var(--accent-2); }
@@ -4274,6 +4450,23 @@ body {
 .sql-error-underline {
   text-decoration: underline wavy var(--danger);
   text-underline-offset: 4px;
+}
+
+/* Background only: padding or borders here would shift the backdrop text out of line with the
+   transparent textarea glyphs sitting on top of it. */
+.sql-run-range {
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  border-radius: 3px;
+  animation: sql-run-range-fade 1.6s ease-out forwards;
+}
+
+@keyframes sql-run-range-fade {
+  0%, 60% { background: color-mix(in srgb, var(--accent) 16%, transparent); }
+  100% { background: transparent; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sql-run-range { animation: none; }
 }
 
 /* SYNTAX HIGHLIGHTING (JSON in results) */
@@ -4347,6 +4540,10 @@ body {
 
 .app-toast-error {
   border-left-color: var(--danger);
+}
+
+.app-toast-info {
+  border-left-color: var(--accent);
 }
 
 /* CONTEXT MENU */

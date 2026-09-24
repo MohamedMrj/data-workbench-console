@@ -5,6 +5,58 @@ All notable Data Workbench Console changes are tracked here.
 The in-app version is read from `package.json` and exposed through `/api/version`
 together with the current git commit and build information.
 
+## 1.5.0 - 2026-09-24
+
+A faster SQL editor for daily work: run one statement at a time, cancel long queries, get
+table and column suggestions, and keep several queries open in tabs.
+
+### Added
+
+- **Run the statement under the cursor.** `Run query` and `Ctrl+Enter` now send the selected
+  text, or — when the editor holds several `;`-separated statements — only the statement under
+  the cursor, and briefly highlight what ran. Before, the whole editor was always sent, so keeping
+  a handful of queries in one buffer turned every run into a confirmed `RUN BATCH`. `Run all`
+  (`Ctrl+Shift+Enter`) keeps the old whole-editor behaviour. Statements split only on `;`, never
+  on blank lines, so an `UPDATE` is never sent without a `WHERE` that sits in the next paragraph.
+  The server still classifies and confirms whatever text arrives.
+- **Cancel a running query.** A `Cancel` button and a live elapsed time appear while a query
+  runs; results show how long they took. A read or preview stops straight away. While a
+  confirmed write runs, the dialog button becomes `Cancel write`: the server rolls the write back
+  and says so, and once a write has started committing it refuses to cancel instead of implying a
+  rollback that cannot happen. Runs are tracked per browser session through a new
+  `/api/query/cancel` route (`lib/server/run-registry.js`), so a session can only cancel its own
+  queries. Only one query runs at a time; a second `Ctrl+Enter` while one is running no longer
+  races it for the results grid.
+- **Autocomplete in the SQL editor** from the loaded catalog: tables and views after
+  `FROM`/`JOIN`/`UPDATE`/`INTO`, columns after an alias or table name, and SQL keywords.
+  `Ctrl+Space` opens it on demand; `Tab`/`Enter` accept and `Esc` dismisses. It stays quiet inside
+  strings and comments, fetches a table's columns once when you type an alias for a table you
+  have not opened, and can be turned off with the new `APP_EDITOR_AUTOCOMPLETE_ENABLED` setting.
+- **Editor tabs.** Keep up to eight SQL buffers, each with its own text, cursor and scroll
+  position, restored with the rest of the workspace. Double-click a tab to rename it;
+  `Ctrl+Alt+N`/`W` open and close tabs and `Ctrl+Alt+PageDown`/`PageUp` switch between them.
+- **Keyboard shortcut overlay.** Press `?` (outside a text field) or `Ctrl+/` to see every
+  shortcut; `/` jumps to the explorer search.
+
+### Changed
+
+- `previewWrite`/`executeWrite` moved from `db-interface.js` to `lib/server/write-execution.js`
+  so their transaction handling is unit-testable with fake pools. Behaviour is unchanged apart
+  from cancellation.
+
+### Verification
+
+- `server-unit.test.mjs` covers run-registry session isolation, a cancel that lands before the
+  statement starts (mssql would otherwise drop it), refusal once a write is committing, and that
+  a cancelled write rolls back and never commits.
+- `route-contract.test.mjs` covers the cancel route's 400/404 answers, invalid run ids on
+  `/api/query`, and that a run id is released again after a request.
+- `ui-smoke.mjs` covers running one statement of several, running a selection, `Ctrl+Enter`,
+  `Run all` as a batch, cancelling a read and a confirmed write, autocomplete for objects and
+  alias columns (and not inside strings), editor tabs with persistence, and the shortcut overlay.
+- `responsive-audit.mjs` passes with the new tab strip; each tab control carries its own border
+  and 30px height to meet the audit's affordance rule.
+
 ## 1.4.29 - 2026-09-23
 
 Closes three ways SQL could reach the database with less confirmation than it needed, and shows

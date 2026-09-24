@@ -570,8 +570,57 @@ function attachMocks(window) {
       });
     }
 
+    if (String(url).includes('/api/query/cancel')) {
+      window.__cancelledRunIds = [...(window.__cancelledRunIds || []), body.runId];
+      window.__releaseSlowQuery?.();
+      return new Response(JSON.stringify({ success: true, cancelled: true }), {
+        status: 202,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+
     if (String(url).includes('/api/query')) {
       const queryText = String(body.query || '');
+      window.__postedQueries = [...(window.__postedQueries || []), queryText];
+      window.__postedRunIds = [...(window.__postedRunIds || []), body.runId];
+      // A read that only finishes when the client aborts it, like a long query being cancelled.
+      if (queryText.includes('SLOW_CANCEL_TEST')) {
+        return new Promise((resolve, reject) => {
+          const abort = () => reject(new window.DOMException('The operation was aborted.', 'AbortError'));
+          if (options.signal?.aborted) abort();
+          options.signal?.addEventListener('abort', abort);
+        });
+      }
+      // A confirmed write that the server reports as cancelled and rolled back.
+      if (body.confirmToken === 'query-slow-write-token') {
+        return new Promise((resolve) => {
+          window.__releaseSlowQuery = () => resolve(new Response(JSON.stringify({
+            success: false,
+            cancelled: true,
+            rolledBack: true,
+            code: 'CANCELLED',
+            error: 'The write was cancelled and rolled back. Nothing was changed. Preview it again to run it.'
+          }), { status: 409, headers: { 'Content-Type': 'application/json' } }));
+        });
+      }
+      if (queryText.includes('SLOW_WRITE_TEST') && !body.confirmToken) {
+        return new Response(JSON.stringify({
+          success: true,
+          mode: 'write-preview',
+          requiresConfirmation: true,
+          confirmationToken: 'query-slow-write-token',
+          rowsAffected: 1,
+          action: 'UPDATE',
+          statementCount: 1,
+          actions: ['UPDATE'],
+          highRiskActions: [],
+          expectedText: '',
+          heightened: false,
+          reviewRequired: true,
+          warnings: [],
+          message: 'UPDATE preview complete. Review it, then click Continue to execute.'
+        }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
       if (/\bLIMIT\s+\d+\s*;?\s*$/i.test(queryText)) {
         return new Response(JSON.stringify({
           success: false,
@@ -998,7 +1047,7 @@ if (sqlWindow.document.documentElement.style.getPropertyValue('--tooltip-delay-m
     throw new Error(`Safety Policy panel did not render the server safety limits. Got: ${policyText}`);
   }
 }
-['saveConnectionBtn', 'testConnectionBtn', 'loadTablesBtn', 'runQueryBtn', 'clearHistoryBtn', 'toggleAdvancedOperationsBtn', 'insertSelectTemplateBtn', 'updateJoinTemplateBtn', 'mergePreviewBtn', 'profileObjectBtn', 'dependencyViewBtn', 'insertSqlHelperBtn', 'wrapSqlHelperBtn', 'openWorkbenchToolsBtn', 'openEnvSettingsBtn', 'openSupportBtn', 'scrollResultsLeftBtn', 'scrollResultsRightBtn', 'scrollResultsDockLeftBtn', 'scrollResultsDockRightBtn'].forEach((id) => {
+['saveConnectionBtn', 'testConnectionBtn', 'loadTablesBtn', 'runQueryBtn', 'runAllQueryBtn','clearHistoryBtn', 'toggleAdvancedOperationsBtn', 'insertSelectTemplateBtn', 'updateJoinTemplateBtn', 'mergePreviewBtn', 'profileObjectBtn', 'dependencyViewBtn', 'insertSqlHelperBtn', 'wrapSqlHelperBtn', 'openWorkbenchToolsBtn', 'openEnvSettingsBtn', 'openSupportBtn', 'scrollResultsLeftBtn', 'scrollResultsRightBtn', 'scrollResultsDockLeftBtn', 'scrollResultsDockRightBtn'].forEach((id) => {
   const element = sqlWindow.document.getElementById(id);
   if (!element || typeof element.onclick !== 'function') {
     throw new Error(`Expected ${id} to be wired on the SQL page.`);
@@ -1527,9 +1576,11 @@ if (!sqlWindow.document.querySelector('.result-error-card')?.textContent.include
   throw new Error('LIMIT syntax errors should explain the T-SQL TOP/OFFSET alternative.');
 }
 
+// Run all keeps the old behaviour: the whole editor goes as one request, so several
+// statements are a confirmed batch.
 editor.value = 'SELECT 1 AS a; SELECT 2 AS b;';
 editor.dispatchEvent(new sqlWindow.Event('input', { bubbles: true }));
-sqlWindow.document.getElementById('runQueryBtn').click();
+sqlWindow.document.getElementById('runAllQueryBtn').click();
 await flush();
 if (sqlWindow.document.getElementById('confirmModal').classList.contains('hidden')) {
   throw new Error('Multi-statement SQL did not open the confirmation modal.');
@@ -1617,6 +1668,197 @@ sqlWindow.document.getElementById('confirmModalBtn').click();
 await flush();
 if (!sqlWindow.document.getElementById('confirmModal').classList.contains('hidden')) {
   throw new Error('Confirming a heightened write with the correct phrase should close the modal.');
+}
+
+// Run query / Ctrl+Enter sends only the statement under the cursor, so a multi-statement
+// editor no longer turns into a confirmed batch just because other queries sit next to it.
+editor.value = 'SELECT 1 AS a;\n\nSELECT 2 AS b;';
+editor.dispatchEvent(new sqlWindow.Event('input', { bubbles: true }));
+editor.setSelectionRange(editor.value.indexOf('SELECT 2') + 3, editor.value.indexOf('SELECT 2') + 3);
+sqlWindow.__postedQueries = [];
+sqlWindow.document.getElementById('runQueryBtn').click();
+await flush();
+if (sqlWindow.__postedQueries.at(-1) !== 'SELECT 2 AS b;') {
+  throw new Error(`Run query should send only the statement under the cursor. Sent: ${JSON.stringify(sqlWindow.__postedQueries)}`);
+}
+if (!sqlWindow.document.getElementById('confirmModal').classList.contains('hidden')) {
+  throw new Error('Running one read statement out of several must not open the batch confirmation.');
+}
+if (!sqlWindow.document.getElementById('queryEditorBackdrop').querySelector('.sql-run-range')?.textContent.includes('SELECT 2 AS b;')) {
+  throw new Error('The executed statement should be highlighted in the editor backdrop.');
+}
+editor.setSelectionRange(0, 'SELECT 1 AS a'.length);
+sqlWindow.document.getElementById('runQueryBtn').click();
+await flush();
+if (sqlWindow.__postedQueries.at(-1) !== 'SELECT 1 AS a') {
+  throw new Error(`Run query should send exactly the selected text. Sent: ${sqlWindow.__postedQueries.at(-1)}`);
+}
+editor.setSelectionRange(0, 0);
+sqlWindow.document.dispatchEvent(new sqlWindow.KeyboardEvent('keydown', { key: 'Enter', ctrlKey: true, bubbles: true }));
+await flush();
+if (sqlWindow.__postedQueries.at(-1) !== 'SELECT 1 AS a;') {
+  throw new Error(`Ctrl+Enter should run the statement under the cursor. Sent: ${sqlWindow.__postedQueries.at(-1)}`);
+}
+
+// Autocomplete: object names after FROM, alias-qualified columns, and Escape to dismiss.
+const suggestList = sqlWindow.document.getElementById('editorSuggest');
+const typeInEditor = (text, cursor = text.length) => {
+  editor.value = text;
+  editor.setSelectionRange(cursor, cursor);
+  editor.dispatchEvent(new sqlWindow.Event('input', { bubbles: true }));
+};
+const pressInEditor = (key) => editor.dispatchEvent(new sqlWindow.KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }));
+typeInEditor('SELECT * FROM dbo.Al');
+await flush();
+if (suggestList.classList.contains('hidden') || !suggestList.textContent.includes('dbo.Alerts')) {
+  throw new Error(`Typing an object prefix after FROM should suggest dbo.Alerts. Suggestions: ${suggestList.textContent}`);
+}
+const firstObjectSuggestion = suggestList.querySelector('.editor-suggest-item .editor-suggest-label').textContent;
+pressInEditor('Tab');
+if (editor.value !== `SELECT * FROM ${firstObjectSuggestion}`) {
+  throw new Error(`Accepting an object suggestion should replace the typed prefix. Editor: ${editor.value}`);
+}
+if (!suggestList.classList.contains('hidden')) {
+  throw new Error('The suggestion list should close after accepting a suggestion.');
+}
+typeInEditor('SELECT a.Al FROM dbo.Alerts a', 'SELECT a.Al'.length);
+await flush();
+await flush();
+if (!suggestList.textContent.includes('AlertId')) {
+  throw new Error(`An alias prefix should suggest that object's columns. Suggestions: ${suggestList.textContent}`);
+}
+pressInEditor('Enter');
+if (editor.value !== 'SELECT a.AlertId FROM dbo.Alerts a') {
+  throw new Error(`Accepting a column suggestion should insert the column. Editor: ${editor.value}`);
+}
+typeInEditor('SELECT * FROM dbo.Al');
+await flush();
+pressInEditor('Escape');
+if (!suggestList.classList.contains('hidden')) {
+  throw new Error('Escape should close the suggestion list.');
+}
+typeInEditor("SELECT 'dbo.Al");
+await flush();
+if (!suggestList.classList.contains('hidden')) {
+  throw new Error('Typing inside a string literal must not open suggestions.');
+}
+
+// Editor tabs: each tab keeps its own SQL, switching swaps the editor text, the tabs are
+// persisted with the workspace, and closing a tab falls back to its neighbour.
+const tabStrip = sqlWindow.document.getElementById('editorTabs');
+if (tabStrip.querySelectorAll('[data-editor-tab]').length !== 1) {
+  throw new Error('The SQL editor should start with exactly one tab.');
+}
+typeInEditor('SELECT 1 AS first_tab');
+sqlWindow.document.getElementById('newEditorTabBtn').click();
+if (tabStrip.querySelectorAll('[data-editor-tab]').length !== 2 || editor.value !== '') {
+  throw new Error(`A new editor tab should open empty. Tabs: ${tabStrip.querySelectorAll('[data-editor-tab]').length}, editor: ${editor.value}`);
+}
+typeInEditor('SELECT 2 AS second_tab');
+tabStrip.querySelectorAll('[data-editor-tab]')[0].click();
+if (editor.value !== 'SELECT 1 AS first_tab') {
+  throw new Error(`Switching back to the first tab should restore its SQL. Editor: ${editor.value}`);
+}
+sqlWindow.document.querySelectorAll('#editorTabs [data-editor-tab]')[1].click();
+if (editor.value !== 'SELECT 2 AS second_tab') {
+  throw new Error(`Switching to the second tab should restore its SQL. Editor: ${editor.value}`);
+}
+const persistedTabs = JSON.parse(sqlWindow.sessionStorage.getItem('dataWorkbenchWorkspaceStateV1') || '{}').sql?.builder?.editorTabs || [];
+if (persistedTabs.length !== 2 || !persistedTabs.some((tab) => tab.query === 'SELECT 1 AS first_tab')) {
+  throw new Error(`Editor tabs should be persisted with the workspace. Persisted: ${JSON.stringify(persistedTabs)}`);
+}
+typeInEditor('');
+[...sqlWindow.document.querySelectorAll('#editorTabs [data-close-editor-tab]')].at(-1).click();
+if (sqlWindow.document.querySelectorAll('#editorTabs [data-editor-tab]').length !== 1 || editor.value !== 'SELECT 1 AS first_tab') {
+  throw new Error(`Closing the empty active tab should fall back to the remaining tab. Tabs: ${sqlWindow.document.querySelectorAll('#editorTabs [data-editor-tab]').length}, editor: ${editor.value}`);
+}
+if (sqlWindow.document.querySelector('#editorTabs [data-close-editor-tab]')) {
+  throw new Error('The last remaining editor tab should not offer a close button.');
+}
+
+// Keyboard shortcuts: ? opens the overlay (not while typing), / focuses explorer search,
+// Ctrl+Alt+N / W open and close editor tabs.
+const pressOnDocument = (init) => sqlWindow.document.body.dispatchEvent(new sqlWindow.KeyboardEvent('keydown', { bubbles: true, cancelable: true, ...init }));
+editor.blur();
+pressOnDocument({ key: '?' });
+const shortcutsDialog = sqlWindow.document.getElementById('shortcutsDialog');
+if (shortcutsDialog.classList.contains('hidden') || !sqlWindow.document.getElementById('shortcutsList').textContent.includes('Ctrl+Shift+Enter')) {
+  throw new Error('Pressing ? should open the keyboard shortcut overlay listing the run shortcuts.');
+}
+pressOnDocument({ key: 'Escape' });
+if (!shortcutsDialog.classList.contains('hidden')) {
+  throw new Error('Escape should close the keyboard shortcut overlay.');
+}
+editor.dispatchEvent(new sqlWindow.KeyboardEvent('keydown', { key: '?', bubbles: true, cancelable: true }));
+if (!shortcutsDialog.classList.contains('hidden')) {
+  throw new Error('Typing ? in the editor must not open the shortcut overlay.');
+}
+pressOnDocument({ key: '/' });
+if (sqlWindow.document.activeElement?.id !== 'tableSearchInput') {
+  throw new Error(`Pressing / should focus the explorer search. Focused: ${sqlWindow.document.activeElement?.id}`);
+}
+sqlWindow.document.getElementById('tableSearchInput').blur();
+pressOnDocument({ key: 'n', ctrlKey: true, altKey: true });
+if (sqlWindow.document.querySelectorAll('#editorTabs [data-editor-tab]').length !== 2 || editor.value !== '') {
+  throw new Error('Ctrl+Alt+N should open a new, empty editor tab.');
+}
+pressOnDocument({ key: 'w', ctrlKey: true, altKey: true });
+if (sqlWindow.document.querySelectorAll('#editorTabs [data-editor-tab]').length !== 1 || editor.value !== 'SELECT 1 AS first_tab') {
+  throw new Error('Ctrl+Alt+W should close the empty editor tab and return to the previous one.');
+}
+
+// Cancel a running read: the cancel reaches the server with the query's run id, the fetch
+// is aborted, and the grid says "Cancelled" instead of showing an error.
+editor.value = 'SELECT SLOW_CANCEL_TEST FROM dbo.Alerts';
+editor.dispatchEvent(new sqlWindow.Event('input', { bubbles: true }));
+sqlWindow.__cancelledRunIds = [];
+sqlWindow.document.getElementById('runQueryBtn').click();
+await flush();
+if (sqlWindow.document.getElementById('cancelQueryBtn').classList.contains('hidden')) {
+  throw new Error('The Cancel button should appear while a query is running.');
+}
+if (!sqlWindow.document.getElementById('runQueryBtn').disabled || !sqlWindow.document.getElementById('runAllQueryBtn').disabled) {
+  throw new Error('Run buttons should be disabled while a query is running.');
+}
+const slowRunId = sqlWindow.__postedRunIds.at(-1);
+if (!/^[0-9a-f-]{36}$/.test(String(slowRunId || ''))) {
+  throw new Error(`A running query should carry a UUID run id. Got: ${slowRunId}`);
+}
+sqlWindow.document.getElementById('cancelQueryBtn').click();
+await flush();
+await flush();
+if (sqlWindow.__cancelledRunIds.at(-1) !== slowRunId) {
+  throw new Error(`Cancel should post the running query's run id. Posted: ${JSON.stringify(sqlWindow.__cancelledRunIds)}`);
+}
+if (!sqlWindow.document.getElementById('resultsMeta').textContent.startsWith('Cancelled')) {
+  throw new Error(`A cancelled read should say Cancelled in the results meta. Got: ${sqlWindow.document.getElementById('resultsMeta').textContent}`);
+}
+if (sqlWindow.document.querySelector('.result-error-card')) {
+  throw new Error('A cancelled query must not render as an error.');
+}
+if (!sqlWindow.document.getElementById('cancelQueryBtn').classList.contains('hidden') || sqlWindow.document.getElementById('runQueryBtn').disabled) {
+  throw new Error('After a cancel the Cancel button should hide and Run should be enabled again.');
+}
+
+// Cancel a confirmed write from the dialog: the dialog's Cancel becomes "Cancel write",
+// and the server's rolled-back answer is shown rather than a guess.
+editor.value = "UPDATE dbo.Alerts SET Status = 'SLOW_WRITE_TEST' WHERE AlertId = 1";
+editor.dispatchEvent(new sqlWindow.Event('input', { bubbles: true }));
+sqlWindow.document.getElementById('runQueryBtn').click();
+await flush();
+sqlWindow.document.getElementById('confirmModalBtn').click();
+await flush();
+if (sqlWindow.document.getElementById('cancelModalBtn').textContent !== 'Cancel write') {
+  throw new Error(`While a confirmed write runs, the dialog Cancel should read "Cancel write". Got: ${sqlWindow.document.getElementById('cancelModalBtn').textContent}`);
+}
+sqlWindow.document.getElementById('cancelModalBtn').click();
+await flush();
+await flush();
+if (!sqlWindow.document.getElementById('confirmModal').classList.contains('hidden')) {
+  throw new Error('The dialog should close once the cancelled write has answered.');
+}
+if (!sqlWindow.document.getElementById('statusText').textContent.includes('rolled back')) {
+  throw new Error(`A cancelled write should report the rollback. Status: ${sqlWindow.document.getElementById('statusText').textContent}`);
 }
 
 const proceduresHtml = await readBuiltHtml(['procedures']);

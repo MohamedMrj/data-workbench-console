@@ -91,7 +91,9 @@ window.createConsoleApp = function createConsoleApp() {
     formatQueryBtn: 'Format the current SQL text for readability.',
     copyQueryBtn: 'Copy the current SQL editor text to the clipboard.',
     clearQueryBtn: 'Clear the SQL editor.',
-    runQueryBtn: 'Run the current SQL through the existing read/write safety and confirmation path.',
+    runQueryBtn: 'Run the selected SQL, or the statement under the cursor when the editor holds several semicolon-separated statements (Ctrl+Enter). Everything still goes through the read/write safety and confirmation path.',
+    runAllQueryBtn: 'Run the whole editor as one request (Ctrl+Shift+Enter). Several statements run as a confirmed batch.',
+    cancelQueryBtn: 'Stop the running query on the server. A read or preview stops straight away; a confirmed write is rolled back.',
     addFilterBtn: 'Add a filter row used to build WHERE clauses.',
     selectAllColumnsBtn: 'Include every loaded column in generated SQL.',
     clearColumnsBtn: 'Clear selected columns so generated SQL can use all columns again.',
@@ -257,6 +259,13 @@ window.createConsoleApp = function createConsoleApp() {
     resultTabs: [],
     activeResultTabId: '',
     editorAdapter: null,
+    runHighlight: null,
+    runHighlightTimer: null,
+    activeRun: null,
+    suggest: null,
+    suggestColumnRequests: {},
+    editorTabs: [],
+    activeEditorTabId: '',
     pendingAction: null,
     lastFocusedElement: null,
     connectionTest: null,
@@ -317,6 +326,7 @@ window.createConsoleApp = function createConsoleApp() {
       localFilter: '',
       visualKind: '',
       visualObject: '',
+      elapsedMs: null,
       // Row-editability state (results-grid inline editor). Deliberately not
       // persisted across session restore or tab snapshots: normalizeResultsSnapshot
       // below always resets these to the defaults here regardless of what a
@@ -1463,12 +1473,13 @@ window.createConsoleApp = function createConsoleApp() {
     panel.innerHTML = `<strong>${esc(info.title || 'Save connection')}</strong><span>${esc(info.message || '')}</span>`;
   }
 
-  async function api(url, { method = 'GET', data } = {}) {
+  async function api(url, { method = 'GET', data, signal } = {}) {
     const response = await fetch(url, {
       method,
       credentials: 'same-origin',
       headers: { 'Content-Type': 'application/json' },
-      body: data ? JSON.stringify(data) : undefined
+      body: data ? JSON.stringify(data) : undefined,
+      signal
     });
     const contentType = response.headers.get('content-type') || '';
     const payload = contentType.includes('application/json')
@@ -2271,7 +2282,8 @@ window.createConsoleApp = function createConsoleApp() {
       sortDirection: snapshot.sortDirection === 'desc' ? 'desc' : 'asc',
       localFilter: String(snapshot.localFilter || ''),
       visualKind: String(snapshot.visualKind || ''),
-      visualObject: String(snapshot.visualObject || '')
+      visualObject: String(snapshot.visualObject || ''),
+      elapsedMs: Number.isFinite(Number(snapshot.elapsedMs)) && snapshot.elapsedMs !== null ? Number(snapshot.elapsedMs) : null
     };
   }
 
@@ -2292,8 +2304,11 @@ window.createConsoleApp = function createConsoleApp() {
     const adapter = editorAdapter();
     const selection = adapter.getSelection();
     const scroll = adapter.getScroll();
+    syncActiveEditorTab();
     return {
       query: getQuery(),
+      editorTabs: state.editorTabs.map((tab) => ({ ...tab })),
+      activeEditorTabId: state.activeEditorTabId,
       selectionStart: Number(selection.start || 0),
       selectionEnd: Number(selection.end || 0),
       editorScrollTop: Number(scroll.top || 0),
@@ -2378,6 +2393,7 @@ window.createConsoleApp = function createConsoleApp() {
       if ($('sourceJoinColumnInput')) $('sourceJoinColumnInput').value = builder.sourceJoinColumn || '';
       if ($('profileSampleRowsInput')) $('profileSampleRowsInput').value = builder.profileSampleRows || '200';
       restoreFilterRows(Array.isArray(builder.filters) ? builder.filters : []);
+      restoreEditorTabs(builder);
       setQuery(typeof builder.query === 'string' ? builder.query : getQuery());
       const adapter = editorAdapter();
       const queryLength = getQuery().length;
@@ -2386,6 +2402,7 @@ window.createConsoleApp = function createConsoleApp() {
       adapter.setSelection(start, end);
       adapter.setScroll(Number(builder.editorScrollTop || 0), Number(builder.editorScrollLeft || 0));
       syncEditorBackdrop();
+      renderEditorTabs();
       updateAdvancedOperationsSummary();
     } else {
       if (snapshot.activeProcedure && snapshot.activeProcedure === state.activeProcedure) {
@@ -3901,6 +3918,436 @@ window.createConsoleApp = function createConsoleApp() {
     return editorAdapter().getValue();
   }
 
+  // Client copy of scanSqlRegions in lib/server/sql-classifier.js (public files cannot import
+  // lib/). It only decides which text is sent; the server re-classifies whatever arrives, so a
+  // disagreement here can pick the wrong statement but never skip a confirmation.
+  function sqlRegions(text) {
+    const sql = String(text || '');
+    const regions = [];
+    let codeStart = 0;
+    let index = 0;
+    const pushRegion = (type, start, end) => {
+      if (start > codeStart) regions.push({ type: 'code', start: codeStart, end: start });
+      regions.push({ type, start, end });
+      codeStart = end;
+    };
+    while (index < sql.length) {
+      const char = sql[index];
+      const next = sql[index + 1];
+      if (char === "'" || char === '[' || char === '"') {
+        const close = char === '[' ? ']' : char;
+        const start = index;
+        index += 1;
+        while (index < sql.length) {
+          if (sql[index] === close) {
+            if (sql[index + 1] === close) {
+              index += 2;
+              continue;
+            }
+            index += 1;
+            break;
+          }
+          index += 1;
+        }
+        pushRegion('quoted', start, index);
+        continue;
+      }
+      if (char === '-' && next === '-') {
+        const start = index;
+        while (index < sql.length && sql[index] !== '\n') index += 1;
+        pushRegion('comment', start, index);
+        continue;
+      }
+      if (char === '/' && next === '*') {
+        const start = index;
+        let depth = 1;
+        index += 2;
+        while (index < sql.length && depth > 0) {
+          if (sql[index] === '/' && sql[index + 1] === '*') {
+            depth += 1;
+            index += 2;
+          } else if (sql[index] === '*' && sql[index + 1] === '/') {
+            depth -= 1;
+            index += 2;
+          } else {
+            index += 1;
+          }
+        }
+        pushRegion('comment', start, index);
+        continue;
+      }
+      index += 1;
+    }
+    if (sql.length > codeStart) regions.push({ type: 'code', start: codeStart, end: sql.length });
+    return regions;
+  }
+
+  // Statements are split on top-level semicolons only. Blank lines are deliberately not a
+  // boundary: splitting there could cut `UPDATE t SET a = 1` from a WHERE in the next
+  // paragraph and send an unfiltered update.
+  function sqlStatementRanges(text) {
+    const sql = String(text || '');
+    const ranges = [];
+    let start = 0;
+    const pushRange = (end) => {
+      const slice = sql.slice(start, end);
+      const leading = slice.length - slice.trimStart().length;
+      const trailing = slice.length - slice.trimEnd().length;
+      const hasSql = sqlRegions(slice).some((region) => region.type !== 'comment' && slice.slice(region.start, region.end).trim());
+      if (hasSql) {
+        ranges.push({ start: start + leading, end: end - trailing });
+      }
+    };
+    sqlRegions(sql).forEach((region) => {
+      if (region.type !== 'code') return;
+      for (let index = region.start; index < region.end; index += 1) {
+        if (sql[index] === ';') {
+          pushRange(index + 1);
+          start = index + 1;
+        }
+      }
+    });
+    pushRange(sql.length);
+    return ranges;
+  }
+
+  // ─── SQL editor autocomplete ──────────────────────────────────────────────
+  // Suggestions come only from metadata the app already loaded (the catalog and each
+  // object's columns), so they never cost a query unless a column list is missing.
+
+  const SUGGEST_KEYWORDS = ['SELECT', 'FROM', 'WHERE', 'AND', 'OR', 'NOT', 'NULL', 'IS', 'IN', 'LIKE', 'BETWEEN', 'EXISTS', 'JOIN', 'INNER JOIN', 'LEFT JOIN', 'RIGHT JOIN', 'FULL OUTER JOIN', 'CROSS APPLY', 'OUTER APPLY', 'ON', 'AS', 'GROUP BY', 'ORDER BY', 'HAVING', 'DISTINCT', 'TOP', 'UNION ALL', 'UNION', 'EXCEPT', 'INTERSECT', 'CASE', 'WHEN', 'THEN', 'ELSE', 'END', 'INSERT INTO', 'VALUES', 'UPDATE', 'SET', 'DELETE FROM', 'WITH', 'OFFSET', 'FETCH NEXT', 'ROWS ONLY', 'ASC', 'DESC', 'COUNT', 'COUNT_BIG', 'SUM', 'AVG', 'MIN', 'MAX', 'CAST', 'CONVERT', 'TRY_CONVERT', 'COALESCE', 'ISNULL', 'NULLIF', 'DATEADD', 'DATEDIFF', 'GETDATE', 'SYSUTCDATETIME', 'STRING_AGG', 'OVER', 'PARTITION BY', 'ROW_NUMBER'];
+  const OBJECT_CONTEXT_KEYWORDS = new Set(['FROM', 'JOIN', 'INTO', 'UPDATE', 'TABLE', 'APPLY']);
+  const ALIAS_STOP_WORDS = new Set(['WHERE', 'ON', 'JOIN', 'INNER', 'LEFT', 'RIGHT', 'FULL', 'CROSS', 'OUTER', 'GROUP', 'ORDER', 'SET', 'WITH', 'UNION', 'EXCEPT', 'INTERSECT', 'VALUES', 'SELECT', 'OPTION', 'HAVING', 'OUTPUT', 'APPLY', 'FOR', 'WHEN', 'USING']);
+  const SUGGEST_LIMIT = 12;
+
+  function autocompleteEnabled() {
+    const configured = window.__dataWorkbenchTestConfig?.editorAutocompleteEnabled ?? state.health?.appearance?.editorAutocompleteEnabled;
+    return configured !== false;
+  }
+
+  function sqlIdentifier(part) {
+    const text = String(part || '');
+    return /^[A-Za-z_][A-Za-z0-9_@#$]*$/.test(text) ? text : bid(text);
+  }
+
+  function unquoteIdentifierChain(text) {
+    return String(text || '')
+      .split('.')
+      .map((part) => part.trim().replace(/^\[(.*)\]$/s, '$1').replace(/]]/g, ']'))
+      .filter(Boolean)
+      .join('.');
+  }
+
+  function findCatalogObject(name) {
+    const target = unquoteIdentifierChain(name).toLowerCase();
+    if (!target) return null;
+    const objects = Array.isArray(state.objects) ? state.objects : [];
+    const exact = objects.find((item) => String(item.fullName || '').toLowerCase() === target);
+    if (exact) return exact;
+    // An unqualified name resolves only when exactly one schema has it; guessing between
+    // dbo.Orders and sales.Orders would show the wrong columns.
+    const byName = objects.filter((item) => String(item.name || '').toLowerCase() === target);
+    return byName.length === 1 ? byName[0] : null;
+  }
+
+  // Maps every alias and bare name in the statement's FROM/JOIN/UPDATE/INTO list to the
+  // catalog object it refers to.
+  function statementObjectReferences(statement) {
+    const references = new Map();
+    const identifier = '(?:\\[[^\\]]*(?:\\]\\][^\\]]*)*\\]|[A-Za-z_@#$][A-Za-z0-9_@#$]*)';
+    const pattern = new RegExp(`\\b(?:FROM|JOIN|UPDATE|INTO|APPLY)\\s+(${identifier}(?:\\s*\\.\\s*${identifier})*)(?:\\s+(?:AS\\s+)?(${identifier}))?`, 'gi');
+    let match;
+    while ((match = pattern.exec(statement))) {
+      const object = findCatalogObject(match[1].replace(/\s+/g, ''));
+      if (!object) continue;
+      references.set(String(object.fullName).toLowerCase(), object);
+      references.set(String(object.name).toLowerCase(), object);
+      const alias = unquoteIdentifierChain(match[2] || '');
+      if (alias && !ALIAS_STOP_WORDS.has(alias.toUpperCase())) {
+        references.set(alias.toLowerCase(), object);
+      }
+    }
+    return references;
+  }
+
+  function cachedObjectColumns(object) {
+    const cached = state.objectColumnIndex[String(object?.fullName || '').toLowerCase()];
+    return Array.isArray(cached) ? cached : null;
+  }
+
+  async function ensureObjectColumns(object) {
+    const key = String(object?.fullName || '').toLowerCase();
+    if (!key || cachedObjectColumns(object)) return;
+    if (state.suggestColumnRequests[key]) return;
+    state.suggestColumnRequests[key] = true;
+    try {
+      const payload = await api('/api/columns', { method: 'POST', data: requestConnection({ object: object.fullName }) });
+      state.objectColumnIndex[key] = (payload.columns || []).map((column) => column.name);
+      persistCatalogState();
+      if (state.suggest?.open || state.suggest?.pendingObject === key) {
+        updateSuggestions({ manual: Boolean(state.suggest?.manual) });
+      }
+    } catch {
+      // Autocomplete is a convenience: a failed column lookup just means no suggestions.
+    } finally {
+      delete state.suggestColumnRequests[key];
+    }
+  }
+
+  function suggestionContext(text, cursor, manual) {
+    const before = text.slice(0, cursor);
+    const regions = sqlRegions(before);
+    const last = regions[regions.length - 1];
+    if (last && last.type !== 'code' && last.end === before.length) {
+      return null;
+    }
+    const identifier = '(?:\\[[^\\]]*\\]|[A-Za-z_@#$][A-Za-z0-9_@#$]*)';
+    const match = before.match(new RegExp(`((?:${identifier}\\.)*)([A-Za-z_@#$][A-Za-z0-9_@#$]*)?$`));
+    const qualifier = match?.[1] || '';
+    const word = match?.[2] || '';
+    if (!manual && !qualifier && word.length < 2) {
+      return null;
+    }
+    const tokenStart = cursor - (match?.[0]?.length || 0);
+    const previousWord = (before.slice(0, tokenStart).match(/([A-Za-z_]+)\s*$/)?.[1] || '').toUpperCase();
+    const ranges = sqlStatementRanges(text);
+    const range = ranges.find((item) => cursor >= item.start && cursor <= item.end + 1);
+    const statement = range ? text.slice(range.start, range.end) : text;
+    return { word, qualifier, tokenStart, wordStart: cursor - word.length, previousWord, statement };
+  }
+
+  function buildSuggestions(context) {
+    const prefix = context.word.toLowerCase();
+    const matches = (value) => String(value || '').toLowerCase().startsWith(prefix);
+    const objects = Array.isArray(state.objects) ? state.objects : [];
+
+    if (OBJECT_CONTEXT_KEYWORDS.has(context.previousWord) || (context.qualifier && !statementObjectReferences(context.statement).has(unquoteIdentifierChain(context.qualifier).toLowerCase()) && !findCatalogObject(context.qualifier.replace(/\.$/, '')))) {
+      const schema = unquoteIdentifierChain(context.qualifier).toLowerCase();
+      return {
+        replaceStart: context.tokenStart,
+        items: objects
+          .filter((item) => (schema ? String(item.schema || '').toLowerCase() === schema && matches(item.name) : matches(item.name) || matches(item.fullName)))
+          .slice(0, SUGGEST_LIMIT)
+          .map((item) => ({
+            label: item.fullName,
+            insert: `${sqlIdentifier(item.schema)}.${sqlIdentifier(item.name)}`,
+            kind: item.objectType === 'view' ? 'view' : 'table'
+          }))
+      };
+    }
+
+    const references = statementObjectReferences(context.statement);
+    if (context.qualifier) {
+      const qualifierKey = unquoteIdentifierChain(context.qualifier).toLowerCase();
+      const object = references.get(qualifierKey) || findCatalogObject(qualifierKey);
+      if (!object) return { replaceStart: context.wordStart, items: [] };
+      const columns = cachedObjectColumns(object);
+      if (!columns) {
+        state.suggest = { ...(state.suggest || {}), pendingObject: String(object.fullName).toLowerCase() };
+        ensureObjectColumns(object);
+        return { replaceStart: context.wordStart, items: [], loading: true };
+      }
+      return {
+        replaceStart: context.wordStart,
+        items: columns.filter(matches).slice(0, SUGGEST_LIMIT).map((column) => ({ label: column, insert: sqlIdentifier(column), kind: 'column', detail: object.fullName }))
+      };
+    }
+
+    const seen = new Set();
+    const columnItems = [];
+    new Set(references.values()).forEach((object) => {
+      const columns = cachedObjectColumns(object);
+      if (!columns) {
+        ensureObjectColumns(object);
+        return;
+      }
+      columns.filter(matches).forEach((column) => {
+        const key = column.toLowerCase();
+        if (seen.has(key)) return;
+        seen.add(key);
+        columnItems.push({ label: column, insert: sqlIdentifier(column), kind: 'column', detail: object.fullName });
+      });
+    });
+    const keywordItems = SUGGEST_KEYWORDS.filter(matches).map((keyword) => ({ label: keyword, insert: keyword, kind: 'keyword' }));
+    return { replaceStart: context.wordStart, items: [...columnItems, ...keywordItems].slice(0, SUGGEST_LIMIT) };
+  }
+
+  function caretOffset(editor, position) {
+    const style = window.getComputedStyle(editor);
+    const mirror = document.createElement('div');
+    ['boxSizing', 'width', 'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft', 'borderTopWidth', 'borderRightWidth', 'borderBottomWidth', 'borderLeftWidth', 'fontFamily', 'fontSize', 'fontWeight', 'lineHeight', 'letterSpacing', 'tabSize'].forEach((prop) => {
+      mirror.style[prop] = style[prop];
+    });
+    mirror.style.position = 'absolute';
+    mirror.style.visibility = 'hidden';
+    mirror.style.whiteSpace = 'pre-wrap';
+    mirror.style.overflowWrap = 'break-word';
+    mirror.style.top = '0';
+    mirror.style.left = '-9999px';
+    mirror.textContent = editor.value.slice(0, position);
+    const marker = document.createElement('span');
+    marker.textContent = '​';
+    mirror.appendChild(marker);
+    document.body.appendChild(mirror);
+    const lineHeight = parseFloat(style.lineHeight) || (parseFloat(style.fontSize) || 14) * 1.6;
+    const offset = {
+      top: marker.offsetTop - editor.scrollTop + lineHeight,
+      left: marker.offsetLeft - editor.scrollLeft
+    };
+    mirror.remove();
+    return offset;
+  }
+
+  function closeSuggestions() {
+    state.suggest = null;
+    const list = $('editorSuggest');
+    if (list) {
+      list.classList.add('hidden');
+      list.innerHTML = '';
+    }
+    $('queryEditor')?.removeAttribute('aria-activedescendant');
+  }
+
+  function renderSuggestions() {
+    const list = $('editorSuggest');
+    const editor = $('queryEditor');
+    const suggest = state.suggest;
+    if (!list || !editor || !suggest?.open || !suggest.items.length) {
+      if (list) list.classList.add('hidden');
+      return;
+    }
+    list.innerHTML = suggest.items.map((item, index) => (
+      `<div class="editor-suggest-item${index === suggest.index ? ' active' : ''}" id="editorSuggestItem${index}" role="option" aria-selected="${index === suggest.index}" data-suggest-index="${index}"><span class="editor-suggest-label">${esc(item.label)}</span><span class="editor-suggest-kind">${esc(item.detail ? `${item.kind} · ${item.detail}` : item.kind)}</span></div>`
+    )).join('');
+    const offset = caretOffset(editor, suggest.anchor);
+    const maxLeft = Math.max(0, editor.clientWidth - 260);
+    list.style.left = `${Math.min(maxLeft, Math.max(0, editor.offsetLeft + offset.left))}px`;
+    list.classList.remove('hidden');
+    // The editor container clips overflow, so near the bottom the list opens above the line.
+    const lineHeight = parseFloat(window.getComputedStyle(editor).lineHeight) || 22;
+    const below = editor.offsetTop + offset.top;
+    const containerHeight = list.parentElement?.clientHeight || 0;
+    const fitsBelow = !containerHeight || below + list.offsetHeight <= containerHeight;
+    list.style.top = `${Math.max(0, fitsBelow ? below : below - lineHeight - list.offsetHeight)}px`;
+    editor.setAttribute('aria-activedescendant', `editorSuggestItem${suggest.index}`);
+    list.querySelectorAll('[data-suggest-index]').forEach((element) => {
+      // mousedown, not click: a click would blur the textarea first and close the list.
+      element.onmousedown = (event) => {
+        event.preventDefault();
+        acceptSuggestion(Number(element.dataset.suggestIndex));
+      };
+    });
+    list.querySelector('.editor-suggest-item.active')?.scrollIntoView?.({ block: 'nearest' });
+  }
+
+  function updateSuggestions({ manual = false } = {}) {
+    if (!autocompleteEnabled() || editorAdapter().kind !== 'textarea') {
+      closeSuggestions();
+      return;
+    }
+    const text = getQuery();
+    const selection = editorAdapter().getSelection();
+    if (selection.end !== selection.start) {
+      closeSuggestions();
+      return;
+    }
+    const context = suggestionContext(text, selection.start, manual);
+    if (!context) {
+      closeSuggestions();
+      return;
+    }
+    const result = buildSuggestions(context);
+    const typed = text.slice(result.replaceStart, selection.start).toLowerCase();
+    const onlyExact = result.items.length === 1 && result.items[0].insert.toLowerCase() === typed;
+    if (!result.items.length || onlyExact) {
+      const pendingObject = state.suggest?.pendingObject;
+      closeSuggestions();
+      if (result.loading) state.suggest = { open: false, manual, pendingObject };
+      return;
+    }
+    state.suggest = {
+      open: true,
+      manual,
+      items: result.items,
+      index: 0,
+      replaceStart: result.replaceStart,
+      replaceEnd: selection.start,
+      anchor: result.replaceStart
+    };
+    renderSuggestions();
+  }
+
+  function acceptSuggestion(index = state.suggest?.index ?? 0) {
+    const suggest = state.suggest;
+    const item = suggest?.items?.[index];
+    if (!item) return;
+    const adapter = editorAdapter();
+    const text = adapter.getValue();
+    const next = `${text.slice(0, suggest.replaceStart)}${item.insert}${text.slice(suggest.replaceEnd)}`;
+    const cursor = suggest.replaceStart + item.insert.length;
+    closeSuggestions();
+    adapter.setValue(next);
+    adapter.setSelection(cursor, cursor);
+    adapter.focus();
+    syncEditorBackdrop();
+    updateEditorStats();
+    persistWorkspaceState('sql');
+  }
+
+  function handleEditorKeydown(event) {
+    if ((event.ctrlKey || event.metaKey) && (event.key === ' ' || event.code === 'Space')) {
+      event.preventDefault();
+      updateSuggestions({ manual: true });
+      return;
+    }
+    const suggest = state.suggest;
+    if (!suggest?.open) return;
+    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+      event.preventDefault();
+      const step = event.key === 'ArrowDown' ? 1 : -1;
+      suggest.index = (suggest.index + step + suggest.items.length) % suggest.items.length;
+      renderSuggestions();
+      return;
+    }
+    if ((event.key === 'Enter' || event.key === 'Tab') && !event.ctrlKey && !event.metaKey && !event.shiftKey && !event.altKey) {
+      event.preventDefault();
+      acceptSuggestion();
+      return;
+    }
+    if (['ArrowLeft', 'ArrowRight', 'Home', 'End', 'PageUp', 'PageDown'].includes(event.key)) {
+      closeSuggestions();
+      return;
+    }
+    if (event.key === 'Escape') {
+      // Stop here so Escape closes the list without also closing a dialog behind it.
+      event.preventDefault();
+      event.stopPropagation();
+      closeSuggestions();
+    }
+  }
+
+  // What Ctrl+Enter runs: the selection if there is one, otherwise the statement under the
+  // cursor when the editor holds several, otherwise everything.
+  function queryRunTarget(scope = 'auto') {
+    const text = getQuery();
+    const whole = { query: text.trim(), start: 0, end: text.length, partial: false, index: 0, count: 1 };
+    if (scope === 'all') return whole;
+    const selection = editorAdapter().getSelection();
+    if (selection.end > selection.start && text.slice(selection.start, selection.end).trim()) {
+      return { query: text.slice(selection.start, selection.end).trim(), start: selection.start, end: selection.end, partial: true, selection: true, index: 0, count: 1 };
+    }
+    const ranges = sqlStatementRanges(text);
+    if (ranges.length <= 1) return whole;
+    const cursor = selection.start;
+    let chosen = ranges.findIndex((range) => cursor >= range.start && cursor <= range.end);
+    if (chosen < 0) {
+      // Between statements (blank lines after a `;`): the statement just above the cursor.
+      chosen = ranges.reduce((best, range, index) => (range.start <= cursor ? index : best), 0);
+    }
+    const range = ranges[chosen];
+    return { query: text.slice(range.start, range.end).trim(), start: range.start, end: range.end, partial: true, index: chosen, count: ranges.length };
+  }
+
   function highlightSql(text) {
     if (!text) return '';
     
@@ -3974,12 +4421,176 @@ window.createConsoleApp = function createConsoleApp() {
     const editor = $('queryEditor');
     const backdrop = $('queryEditorBackdrop');
     if (!editor || !backdrop) return;
-    backdrop.innerHTML = highlightSql(editor.value) + '<br/>'; // Extra break for final newline scroll
+    const text = editor.value;
+    const mark = state.runHighlight;
+    if (mark && mark.end <= text.length && text.slice(mark.start, mark.end) === mark.text) {
+      backdrop.innerHTML = `${highlightSql(text.slice(0, mark.start))}<span class="sql-run-range">${highlightSql(text.slice(mark.start, mark.end))}</span>${highlightSql(text.slice(mark.end))}<br/>`;
+    } else {
+      backdrop.innerHTML = highlightSql(text) + '<br/>'; // Extra break for final newline scroll
+    }
     backdrop.scrollTop = editor.scrollTop;
     backdrop.scrollLeft = editor.scrollLeft;
   }
 
+  // ─── SQL editor tabs ──────────────────────────────────────────────────────
+  // One textarea, several buffers: the active tab's text lives in the editor and is copied
+  // back into its tab whenever the workspace is persisted (on every edit).
+
+  const EDITOR_TABS_MAX = 8;
+
+  function editorTabNumber(tab) {
+    return Number(String(tab?.title || '').match(/^Query (\d+)$/)?.[1] || 0);
+  }
+
+  function createEditorTab(query = '') {
+    const number = Math.max(0, ...state.editorTabs.map(editorTabNumber)) + 1;
+    return {
+      id: `editor-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
+      title: `Query ${number}`,
+      query: String(query || ''),
+      selectionStart: 0,
+      selectionEnd: 0,
+      scrollTop: 0
+    };
+  }
+
+  function activeEditorTab() {
+    return state.editorTabs.find((tab) => tab.id === state.activeEditorTabId) || null;
+  }
+
+  function ensureEditorTabs() {
+    if (!state.editorTabs.length || !activeEditorTab()) {
+      if (!state.editorTabs.length) {
+        state.editorTabs = [createEditorTab(getQuery())];
+      }
+      state.activeEditorTabId = state.editorTabs[0].id;
+    }
+  }
+
+  function syncActiveEditorTab() {
+    if (!$('queryEditor')) return;
+    ensureEditorTabs();
+    const tab = activeEditorTab();
+    const adapter = editorAdapter();
+    const selection = adapter.getSelection();
+    tab.query = getQuery();
+    tab.selectionStart = Number(selection.start || 0);
+    tab.selectionEnd = Number(selection.end || 0);
+    tab.scrollTop = Number(adapter.getScroll().top || 0);
+  }
+
+  function restoreEditorTabs(builder = {}) {
+    const tabs = Array.isArray(builder.editorTabs) ? builder.editorTabs : [];
+    state.editorTabs = tabs
+      .filter((tab) => tab && typeof tab === 'object' && tab.id)
+      .slice(0, EDITOR_TABS_MAX)
+      .map((tab) => ({
+        id: String(tab.id),
+        title: String(tab.title || 'Query').slice(0, 40),
+        query: String(tab.query || ''),
+        selectionStart: Number(tab.selectionStart || 0),
+        selectionEnd: Number(tab.selectionEnd || 0),
+        scrollTop: Number(tab.scrollTop || 0)
+      }));
+    state.activeEditorTabId = state.editorTabs.some((tab) => tab.id === builder.activeEditorTabId)
+      ? builder.activeEditorTabId
+      : (state.editorTabs[0]?.id || '');
+  }
+
+  function activateEditorTab(id) {
+    if (id === state.activeEditorTabId) return;
+    const next = state.editorTabs.find((tab) => tab.id === id);
+    if (!next) return;
+    syncActiveEditorTab();
+    state.activeEditorTabId = id;
+    state.runHighlight = null;
+    setQuery(next.query);
+    const adapter = editorAdapter();
+    const length = getQuery().length;
+    const start = Math.min(next.selectionStart, length);
+    adapter.setSelection(start, Math.max(start, Math.min(next.selectionEnd, length)));
+    adapter.setScroll(next.scrollTop, 0);
+    syncEditorBackdrop();
+    renderEditorTabs();
+    persistWorkspaceState('sql');
+    adapter.focus();
+  }
+
+  function newEditorTab(query = '') {
+    ensureEditorTabs();
+    if (state.editorTabs.length >= EDITOR_TABS_MAX) {
+      setStatus('neutral', `Up to ${EDITOR_TABS_MAX} editor tabs. Close one first.`);
+      return;
+    }
+    syncActiveEditorTab();
+    const tab = createEditorTab(query);
+    state.editorTabs.push(tab);
+    activateEditorTab(tab.id);
+  }
+
+  function closeEditorTab(id = state.activeEditorTabId) {
+    const index = state.editorTabs.findIndex((tab) => tab.id === id);
+    if (index < 0 || state.editorTabs.length <= 1) return;
+    syncActiveEditorTab();
+    const tab = state.editorTabs[index];
+    if (tab.query.trim() && !window.confirm(`Close ${tab.title}? Its SQL will be discarded.`)) {
+      return;
+    }
+    const wasActive = tab.id === state.activeEditorTabId;
+    state.editorTabs.splice(index, 1);
+    if (wasActive) {
+      // Not activateEditorTab: that would first copy the editor (the closed tab's text) into
+      // the tab being left, which is now the neighbour.
+      const neighbour = state.editorTabs[Math.min(index, state.editorTabs.length - 1)];
+      state.activeEditorTabId = neighbour.id;
+      state.runHighlight = null;
+      setQuery(neighbour.query);
+      const length = getQuery().length;
+      editorAdapter().setSelection(Math.min(neighbour.selectionStart, length), Math.min(neighbour.selectionEnd, length));
+      syncEditorBackdrop();
+    }
+    renderEditorTabs();
+    persistWorkspaceState('sql');
+  }
+
+  function renameEditorTab(id) {
+    const tab = state.editorTabs.find((item) => item.id === id);
+    if (!tab) return;
+    const name = window.prompt('Tab name', tab.title);
+    if (name === null) return;
+    tab.title = String(name).trim().slice(0, 40) || tab.title;
+    renderEditorTabs();
+    persistWorkspaceState('sql');
+  }
+
+  function cycleEditorTab(step) {
+    ensureEditorTabs();
+    const index = state.editorTabs.findIndex((tab) => tab.id === state.activeEditorTabId);
+    const next = state.editorTabs[(index + step + state.editorTabs.length) % state.editorTabs.length];
+    activateEditorTab(next.id);
+  }
+
+  function renderEditorTabs() {
+    const container = $('editorTabs');
+    if (!container) return;
+    ensureEditorTabs();
+    const closable = state.editorTabs.length > 1;
+    container.innerHTML = `${state.editorTabs.map((tab) => {
+      const active = tab.id === state.activeEditorTabId;
+      return `<div class="editor-tab${active ? ' active' : ''}"><button class="editor-tab-main" type="button" role="tab" aria-selected="${active}" data-editor-tab="${esc(tab.id)}" data-tooltip="Double-click to rename.">${esc(tab.title)}</button>${closable ? `<button class="editor-tab-close" type="button" data-close-editor-tab="${esc(tab.id)}" aria-label="Close ${esc(tab.title)}">×</button>` : ''}</div>`;
+    }).join('')}<button id="newEditorTabBtn" class="editor-tab-new" type="button" aria-label="New editor tab"${state.editorTabs.length >= EDITOR_TABS_MAX ? ' disabled' : ''}>+</button>`;
+    container.querySelectorAll('[data-editor-tab]').forEach((button) => {
+      button.onclick = () => activateEditorTab(button.dataset.editorTab);
+      button.ondblclick = () => renameEditorTab(button.dataset.editorTab);
+    });
+    container.querySelectorAll('[data-close-editor-tab]').forEach((button) => {
+      button.onclick = () => closeEditorTab(button.dataset.closeEditorTab);
+    });
+    $('newEditorTabBtn').onclick = () => newEditorTab();
+  }
+
   function setQuery(query) {
+    closeSuggestions();
     editorAdapter().setValue(String(query || ''));
     syncEditorBackdrop();
     updateEditorStats();
@@ -4249,8 +4860,11 @@ window.createConsoleApp = function createConsoleApp() {
   function commandActions() {
     return [
       { id: 'load-catalog', label: 'Load catalog', detail: 'Refresh objects and procedures for the current connection.', shortcut: 'Catalog', run: () => loadCatalog().catch((error) => renderResultError(error, { title: 'Catalog load failed', operation: 'catalog' })) },
-      { id: 'run-query', label: 'Run query', detail: 'Use the existing query execution and confirmation path.', shortcut: 'Ctrl+Enter', run: () => runQuery().catch((error) => setStatus('error', error.message)) },
+      { id: 'run-query', label: 'Run statement', detail: 'Run the selection, or the statement under the cursor when the editor holds several.', shortcut: 'Ctrl+Enter', run: () => runQuery().catch((error) => setStatus('error', error.message)) },
+      { id: 'run-all', label: 'Run all', detail: 'Run the whole editor as one request (several statements run as a confirmed batch).', shortcut: 'Ctrl+Shift+Enter', run: () => runQuery({ scope: 'all' }).catch((error) => setStatus('error', error.message)) },
       { id: 'format-sql', label: 'Format SQL', detail: 'Format the current SQL editor text.', shortcut: 'Ctrl+Shift+F', run: () => formatSql() },
+      { id: 'new-editor-tab', label: 'New editor tab', detail: 'Open another SQL buffer next to the current one.', shortcut: 'Ctrl+Alt+N', run: () => newEditorTab() },
+      { id: 'shortcuts', label: 'Keyboard shortcuts', detail: 'Show every keyboard shortcut.', shortcut: '?', run: () => openShortcutsDialog() },
       { id: 'save-scratchpad', label: 'Save scratchpad', detail: 'Store the current SQL locally for quick restore.', shortcut: 'Local', run: () => saveCurrentScratchpad() },
       { id: 'settings', label: 'App settings', detail: 'Edit local .env settings with descriptions and validation.', shortcut: '.env', run: () => openEnvSettingsDialog() },
       { id: 'audit', label: 'Open audit filters', detail: 'Load or filter recent audit events.', shortcut: 'Audit', run: () => openAuditFilters() },
@@ -4302,6 +4916,73 @@ window.createConsoleApp = function createConsoleApp() {
     if (!dialog) return;
     dialog.classList.add('hidden');
     dialog.setAttribute('aria-hidden', 'true');
+  }
+
+  // The single list the overlay renders. Keep it in step with the keydown handlers in bind()
+  // and handleEditorKeydown; ui-smoke checks the overlay lists the run shortcuts.
+  function keyboardShortcuts() {
+    const procedure = state.workspace === 'procedure';
+    return [
+      { group: 'Run', keys: 'Ctrl+Enter', label: procedure ? 'Run the selected procedure (or the script editor when it has focus)' : 'Run the selection, or the statement under the cursor' },
+      ...(procedure ? [] : [
+        { group: 'Run', keys: 'Ctrl+Shift+Enter', label: 'Run the whole editor as one request' },
+        { group: 'Editor', keys: 'Ctrl+Space', label: 'Show table and column suggestions' },
+        { group: 'Editor', keys: 'Tab / Enter', label: 'Accept the highlighted suggestion' },
+        { group: 'Editor', keys: 'Ctrl+Shift+F', label: 'Format SQL' },
+        { group: 'Editor tabs', keys: 'Ctrl+Alt+N', label: 'New editor tab' },
+        { group: 'Editor tabs', keys: 'Ctrl+Alt+W', label: 'Close the editor tab' },
+        { group: 'Editor tabs', keys: 'Ctrl+Alt+PageDown / PageUp', label: 'Next / previous editor tab' }
+      ]),
+      { group: 'Navigate', keys: '/', label: 'Search the explorer' },
+      { group: 'Navigate', keys: 'Ctrl+K', label: 'Open workbench tools and quick actions' },
+      { group: 'Navigate', keys: '? or Ctrl+/', label: 'Show this list' },
+      { group: 'Navigate', keys: 'Esc', label: 'Close a suggestion list or dialog' }
+    ];
+  }
+
+  function openShortcutsDialog() {
+    const dialog = $('shortcutsDialog');
+    const list = $('shortcutsList');
+    if (!dialog || !list) return;
+    const groups = [];
+    keyboardShortcuts().forEach((item) => {
+      let group = groups.find((entry) => entry.name === item.group);
+      if (!group) {
+        group = { name: item.group, items: [] };
+        groups.push(group);
+      }
+      group.items.push(item);
+    });
+    list.innerHTML = groups.map((group) => (
+      `<section class="shortcuts-group"><h3>${esc(group.name)}</h3>${group.items.map((item) => (
+        `<div class="shortcuts-row"><kbd>${esc(item.keys)}</kbd><span>${esc(item.label)}</span></div>`
+      )).join('')}</section>`
+    )).join('');
+    state.lastFocusedElement = document.activeElement;
+    dialog.classList.remove('hidden');
+    dialog.setAttribute('aria-hidden', 'false');
+    $('closeShortcutsBtn')?.focus();
+  }
+
+  function closeShortcutsDialog() {
+    const dialog = $('shortcutsDialog');
+    if (!dialog || dialog.classList.contains('hidden')) return;
+    dialog.classList.add('hidden');
+    dialog.setAttribute('aria-hidden', 'true');
+    state.lastFocusedElement?.focus?.();
+    state.lastFocusedElement = null;
+  }
+
+  function isTypingTarget(element) {
+    const tag = String(element?.tagName || '').toLowerCase();
+    return tag === 'input' || tag === 'textarea' || tag === 'select' || Boolean(element?.isContentEditable);
+  }
+
+  function focusExplorerSearch() {
+    const input = state.explorer === 'procedures' ? $('procedureSearchInput') : $('tableSearchInput');
+    if (!input) return;
+    input.focus();
+    input.select?.();
   }
 
   function copyDiagnostics() {
@@ -5280,6 +5961,7 @@ window.createConsoleApp = function createConsoleApp() {
       localFilter: '',
       visualKind: meta.visualKind || '',
       visualObject: meta.visualObject || meta.object || '',
+      elapsedMs: Number.isFinite(Number(meta.elapsedMs)) && meta.elapsedMs !== undefined && meta.elapsedMs !== null ? Number(meta.elapsedMs) : null,
       // A brand new result set never inherits the previous one's editability or
       // in-progress edits (this spreads ...state.results above, unlike
       // resetResultsForRun/renderResultError which rebuild from
@@ -5921,7 +6603,8 @@ window.createConsoleApp = function createConsoleApp() {
 
     const start = (state.results.page - 1) * pageSize;
     const visibleRows = rows.slice(start, start + pageSize);
-    $('resultsMeta').textContent = state.results.truncated ? `Showing ${rows.length} of ${state.results.totalRows} rows returned by the server cap.` : `Showing ${start + 1}-${Math.min(start + visibleRows.length, rows.length)} of ${rows.length} rows.`;
+    const ranIn = state.results.elapsedMs === null ? '' : ` Ran in ${formatElapsed(state.results.elapsedMs)}.`;
+    $('resultsMeta').textContent = (state.results.truncated ? `Showing ${rows.length} of ${state.results.totalRows} rows returned by the server cap.` : `Showing ${start + 1}-${Math.min(start + visibleRows.length, rows.length)} of ${rows.length} rows.`) + ranIn;
 
     const getColIcon = (column) => {
       for (const row of rows.slice(0, 50)) {
@@ -7046,28 +7729,179 @@ window.createConsoleApp = function createConsoleApp() {
     $('secondConfirmInput').value = '';
     $('secondConfirmInput').oninput = null;
     $('confirmModalBtn').disabled = false;
+    $('cancelModalBtn').textContent = 'Cancel';
+    $('cancelModalBtn').disabled = false;
     if (state.lastFocusedElement?.focus) {
       state.lastFocusedElement.focus();
     }
     state.lastFocusedElement = null;
   }
 
-  async function runQuery() {
+  // While a confirmed write runs the dialog stays open, and its Cancel button (and Escape)
+  // cancels the running write instead of closing the dialog over a request still in flight.
+  function renderConfirmRunState() {
+    const running = state.activeRun?.kind === 'write';
+    $('confirmModalBtn').disabled = running || $('confirmModalBtn').disabled;
+    $('cancelModalBtn').textContent = running
+      ? (state.activeRun.cancelRequested ? 'Cancelling...' : 'Cancel write')
+      : 'Cancel';
+    $('cancelModalBtn').disabled = Boolean(running && state.activeRun.cancelRequested);
+  }
+
+  function dismissConfirm() {
+    if (state.activeRun?.kind === 'write') {
+      cancelActiveRun().finally(renderConfirmRunState);
+      renderConfirmRunState();
+      return;
+    }
+    closeConfirm();
+  }
+
+  function formatElapsed(ms) {
+    const value = Math.max(0, Number(ms || 0));
+    if (value < 1000) return `${Math.round(value)} ms`;
+    if (value < 60000) return `${(value / 1000).toFixed(1)} s`;
+    const minutes = Math.floor(value / 60000);
+    return `${minutes} min ${Math.round((value % 60000) / 1000)} s`;
+  }
+
+  function newRunId() {
+    if (window.crypto?.randomUUID) return window.crypto.randomUUID();
+    // Fallback UUID v4 for browsers without randomUUID; the server only checks the format.
+    const bytes = new Uint8Array(16);
+    window.crypto.getRandomValues(bytes);
+    bytes[6] = (bytes[6] & 0x0f) | 0x40;
+    bytes[8] = (bytes[8] & 0x3f) | 0x80;
+    const hex = [...bytes].map((byte) => byte.toString(16).padStart(2, '0')).join('');
+    return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+  }
+
+  // One run at a time: a second Ctrl+Enter while a query is still running would otherwise
+  // race the first for the results grid.
+  function beginRun({ kind, label }) {
+    const run = {
+      runId: newRunId(),
+      kind,
+      label,
+      startedAt: Date.now(),
+      controller: typeof AbortController === 'function' ? new AbortController() : null,
+      cancelRequested: false,
+      timer: null
+    };
+    state.activeRun = run;
+    const tick = () => {
+      if (state.activeRun !== run) return;
+      const text = `${run.cancelRequested ? 'Cancelling' : run.label.replace(/\.\.\.$/, '')}... ${formatElapsed(Date.now() - run.startedAt)}`;
+      if ($('resultsMeta')) $('resultsMeta').textContent = text;
+    };
+    run.timer = setInterval(tick, 250);
+    renderRunControls();
+    return run;
+  }
+
+  function endRun(run) {
+    if (!run) return;
+    clearInterval(run.timer);
+    if (state.activeRun === run) {
+      state.activeRun = null;
+    }
+    renderRunControls();
+  }
+
+  function renderRunControls() {
+    const running = Boolean(state.activeRun);
+    ['runQueryBtn', 'runAllQueryBtn'].forEach((id) => {
+      if ($(id)) $(id).disabled = running;
+    });
+    const cancelBtn = $('cancelQueryBtn');
+    if (cancelBtn) {
+      cancelBtn.classList.toggle('hidden', !running);
+      cancelBtn.disabled = Boolean(state.activeRun?.cancelRequested);
+      cancelBtn.textContent = state.activeRun?.cancelRequested ? 'Cancelling...' : 'Cancel';
+    }
+  }
+
+  async function cancelActiveRun() {
+    const run = state.activeRun;
+    if (!run || run.cancelRequested) return;
+    run.cancelRequested = true;
+    renderRunControls();
+    setStatus('loading', 'Cancelling...');
+    try {
+      await api('/api/query/cancel', { method: 'POST', data: { runId: run.runId } });
+    } catch (error) {
+      // 404: it already finished. 409: a write is committing and can no longer be stopped.
+      if (error?.phase === 'committing') {
+        setStatus('neutral', 'The write is already committing and can no longer be cancelled.');
+      }
+    }
+    // A read or a preview has nothing to roll back (previews always roll back), so stop
+    // waiting for its response. A confirmed write keeps its request open so the user sees
+    // the server's rollback result, not a guess.
+    if (run.kind !== 'write' && state.activeRun === run) {
+      run.controller?.abort();
+    }
+  }
+
+  function isAbortOrCancel(error) {
+    return error?.name === 'AbortError' || error?.code === 'CANCELLED';
+  }
+
+  function showCancelledRun(error, run) {
+    const message = error?.code === 'CANCELLED' && error.message ? error.message : 'The query was cancelled.';
+    const elapsed = run ? ` after ${formatElapsed(Date.now() - run.startedAt)}` : '';
+    resetResultsForRun(`${message}`);
+    if ($('resultsMeta')) $('resultsMeta').textContent = `Cancelled${elapsed}.`;
+    const card = $('resultsPanel')?.closest('.results-card');
+    if (card) card.dataset.resultsState = 'empty';
+    setStatus(error?.rolledBack === false ? 'error' : 'neutral', message);
+  }
+
+  function flashRunRange(target) {
+    clearTimeout(state.runHighlightTimer);
+    state.runHighlight = target.partial
+      ? { start: target.start, end: target.end, text: getQuery().slice(target.start, target.end) }
+      : null;
+    syncEditorBackdrop();
+    if (state.runHighlight) {
+      state.runHighlightTimer = setTimeout(() => {
+        state.runHighlight = null;
+        syncEditorBackdrop();
+      }, 1600);
+    }
+  }
+
+  async function runQuery({ scope = 'auto' } = {}) {
     if (!confirmDiscardPendingResultEdits('run a new query')) {
       return;
     }
     if (!ensureReadyConnection('running the query')) {
       return;
     }
-    const query = getQuery().trim();
+    if (state.activeRun) {
+      setStatus('neutral', 'A query is already running. Wait for it or cancel it first.');
+      return;
+    }
+    const target = queryRunTarget(scope);
+    const query = target.query;
     if (!query) {
       setStatus('error', 'Enter a query first.');
       return;
     }
-    setStatus('loading', 'Executing query...');
-    resetResultsForRun('Executing query...');
+    flashRunRange(target);
+    const runLabel = target.selection
+      ? 'Executing selection...'
+      : target.partial ? `Executing statement ${target.index + 1} of ${target.count}...` : 'Executing query...';
+    setStatus('loading', runLabel);
+    resetResultsForRun(runLabel);
+    const run = beginRun({ kind: 'query', label: runLabel });
     try {
-      const payload = await api('/api/query', { method: 'POST', data: requestConnection({ query }) });
+      const payload = await api('/api/query', {
+        method: 'POST',
+        data: requestConnection({ query, runId: run.runId }),
+        signal: run.controller?.signal
+      });
+      endRun(run);
       if (payload.requiresConfirmation) {
         const actionSummary = currentActionSummary(query);
         const current = connection();
@@ -7112,6 +7946,7 @@ window.createConsoleApp = function createConsoleApp() {
         rowsAffected: Number(payload.rowsAffected || 0),
         totalRows: Number(payload.totalRows ?? (payload.rows || []).length),
         truncated: Boolean(payload.truncated),
+        elapsedMs: payload.elapsedMs ?? (Date.now() - run.startedAt),
         visualKind: 'query',
         tabTitle: state.activeObject ? `Query ${state.activeObject}` : 'Query result',
         tabKey: ''
@@ -7127,6 +7962,11 @@ window.createConsoleApp = function createConsoleApp() {
         checkResultEditability(query);
       }
     } catch (error) {
+      endRun(run);
+      if (isAbortOrCancel(error) || run.cancelRequested) {
+        showCancelledRun(error, run);
+        return;
+      }
       renderQueryError(error, query);
     }
   }
@@ -7183,7 +8023,7 @@ window.createConsoleApp = function createConsoleApp() {
   }
 
   async function confirmPendingAction() {
-    if (!state.pendingAction) return;
+    if (!state.pendingAction || state.activeRun) return;
     const isProcedure = state.pendingAction.type === 'procedure';
     const isResultEdit = state.pendingAction.type === 'resultEdit';
     setStatus('loading', isProcedure ? 'Executing stored procedure...' : (isResultEdit ? 'Saving changes...' : 'Executing write...'));
@@ -7196,6 +8036,7 @@ window.createConsoleApp = function createConsoleApp() {
     if (!isResultEdit) {
       resetResultsForRun(isProcedure ? 'Executing stored procedure...' : 'Executing write...');
     }
+    let writeRun = null;
     try {
       if (isProcedure) {
         const executedRequest = { ...state.pendingAction.request };
@@ -7218,7 +8059,13 @@ window.createConsoleApp = function createConsoleApp() {
       }
 
       const acknowledgement = $('secondConfirmInput')?.value || '';
-      const payload = await api('/api/query', { method: 'POST', data: requestConnection({ ...state.pendingAction.request, acknowledgement }) });
+      writeRun = beginRun({ kind: 'write', label: isResultEdit ? 'Saving changes...' : 'Executing write...' });
+      renderConfirmRunState();
+      const payload = await api('/api/query', {
+        method: 'POST',
+        data: requestConnection({ ...state.pendingAction.request, acknowledgement, runId: writeRun.runId })
+      });
+      endRun(writeRun);
       const executedQuery = state.pendingAction.request.query;
 
       if (isResultEdit) {
@@ -7235,6 +8082,7 @@ window.createConsoleApp = function createConsoleApp() {
         rowsAffected: Number(payload.rowsAffected || 0),
         totalRows: Number(payload.totalRows ?? (payload.rows || []).length),
         truncated: Boolean(payload.truncated),
+        elapsedMs: payload.elapsedMs ?? null,
         visualKind: 'query',
         tabTitle: `${payload.action || 'Write'} executed`,
         tabKey: ''
@@ -7242,8 +8090,19 @@ window.createConsoleApp = function createConsoleApp() {
       addQueryHistory(executedQuery);
       setStatus('success', `${payload.message} ${payload.rowsAffected} row${payload.rowsAffected === 1 ? '' : 's'} affected.`);
     } catch (error) {
+      const cancelledWrite = writeRun && (isAbortOrCancel(error) || writeRun.cancelRequested);
+      endRun(writeRun);
       const failedAction = state.pendingAction;
       closeConfirm();
+      if (cancelledWrite) {
+        if (isResultEdit) {
+          setStatus(error?.rolledBack === false ? 'error' : 'neutral', `${error?.message || 'The save was cancelled.'} Your edits are still pending.`);
+          showToast('Save cancelled. Your edits are still pending.', error?.rolledBack === false ? 'error' : 'info');
+          return;
+        }
+        showCancelledRun(error, writeRun);
+        return;
+      }
       if (isResultEdit) {
         // Deliberately do not call renderResultError()/resetResultsForRun(): both
         // wipe state.results back to defaults, which would silently discard the
@@ -7317,7 +8176,7 @@ window.createConsoleApp = function createConsoleApp() {
       return;
     }
     setQuery(query);
-    await runQuery();
+    await runQuery({ scope: 'all' });
   }
 
   function openAuditFilters() {
@@ -7429,6 +8288,12 @@ window.createConsoleApp = function createConsoleApp() {
     if ($('openSupportBtn')) $('openSupportBtn').onclick = openSupportDialog;
     if ($('updateWorkbenchBtn')) $('updateWorkbenchBtn').onclick = () => updateWorkbench().catch((error) => setStatus('error', error.message));
     if ($('closeWorkbenchToolsBtn')) $('closeWorkbenchToolsBtn').onclick = closeWorkbenchTools;
+    if ($('closeShortcutsBtn')) $('closeShortcutsBtn').onclick = closeShortcutsDialog;
+    if ($('shortcutsDialog')) {
+      $('shortcutsDialog').onclick = (event) => {
+        if (event.target === $('shortcutsDialog')) closeShortcutsDialog();
+      };
+    }
     if ($('closeEnvSettingsBtn')) $('closeEnvSettingsBtn').onclick = closeEnvSettingsDialog;
     if ($('reloadEnvSettingsBtn')) $('reloadEnvSettingsBtn').onclick = () => loadEnvSettings().catch((error) => envSettingsStatus('error', error.message));
     if ($('syncEnvSettingsBtn')) $('syncEnvSettingsBtn').onclick = () => syncEnvSettings().catch((error) => envSettingsStatus('error', error.message));
@@ -7449,6 +8314,7 @@ window.createConsoleApp = function createConsoleApp() {
     if ($('clearAuditFiltersBtn')) $('clearAuditFiltersBtn').onclick = clearAuditFilters;
     if ($('applyAuditFiltersBtn')) $('applyAuditFiltersBtn').onclick = () => loadAudit().catch((error) => setStatus('error', error.message));
     $('runQueryBtn').onclick = () => runQuery().catch((error) => setStatus('error', error.message));
+    $('runAllQueryBtn').onclick = () => runQuery({ scope: 'all' }).catch((error) => setStatus('error', error.message));
     $('decreaseEditorTextBtn').onclick = () => changeEditorTextSize(-0.05);
     $('increaseEditorTextBtn').onclick = () => changeEditorTextSize(0.05);
     $('formatQueryBtn').onclick = formatSql;
@@ -7603,7 +8469,8 @@ window.createConsoleApp = function createConsoleApp() {
       persistWorkspaceState(state.workspace);
     };
     $('closeModalBtn').onclick = closeConfirm;
-    $('cancelModalBtn').onclick = closeConfirm;
+    $('cancelModalBtn').onclick = dismissConfirm;
+    $('cancelQueryBtn').onclick = () => cancelActiveRun().catch((error) => setStatus('error', error.message));
     $('confirmModalBtn').onclick = () => confirmPendingAction().catch((error) => setStatus('error', error.message));
     $('confirmModal').onclick = (event) => {
       if (event.target.id === 'confirmModal') closeConfirm();
@@ -7689,13 +8556,19 @@ window.createConsoleApp = function createConsoleApp() {
 
     initEditorAdapter();
     const editor = $('queryEditor');
+    renderEditorTabs();
     if (editor) {
       editor.oninput = () => {
         updateEditorStats();
         syncEditorBackdrop();
         persistWorkspaceState('sql');
+        updateSuggestions();
       };
+      editor.onkeydown = handleEditorKeydown;
+      editor.onblur = closeSuggestions;
+      editor.onclick = closeSuggestions;
       editor.onscroll = () => {
+        closeSuggestions();
         const backdrop = $('queryEditorBackdrop');
         if (backdrop) {
           backdrop.scrollTop = editor.scrollTop;
@@ -7757,8 +8630,43 @@ window.createConsoleApp = function createConsoleApp() {
       document.removeEventListener('keydown', window.__dataWorkbenchKeydownHandler);
     }
     window.__dataWorkbenchKeydownHandler = (event) => {
+      if (event.key === 'Escape' && !$('shortcutsDialog')?.classList.contains('hidden')) {
+        closeShortcutsDialog();
+        return;
+      }
+      if ((event.ctrlKey || event.metaKey) && event.key === '/') {
+        event.preventDefault();
+        openShortcutsDialog();
+        return;
+      }
+      const dialogOpen = [...document.querySelectorAll('.modal-backdrop')].some((element) => !element.classList.contains('hidden'));
+      if (!dialogOpen && !event.ctrlKey && !event.metaKey && !event.altKey && !isTypingTarget(event.target)) {
+        if (event.key === '?') {
+          event.preventDefault();
+          openShortcutsDialog();
+          return;
+        }
+        if (event.key === '/') {
+          event.preventDefault();
+          focusExplorerSearch();
+          return;
+        }
+      }
+      // Ctrl+Alt rather than Ctrl alone: the browser owns Ctrl+N/W/PageDown for its own tabs.
+      // AltGr arrives as Ctrl+Alt on Windows, but it does not type a character on N, W or the
+      // page keys in common layouts, so these do not swallow typed text.
+      if (!dialogOpen && event.ctrlKey && event.altKey && !event.metaKey && $('editorTabs') && state.workspace !== 'procedure') {
+        const key = event.key.toLowerCase();
+        if (key === 'n' || key === 'w' || key === 'pagedown' || key === 'pageup') {
+          event.preventDefault();
+          if (key === 'n') newEditorTab();
+          else if (key === 'w') closeEditorTab();
+          else cycleEditorTab(key === 'pagedown' ? 1 : -1);
+          return;
+        }
+      }
       if (event.key === 'Escape' && !$('confirmModal').classList.contains('hidden')) {
-        closeConfirm();
+        dismissConfirm();
         return;
       }
       if (event.key === 'Escape' && !$('workbenchToolsDialog')?.classList.contains('hidden')) {
@@ -7793,7 +8701,7 @@ window.createConsoleApp = function createConsoleApp() {
         if (document.activeElement?.id === 'procedureScriptEditor') {
           runProcedureScript().catch((error) => setStatus('error', error.message));
         } else if (state.workspace === 'procedure') runProcedure().catch((error) => setStatus('error', error.message));
-        else runQuery().catch((error) => setStatus('error', error.message));
+        else runQuery({ scope: event.shiftKey ? 'all' : 'auto' }).catch((error) => setStatus('error', error.message));
         return;
       }
       if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key.toLowerCase() === 'f') {

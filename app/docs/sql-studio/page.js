@@ -73,7 +73,7 @@ export default function SqlStudioDocsPage() {
         </DocsMiniSection>
         <DocsMiniSection title="App settings">
           <p>Settings writes to the local <code>.env</code> file. Runtime, database, safety, audit, lifecycle, side-panel auto-hide, appearance, request guardrail, and Fabric service-principal settings are grouped with short descriptions. Most values are read when the server starts, so restart Data Workbench from the desktop shortcut after applying changes.</p>
-          <p>Use <code>APP_SIDE_PANEL_AUTO_HIDE_ENABLED</code>, <code>APP_SIDE_PANEL_IDLE_MS</code>, and <code>APP_SIDE_PANEL_FADE_MS</code> to decide whether side panels fade away, how long they wait, and how slowly they fade. Use <code>APP_AMBIENT_MOTION_ENABLED</code> and <code>APP_AMBIENT_MOTION_DURATION_MS</code> to keep or disable the slow background color movement. Use <code>APP_TOOLTIPS_ENABLED</code> and <code>APP_TOOLTIP_DELAY_MS</code> to keep helpful hints visible or make the interface quieter.</p>
+          <p>Use <code>APP_SIDE_PANEL_AUTO_HIDE_ENABLED</code>, <code>APP_SIDE_PANEL_IDLE_MS</code>, and <code>APP_SIDE_PANEL_FADE_MS</code> to decide whether side panels fade away, how long they wait, and how slowly they fade. Use <code>APP_AMBIENT_MOTION_ENABLED</code> and <code>APP_AMBIENT_MOTION_DURATION_MS</code> to keep or disable the slow background color movement. Use <code>APP_TOOLTIPS_ENABLED</code> and <code>APP_TOOLTIP_DELAY_MS</code> to keep helpful hints visible or make the interface quieter. Use <code>APP_EDITOR_AUTOCOMPLETE_ENABLED</code> to turn SQL editor suggestions off.</p>
         </DocsMiniSection>
         <DocsMiniSection title="Support reports">
           <p>The Support form prepares an email to <code>mohamed.al-mefrej@hotmail.com</code> and copies the report text. Browser email drafts cannot attach screenshots automatically, so attach the selected screenshot manually before sending.</p>
@@ -181,7 +181,10 @@ ORDER BY [CreatedUtc] DESC;`}</pre>
       <DocsSection id="editor" title="SQL Editor" intro="The editor is where generated or manually written SQL is reviewed and executed. You can always edit generated SQL before running it.">
         <DocsCardGrid
           items={[
-            { title: 'Run query', text: 'Runs SELECT queries directly or starts write preview for INSERT, UPDATE, and DELETE.' },
+            { title: 'Run query', text: 'Runs the selection, or the statement under the cursor when the editor holds several. SELECTs run directly; writes start a preview.' },
+            { title: 'Cancel', text: 'Stops a running query on the server. A read or preview stops straight away; a confirmed write is rolled back.' },
+            { title: 'Autocomplete', text: 'Suggests tables, views and columns from the loaded catalog as you type. Ctrl+Space opens it on demand.' },
+            { title: 'Editor tabs', text: 'Keep up to eight SQL buffers side by side. Each keeps its own text, cursor and scroll position.' },
             { title: 'Review scripts', text: 'Object CREATE and ALTER/Edit scripts load into the editor and still use the normal confirmation path if executed.' },
             { title: 'Format', text: 'Reflows common SQL clauses into a clearer layout.' },
             { title: 'Copy and Clear', text: 'Copy the current SQL or clear the editor when switching tasks.' },
@@ -193,14 +196,29 @@ ORDER BY [CreatedUtc] DESC;`}</pre>
           <div><strong>Format</strong><span>Formats common SQL clauses. Use it before review, especially after loading scripts or helper snippets.</span></div>
           <div><strong>Copy</strong><span>Copies the full editor SQL to the clipboard.</span></div>
           <div><strong>Clear</strong><span>Clears the editor. It does not clear builder state, history, or result tabs.</span></div>
-          <div><strong>Run query</strong><span>Runs the current editor text through the existing query API. Writes still require preview and confirmation.</span></div>
+          <div><strong>Run query</strong><span>Runs the selected text. With nothing selected it runs the statement under the cursor when the editor holds several statements separated by <code>;</code>, otherwise the whole editor. The statement that ran is briefly highlighted. Writes still require preview and confirmation.</span></div>
+          <div><strong>Run all</strong><span>Sends the whole editor as one request. Several statements run together as a confirmed batch that needs <code>RUN BATCH</code>.</span></div>
+          <div><strong>Cancel</strong><span>Appears while a query runs, next to a live elapsed time. It asks the server to stop the query. While a confirmed write runs, the dialog button reads <strong>Cancel write</strong>; the write is rolled back and the result tells you so. Once a write has started committing it can no longer be cancelled.</span></div>
         </div>
         <DocsMiniSection title="SQL helper">
           <p>The helper inserts common expressions such as <code>CONCAT</code>, <code>REPLACE</code>, <code>TRY_CONVERT</code>, <code>COALESCE</code>, <code>CASE</code>, <code>DATEADD</code>, and <code>HASHBYTES</code> templates.</p>
           <p><strong>Insert helper</strong> inserts the selected expression at the cursor. <strong>Wrap selection</strong> wraps selected text or the preferred active column with the helper expression.</p>
         </DocsMiniSection>
         <DocsMiniSection title="Keyboard shortcuts">
-          <p><span className="docs-kbd">Ctrl</span> + <span className="docs-kbd">Enter</span> runs the current query. <span className="docs-kbd">Ctrl</span> + <span className="docs-kbd">Shift</span> + <span className="docs-kbd">F</span> formats SQL.</p>
+          <p>Press <span className="docs-kbd">?</span> anywhere outside a text field (or <span className="docs-kbd">Ctrl</span> + <span className="docs-kbd">/</span>) to see every shortcut.</p>
+          <div className="docs-table">
+            <div><strong>Ctrl + Enter</strong><span>Run the selection, or the statement under the cursor.</span></div>
+            <div><strong>Ctrl + Shift + Enter</strong><span>Run the whole editor.</span></div>
+            <div><strong>Ctrl + Space</strong><span>Show table and column suggestions. Tab or Enter accepts, Esc dismisses.</span></div>
+            <div><strong>Ctrl + Shift + F</strong><span>Format SQL.</span></div>
+            <div><strong>Ctrl + Alt + N / W</strong><span>New editor tab / close the editor tab.</span></div>
+            <div><strong>Ctrl + Alt + PageDown / PageUp</strong><span>Next / previous editor tab.</span></div>
+            <div><strong>/</strong><span>Jump to the explorer search.</span></div>
+          </div>
+        </DocsMiniSection>
+        <DocsMiniSection title="Statements and autocomplete">
+          <p>Statements are split only on <code>;</code>. A blank line is not a boundary on purpose: it keeps <code>UPDATE ... SET ...</code> and a <code>WHERE</code> on the next paragraph together, so a statement is never sent without its filter. End each statement with <code>;</code> if you want Ctrl+Enter to pick one of several.</p>
+          <p>Autocomplete uses only metadata the app has already loaded. Table and view names come from the catalog; columns come from objects you have opened, and a table you have not opened yet has its columns fetched once when you type its alias. It stays quiet inside strings and comments, and can be turned off in Settings (<code>APP_EDITOR_AUTOCOMPLETE_ENABLED</code>).</p>
         </DocsMiniSection>
         <DocsMiniSection title="Confirming a write">
           <p>When you run a write, the editor opens a confirmation dialog instead of executing immediately. The dialog shows the <strong>review context</strong> (server, database, detected action, statement count, and the row count from a rollback preview) so you can check the request before it commits.</p>

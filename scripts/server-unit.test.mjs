@@ -442,6 +442,85 @@ assert.equal(await sameOriginStatus('http://localhost:3000/api/unit', 'http://[:
 assert.equal(await sameOriginStatus('http://localhost:3000/api/unit', 'http://evil.com'), 403);
 assert.equal(await sameOriginStatus('http://localhost:3000/api/unit', 'http://127.0.0.1:9999'), 403);
 
+// Run registry: session isolation, cancels that land before the query starts, and the
+// refusal once a write is committing.
+const runRegistry = await import('../lib/server/run-registry.js');
+const runIdA = '3f2b8c1e-4d5a-4b6c-8d7e-9f0a1b2c3d4e';
+assert.equal(runRegistry.normalizeRunId(runIdA.toUpperCase()), runIdA);
+assert.equal(runRegistry.normalizeRunId('not-a-uuid'), '');
+assert.equal(runRegistry.normalizeRunId(''), '');
+const runA = runRegistry.registerRun({ runId: runIdA, sessionId: 'session-a' });
+assert.throws(() => runRegistry.registerRun({ runId: runIdA, sessionId: 'session-a' }), (error) => error.httpStatus === 409);
+assert.equal(runRegistry.cancelRun({ runId: runIdA, sessionId: 'session-b' }).found, false, 'another session must not see the run');
+assert.equal(runA.cancelRequested, false);
+assert.deepEqual(runRegistry.cancelRun({ runId: runIdA, sessionId: 'session-a' }), { found: true, cancelled: true, phase: 'running' });
+assert.equal(runA.cancelRequested, true);
+assert.throws(() => runA.throwIfCancelled('stopped'), (error) => error.code === 'CANCELLED' && error.httpStatus === 409);
+runA.release();
+assert.equal(runRegistry.cancelRun({ runId: runIdA, sessionId: 'session-a' }).found, false);
+const runCommit = runRegistry.registerRun({ runId: runIdA, sessionId: 'session-a' });
+let cancelCalls = 0;
+runCommit.attach({ cancel: () => { cancelCalls += 1; } });
+runCommit.setPhase('committing');
+assert.deepEqual(runRegistry.cancelRun({ runId: runIdA, sessionId: 'session-a' }), { found: true, cancelled: false, phase: 'committing' });
+assert.equal(cancelCalls, 0, 'a committing write must not be sent a cancel');
+runCommit.release();
+assert.equal(runRegistry.countActiveRuns({ sessionId: 'session-a' }), 0);
+assert.equal(runRegistry.isCancelError({ code: 'ECANCEL' }), true);
+assert.equal(runRegistry.isCancelError({ code: 'EABORT', originalError: { code: 'ECANCEL' } }), true);
+assert.equal(runRegistry.isCancelError({ code: 'EREQUEST' }), false);
+
+// write-execution with fake pools: a cancel never commits, and a preview always rolls back.
+const writeExecution = await import('../lib/server/write-execution.js');
+function fakePool({ onQuery = () => ({ rowsAffected: [2], recordset: undefined }) } = {}) {
+  const calls = [];
+  return {
+    calls,
+    transaction() {
+      return {
+        begin: async () => { calls.push('begin'); },
+        commit: async () => { calls.push('commit'); },
+        rollback: async () => { calls.push('rollback'); },
+        request: () => ({ query: async (sql) => { calls.push(`query:${sql}`); return onQuery(sql); }, cancel() {} })
+      };
+    },
+    request: () => ({ query: async (sql) => { calls.push(`read:${sql}`); return onQuery(sql); }, cancel() {} })
+  };
+}
+const previewPool = fakePool();
+assert.deepEqual(await writeExecution.previewWrite(previewPool, 'UPDATE t SET a = 1 WHERE b = 2'), { rowsAffected: 2 });
+assert.deepEqual(previewPool.calls, ['begin', 'query:UPDATE t SET a = 1 WHERE b = 2', 'rollback']);
+
+const executePool = fakePool();
+const executed = await writeExecution.executeWrite(executePool, 'DELETE FROM t WHERE id = 1');
+assert.equal(executed.rowsAffected, 2);
+assert.deepEqual(executePool.calls, ['begin', 'query:DELETE FROM t WHERE id = 1', 'commit']);
+
+// A cancel that arrives while the statement runs (after it started, before COMMIT) rolls back.
+const runIdB = '5a6b7c8d-9e0f-4a1b-8c2d-3e4f5a6b7c8d';
+const cancelDuringRun = runRegistry.registerRun({ runId: runIdB, sessionId: 'session-a' });
+const lateCancelPool = fakePool({
+  onQuery: () => {
+    runRegistry.cancelRun({ runId: runIdB, sessionId: 'session-a' });
+    return { rowsAffected: [5] };
+  }
+});
+await assert.rejects(
+  writeExecution.executeWrite(lateCancelPool, 'UPDATE t SET a = 1 WHERE b = 2', { runHandle: cancelDuringRun }),
+  (error) => error.code === 'CANCELLED' && error.rolledBack === true
+);
+assert.equal(lateCancelPool.calls.includes('commit'), false, 'a cancelled write must never commit');
+assert.equal(lateCancelPool.calls.at(-1), 'rollback');
+cancelDuringRun.release();
+
+// A cancel requested before the statement starts stops it from running at all.
+const cancelBeforeRun = runRegistry.registerRun({ runId: runIdB, sessionId: 'session-a' });
+runRegistry.cancelRun({ runId: runIdB, sessionId: 'session-a' });
+const earlyCancelPool = fakePool();
+await assert.rejects(writeExecution.runRead(earlyCancelPool, 'SELECT 1', { runHandle: cancelBeforeRun }), (error) => error.code === 'CANCELLED');
+assert.deepEqual(earlyCancelPool.calls, [], 'the statement must not be sent after an early cancel');
+cancelBeforeRun.release();
+
 await fs.rm(tempRoot, { recursive: true, force: true });
 console.log('Server unit tests passed.');
 process.exit(0);

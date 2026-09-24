@@ -6,7 +6,7 @@ Production-safe internal SQL workbench for Microsoft Fabric SQL endpoints, Fabri
 
 Data Workbench Console is built for controlled operational work: browse metadata, generate SQL, run read queries, preview writes before execution, run stored procedures from a dedicated flow, and keep an audit trail of important actions.
 
-Current app version: `1.4.29`. See [CHANGELOG.md](CHANGELOG.md) for release notes.
+Current app version: `1.5.0`. See [CHANGELOG.md](CHANGELOG.md) for release notes.
 
 <p>
   <img alt="Next.js" src="https://img.shields.io/badge/Next.js-15-111827?style=for-the-badge&logo=nextdotjs" />
@@ -33,6 +33,7 @@ the copyright owner.
 | Area | What it gives you |
 | --- | --- |
 | SQL Studio | Browse tables/views, generate SQL, run SELECT queries, preview writes, inspect results, export CSV. |
+| SQL editor | Run the selection or the statement under the cursor, cancel long queries, autocomplete tables and columns, keep up to eight queries in tabs, and press `?` for every shortcut. |
 | Procedure Runner | Browse stored procedures, inspect parameters, prepare execution, confirm, view output/return values. |
 | Object scripting | Load CREATE or ALTER/Edit scripts for tables, views, and procedures into the SQL editor for review. |
 | Metadata tools | Profile objects, inspect dependencies, compare schemas, estimate read-query plans, inspect result shape, row counts, and top values. |
@@ -261,6 +262,7 @@ Important behavior:
 - side-panel auto-hide can be turned off or adjusted with `APP_SIDE_PANEL_AUTO_HIDE_ENABLED`, `APP_SIDE_PANEL_IDLE_MS`, and `APP_SIDE_PANEL_FADE_MS`
 - subtle background color motion can be turned off or slowed down with `APP_AMBIENT_MOTION_ENABLED` and `APP_AMBIENT_MOTION_DURATION_MS`
 - helpful tooltips can be turned off or delayed with `APP_TOOLTIPS_ENABLED` and `APP_TOOLTIP_DELAY_MS`
+- SQL editor autocomplete can be turned off with `APP_EDITOR_AUTOCOMPLETE_ENABLED`
 - `AZURE_CLIENT_SECRET` is never returned to the browser; leave it blank to keep the existing secret, or type a new value to replace it
 - when an app update introduces new settings, the Settings dialog shows `Sync new settings`; this appends safe defaults for missing keys without changing existing values
 - syncing missing settings creates a backup under `.data/backups/` before writing `.env`
@@ -669,16 +671,48 @@ The editor supports:
 - copy SQL
 - clear SQL
 - execute query
+- run the selection, or the statement under the cursor when the editor holds several
+  semicolon-separated statements; the statement that ran is briefly highlighted
+- `Run all` to send the whole editor as one request (several statements are a confirmed batch)
+- cancel a running query: a read or preview stops straight away; a confirmed write is rolled
+  back on the server and the result says so
+- live elapsed time while a query runs, and the run time on the result
+- autocomplete from the loaded catalog: tables and views after `FROM`/`JOIN`/`UPDATE`/`INTO`,
+  columns after an alias or table name (`a.`), and SQL keywords; columns for an object you have
+  not opened are fetched once on demand
+- up to eight editor tabs, each with its own SQL, cursor and scroll position, restored with the
+  workspace; double-click a tab to rename it
 - live line and character counts
 - a compatibility adapter that preserves textarea behavior and can use a client-side Monaco editor instance when one is available
 
-Keyboard shortcuts:
+Statements are split only on top-level `;`. Blank lines are deliberately not a boundary, so
+`UPDATE t SET a = 1` followed by a `WHERE` in the next paragraph is never sent without its
+`WHERE`. Whatever text is sent still goes through the full classification and confirmation path.
+
+Keyboard shortcuts (press `?` in the app for the full list):
 
 - `Ctrl+Enter` or `Cmd+Enter`
-  Run query or procedure depending on active workspace
+  Run the selection or the statement under the cursor (the procedure in Procedure Runner)
+
+- `Ctrl+Shift+Enter`
+  Run the whole editor
+
+- `Ctrl+Space`
+  Show table and column suggestions; `Tab` or `Enter` accepts, `Esc` dismisses
 
 - `Ctrl+Shift+F` or `Cmd+Shift+F`
   Format SQL
+
+- `Ctrl+Alt+N`, `Ctrl+Alt+W`, `Ctrl+Alt+PageDown` / `PageUp`
+  New, close, next and previous editor tab
+
+- `/`
+  Search the explorer
+
+- `?` or `Ctrl+/`
+  Show all keyboard shortcuts
+
+Autocomplete can be turned off with `APP_EDITOR_AUTOCOMPLETE_ENABLED=false`.
 
 ### Procedure Runner
 
@@ -1063,6 +1097,7 @@ Appearance:
 - `APP_AMBIENT_MOTION_DURATION_MS`
 - `APP_TOOLTIPS_ENABLED`
 - `APP_TOOLTIP_DELAY_MS`
+- `APP_EDITOR_AUTOCOMPLETE_ENABLED`
 
 Saved connections and runtime files:
 

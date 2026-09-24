@@ -220,6 +220,7 @@ export default function ProcedureRunnerDocsPage() {
           <div><strong>Separate history</strong><span>Procedure Runner only shows procedure history. SQL Studio only shows SQL history.</span></div>
           <div><strong>Clear history</strong><span>Clears the current Procedure History list. It does not clear SQL Studio history.</span></div>
           <div><strong>Mode switching</strong><span>Use the top workspace tabs to switch between Procedure Runner and SQL Studio without reopening the connection panel.</span></div>
+          <div><strong>Keyboard shortcuts</strong><span><code>Ctrl + Enter</code> prepares the selected procedure (or runs the script editor when it has focus), <code>/</code> jumps to the procedure search, and <code>?</code> or <code>Ctrl + /</code> lists every shortcut.</span></div>
           <div><strong>Session restore</strong><span>The selected procedure, parameters, result tabs, filters, pagination, and history are restored for the same browser tab where possible.</span></div>
           <div><strong>Panel layout</strong><span>Resizable panels, hidden side panels, result height, and layout choices are saved locally and adapt on narrower screens.</span></div>
           <div><strong>Panel auto-hide</strong><span>The connection and themes/history panels can fade and collapse after an idle delay. Use Settings to turn this off entirely or adjust the timing.</span></div>
