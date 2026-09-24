@@ -521,6 +521,127 @@ await assert.rejects(writeExecution.runRead(earlyCancelPool, 'SELECT 1', { runHa
 assert.deepEqual(earlyCancelPool.calls, [], 'the statement must not be sent after an early cancel');
 cancelBeforeRun.release();
 
+// query-export: CSV formula escaping, column de-duplication, and the streaming lifecycle
+// against a fake mssql request that emits recordset/row/error/done like the real driver.
+const queryExport = await import('../lib/server/query-export.js');
+assert.equal(queryExport.csvCell('=1+1'), "'=1+1");
+assert.equal(queryExport.csvCell('@SUM(A1)'), "'@SUM(A1)");
+assert.equal(queryExport.csvCell('-5'), '-5');
+assert.equal(queryExport.csvCell('-x'), "'-x");
+assert.equal(queryExport.csvCell('a,b'), '"a,b"');
+assert.equal(queryExport.csvCell('say "hi"'), '"say ""hi"""');
+assert.equal(queryExport.csvCell('line1\nline2'), '"line1\nline2"');
+assert.equal(queryExport.csvCell(null), 'NULL');
+assert.equal(queryExport.csvCell(''), '');
+assert.equal(queryExport.csvCell(Buffer.from([0xde, 0xad])), '0xDEAD');
+assert.equal(queryExport.csvCell(new Date('2026-01-02T03:04:05.000Z')), '2026-01-02T03:04:05.000Z');
+assert.deepEqual(queryExport.dedupeColumnNames(['Id', 'id', '', 'Name', 'Id']), ['Id', 'id_2', 'column_3', 'Name', 'Id_3']);
+assert.match(queryExport.exportFileName('json', new Date('2026-09-24T10:11:12Z')), /^data-workbench-export-20260924-101112\.json$/);
+
+function fakeExportPool(script) {
+  const log = { cancelled: 0, paused: 0, resumed: 0, sql: '', overrides: null };
+  const pool = {
+    log,
+    request(overrides) {
+      log.overrides = overrides;
+      const request = new EventEmitter();
+      request.pause = () => { log.paused += 1; };
+      request.resume = () => { log.resumed += 1; };
+      request.cancel = () => {
+        log.cancelled += 1;
+        request.cancelled = true;
+      };
+      request.query = async (sql) => {
+        log.sql = sql;
+        setImmediate(() => script(request));
+      };
+      return request;
+    }
+  };
+  return pool;
+}
+
+async function readStream(stream) {
+  return new Response(stream).text();
+}
+
+const csvPool = fakeExportPool((request) => {
+  request.emit('recordset', [{ name: 'Id' }, { name: 'Id' }, { name: 'Note' }]);
+  request.emit('row', [1, 10, '=cmd']);
+  request.emit('row', [2, null, 'plain']);
+  request.emit('done', {});
+});
+const csvExport = queryExport.startQueryExport({ pool: csvPool, sql: 'SELECT 1', format: 'csv', rowLimit: 100, timeoutMs: 5000 });
+const csvText = await readStream((await csvExport.ready).stream);
+assert.equal(csvText, "Id,Id_2,Note\r\n1,10,'=cmd\r\n2,NULL,plain\r\n");
+assert.deepEqual(await csvExport.finished, { rowCount: 2, truncated: false, cancelled: false, error: null });
+assert.deepEqual(csvPool.log.overrides, { requestTimeout: 5000 });
+
+// The server enforces the row limit itself: some query shapes cannot be capped in SQL.
+const truncatedPool = fakeExportPool((request) => {
+  request.emit('recordset', [{ name: 'n' }]);
+  for (let n = 1; n <= 3 && !request.cancelled; n += 1) request.emit('row', [n]);
+  if (request.cancelled) request.emit('error', Object.assign(new Error('Canceled.'), { code: 'ECANCEL' }));
+  request.emit('done', {});
+});
+const truncatedExport = queryExport.startQueryExport({ pool: truncatedPool, sql: 'SELECT n', format: 'json', rowLimit: 2 });
+const truncatedJson = JSON.parse(await readStream((await truncatedExport.ready).stream));
+assert.deepEqual(truncatedJson, { recordsets: [{ columns: ['n'], rows: [{ n: 1 }, { n: 2 }] }], rowCount: 2, truncated: true });
+assert.equal((await truncatedExport.finished).truncated, true);
+assert.equal(truncatedPool.log.cancelled, 1, 'hitting the export limit must cancel the database request');
+
+// Several recordsets become several JSON entries / CSV blocks.
+const multiPool = fakeExportPool((request) => {
+  request.emit('recordset', [{ name: 'a' }]);
+  request.emit('row', [1]);
+  request.emit('recordset', [{ name: 'b' }]);
+  request.emit('row', ['x']);
+  request.emit('done', {});
+});
+const multiExport = queryExport.startQueryExport({ pool: multiPool, sql: 'SELECT 1; SELECT 2', format: 'json', rowLimit: 10 });
+assert.deepEqual(JSON.parse(await readStream((await multiExport.ready).stream)).recordsets, [
+  { columns: ['a'], rows: [{ a: 1 }] },
+  { columns: ['b'], rows: [{ b: 'x' }] }
+]);
+
+// An error before any metadata rejects `ready`, so the route can still answer with JSON.
+const failingPool = fakeExportPool((request) => {
+  request.emit('error', Object.assign(new Error('Invalid object name.'), { code: 'EREQUEST' }));
+  request.emit('done', {});
+});
+const failingExport = queryExport.startQueryExport({ pool: failingPool, sql: 'SELECT * FROM nope', format: 'csv', rowLimit: 10 });
+await assert.rejects(failingExport.ready, /Invalid object name/);
+assert.equal((await failingExport.finished).error.message, 'Invalid object name.');
+
+// Closing the download cancels the database request.
+let releaseRows;
+const abortPool = fakeExportPool((request) => {
+  request.emit('recordset', [{ name: 'n' }]);
+  request.emit('row', [1]);
+  releaseRows = () => {
+    request.emit('error', Object.assign(new Error('Canceled.'), { code: 'ECANCEL' }));
+    request.emit('done', {});
+  };
+});
+const abortExport = queryExport.startQueryExport({ pool: abortPool, sql: 'SELECT n', format: 'csv', rowLimit: 10 });
+const abortStream = (await abortExport.ready).stream;
+await abortStream.cancel();
+assert.equal(abortPool.log.cancelled, 1);
+releaseRows();
+const abortStats = await abortExport.finished;
+assert.equal(abortStats.cancelled, true);
+assert.equal(abortStats.error, null);
+
+// runHandler passes a streamed body through with the usual security headers.
+const streamed = await nextHandler.runHandler(async (_req, res) => {
+  res.stream(new Response('a,b\r\n1,2\r\n').body, { headers: { 'Content-Type': 'text/csv; charset=utf-8', 'Content-Disposition': 'attachment; filename="x.csv"' } });
+}, makeReq('http://localhost:3000/api/unit', { method: 'POST', headers: { origin: 'http://localhost:3000', 'content-type': 'application/json' }, body: {} }));
+assert.equal(streamed.status, 200);
+assert.equal(streamed.headers.get('content-type'), 'text/csv; charset=utf-8');
+assert.equal(streamed.headers.get('x-content-type-options'), 'nosniff');
+assert.equal(streamed.headers.get('cache-control'), 'no-store');
+assert.equal(await streamed.text(), 'a,b\r\n1,2\r\n');
+
 await fs.rm(tempRoot, { recursive: true, force: true });
 console.log('Server unit tests passed.');
 process.exit(0);

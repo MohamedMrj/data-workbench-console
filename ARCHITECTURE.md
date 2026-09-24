@@ -237,6 +237,7 @@ caught centrally and mapped through `error.httpStatus` (default 500).
 | `/api/query-plan` | POST | `postQueryPlan` | Read queries only; blocked for Lakehouse |
 | `/api/query` | POST | `postQuery` | The main execution path; optional `runId` makes the run cancellable |
 | `/api/query/cancel` | POST | `postQueryCancel` | `{ runId }` → 202 cancelled, 404 unknown/other session, 409 committing |
+| `/api/query/export` | POST | `postQueryExport` | Reads only; streams the full result as CSV/JSON up to `EXPORT_ROW_LIMIT` |
 | `/api/saved-connections` | GET POST DELETE | `*SavedConnections` | |
 | `/api/version` | GET | inline | Cached + de-duplicated git/remote check |
 | `/api/env-settings` | GET POST | inline | Local-only; POST requires Origin/Referer |
@@ -322,6 +323,35 @@ to `committing`; from then on `cancelRun` refuses, because a cancel can no longe
 write. A TDS attention does not roll a transaction back, so every cancel path rolls back
 explicitly and reports `rolledBack` (an `EABORT` from rollback counts as rolled back). The run
 id is optional: without one a query simply cannot be cancelled.
+
+### `query-export.js` — full streamed export
+
+`postQueryExport` re-classifies the query (reads only), then `startQueryExport` runs it with
+mssql `stream = true` + `arrayRowMode` and writes CSV or JSON into a `ReadableStream` in ~64 KB
+chunks. Back-pressure is real: when the stream's queue is full the request is `pause()`d and the
+stream's `pull()` resumes it, so memory stays flat. Three things are easy to break:
+
+- **The pool must outlive the handler.** Next builds the response only after the handler
+  returns, but `withConnection` releases the pool when its callback settles, so the callback
+  awaits the export's `finished` promise while the handler returns as soon as `ready` resolves.
+- **Errors before the first recordset** reject `ready`, so a bad query still gets a normal JSON
+  error; errors mid-stream `controller.error()` the stream so the download fails visibly rather
+  than saving a silently truncated file. In stream mode mssql reports failures through the
+  `error` event and still resolves the query promise, so the events drive everything.
+- **The row limit is enforced by counting**, not only in SQL: `buildLimitedReadQuery` leaves some
+  shapes uncapped (a user `TOP` with `ORDER BY`, `FETCH`, `FOR XML`), so at `EXPORT_ROW_LIMIT`
+  rows the request is cancelled and the JSON footer records `"truncated": true`.
+
+`next-handler.js` `res.stream(body, { headers })` passes a stream through `finalizeResponse`
+with the usual no-store/nosniff headers and session cookie; same-origin and rate-limit checks
+still run first. The export registers in the run registry as kind `export` (at most two per
+session), so the editor's Cancel stops it; the browser closing the download cancels the request
+through the stream's `cancel()`.
+
+The grid itself now fetches `RESPONSE_ROW_LIMIT + 1` rows: capping at exactly the limit made
+"exactly 250 rows" and "250 of millions" indistinguishable, so `truncated` was never true. The
+extra row is dropped by `mapRecordset`; when truncated, `totalRows` is only that probe count and
+the client never displays it as a total.
 
 ### `confirmation-store.js` (215 lines)
 

@@ -570,6 +570,19 @@ function attachMocks(window) {
       });
     }
 
+    if (String(url).includes('/api/query/export')) {
+      window.__exportRequests = [...(window.__exportRequests || []), body];
+      const csv = 'AlertId,Status\r\n1,NULL\r\n2,FAILED\r\n';
+      return new Response(csv, {
+        status: 200,
+        headers: {
+          'Content-Type': 'text/csv; charset=utf-8',
+          'Content-Disposition': 'attachment; filename="data-workbench-export-20260924-101112.csv"',
+          'X-Export-Row-Limit': '100000'
+        }
+      });
+    }
+
     if (String(url).includes('/api/query/cancel')) {
       window.__cancelledRunIds = [...(window.__cancelledRunIds || []), body.runId];
       window.__releaseSlowQuery?.();
@@ -583,6 +596,20 @@ function attachMocks(window) {
       const queryText = String(body.query || '');
       window.__postedQueries = [...(window.__postedQueries || []), queryText];
       window.__postedRunIds = [...(window.__postedRunIds || []), body.runId];
+      // A read that hit the row limit: the server fetched limit + 1 rows and reports truncated.
+      if (queryText.includes('TRUNCATED_TEST')) {
+        return new Response(JSON.stringify({
+          success: true,
+          mode: 'read',
+          columns: ['AlertId', 'Status'],
+          rows: [{ AlertId: 1, Status: null }, { AlertId: 2, Status: 'FAILED' }],
+          totalRows: 3,
+          truncated: true,
+          rowLimit: 2,
+          rowsAffected: 0,
+          elapsedMs: 12
+        }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
       // A read that only finishes when the client aborts it, like a long query being cancelled.
       if (queryText.includes('SLOW_CANCEL_TEST')) {
         return new Promise((resolve, reject) => {
@@ -1047,7 +1074,7 @@ if (sqlWindow.document.documentElement.style.getPropertyValue('--tooltip-delay-m
     throw new Error(`Safety Policy panel did not render the server safety limits. Got: ${policyText}`);
   }
 }
-['saveConnectionBtn', 'testConnectionBtn', 'loadTablesBtn', 'runQueryBtn', 'runAllQueryBtn','clearHistoryBtn', 'toggleAdvancedOperationsBtn', 'insertSelectTemplateBtn', 'updateJoinTemplateBtn', 'mergePreviewBtn', 'profileObjectBtn', 'dependencyViewBtn', 'insertSqlHelperBtn', 'wrapSqlHelperBtn', 'openWorkbenchToolsBtn', 'openEnvSettingsBtn', 'openSupportBtn', 'scrollResultsLeftBtn', 'scrollResultsRightBtn', 'scrollResultsDockLeftBtn', 'scrollResultsDockRightBtn'].forEach((id) => {
+['saveConnectionBtn', 'testConnectionBtn', 'loadTablesBtn', 'runQueryBtn', 'runAllQueryBtn', 'exportJsonBtn', 'exportAllCsvBtn', 'exportAllJsonBtn', 'contextCopyInsertBtn', 'contextCopyAllInsertBtn', 'contextCopyMarkdownBtn', 'clearHistoryBtn', 'toggleAdvancedOperationsBtn', 'insertSelectTemplateBtn', 'updateJoinTemplateBtn', 'mergePreviewBtn', 'profileObjectBtn', 'dependencyViewBtn', 'insertSqlHelperBtn', 'wrapSqlHelperBtn', 'openWorkbenchToolsBtn', 'openEnvSettingsBtn', 'openSupportBtn', 'scrollResultsLeftBtn', 'scrollResultsRightBtn', 'scrollResultsDockLeftBtn', 'scrollResultsDockRightBtn'].forEach((id) => {
   const element = sqlWindow.document.getElementById(id);
   if (!element || typeof element.onclick !== 'function') {
     throw new Error(`Expected ${id} to be wired on the SQL page.`);
@@ -1567,6 +1594,50 @@ await flush();
 if (!sqlWindow.__lastClipboardText.includes('\n  "severity": "low"')) {
   throw new Error(`Formatted JSON copy did not write pretty JSON. Clipboard: ${sqlWindow.__lastClipboardText}`);
 }
+// Copy as INSERT keeps SQL NULL and the empty string apart, quotes strings as N'...', and
+// leaves numbers bare; Markdown escapes the table syntax.
+sqlWindow.document.getElementById('contextCopyInsertBtn').click();
+await flush();
+if (!/^INSERT INTO \S+ \(\[AlertId\], \[Status\], \[JsonPayload\]\)\nVALUES\n {2}\(1, NULL, N'\{"severity":"low"/.test(sqlWindow.__lastClipboardText)) {
+  throw new Error(`Copy row as INSERT produced an unexpected statement: ${sqlWindow.__lastClipboardText}`);
+}
+sqlWindow.document.getElementById('contextCopyAllInsertBtn').click();
+await flush();
+if (!sqlWindow.__lastClipboardText.includes("(2, N'FAILED',") || !sqlWindow.__lastClipboardText.includes("(3, N'',") || sqlWindow.__lastClipboardText.split('\n  (').length !== 4) {
+  throw new Error(`Copy loaded rows as INSERT should emit one VALUES row per result row. Got: ${sqlWindow.__lastClipboardText}`);
+}
+sqlWindow.document.getElementById('contextCopyMarkdownBtn').click();
+await flush();
+const markdownLines = sqlWindow.__lastClipboardText.split('\n');
+if (markdownLines[0] !== '| AlertId | Status | JsonPayload |' || markdownLines[1] !== '| --- | --- | --- |' || !markdownLines[2].startsWith('| 1 | NULL |')) {
+  throw new Error(`Copy as Markdown produced an unexpected table: ${sqlWindow.__lastClipboardText}`);
+}
+// Export JSON writes the loaded rows, with SQL NULL kept as null.
+const exportedBlobs = [];
+// jsdom's Blob has no .text(); the export route's blob comes from Node's Response and does.
+const readBlob = (blob) => (typeof blob.text === 'function' ? blob.text() : new Promise((resolve) => {
+  const reader = new sqlWindow.FileReader();
+  reader.onload = () => resolve(String(reader.result));
+  reader.readAsText(blob);
+}));
+sqlWindow.URL.createObjectURL = (blob) => {
+  exportedBlobs.push(blob);
+  return 'blob:smoke';
+};
+sqlWindow.URL.revokeObjectURL = () => {};
+// jsdom cannot navigate, so a download link's click is recorded instead of followed.
+sqlWindow.HTMLAnchorElement.prototype.click = function recordDownload() {
+  sqlWindow.__lastDownloadName = this.download;
+};
+sqlWindow.document.getElementById('exportJsonBtn').click();
+await flush();
+const exportedJson = JSON.parse(await readBlob(exportedBlobs.at(-1)));
+if (exportedJson.rows.length !== 3 || exportedJson.rows[0].Status !== null || exportedJson.truncated !== false) {
+  throw new Error(`Export JSON should write the loaded rows with nulls intact. Got: ${JSON.stringify(exportedJson)}`);
+}
+if (!sqlWindow.document.getElementById('resultsTruncatedBanner').classList.contains('hidden')) {
+  throw new Error('A result within the row limit must not show the truncation banner.');
+}
 
 editor.value = 'SELECT * FROM dbo.Alerts LIMIT 100;';
 editor.dispatchEvent(new sqlWindow.Event('input', { bubbles: true }));
@@ -1859,6 +1930,38 @@ if (!sqlWindow.document.getElementById('confirmModal').classList.contains('hidde
 }
 if (!sqlWindow.document.getElementById('statusText').textContent.includes('rolled back')) {
   throw new Error(`A cancelled write should report the rollback. Status: ${sqlWindow.document.getElementById('statusText').textContent}`);
+}
+
+// A result cut off at the row limit says so, never claims a total, and offers Export all,
+// which re-runs the same query through the streaming export route.
+editor.value = 'SELECT AlertId, Status FROM dbo.Alerts WHERE 1 = 1 /* TRUNCATED_TEST */';
+editor.dispatchEvent(new sqlWindow.Event('input', { bubbles: true }));
+sqlWindow.document.getElementById('runQueryBtn').click();
+await flush();
+const truncatedBanner = sqlWindow.document.getElementById('resultsTruncatedBanner');
+if (truncatedBanner.classList.contains('hidden') || !sqlWindow.document.getElementById('resultsTruncatedText').textContent.includes('first 2 rows')) {
+  throw new Error(`A truncated result should show the banner. Banner: ${sqlWindow.document.getElementById('resultsTruncatedText').textContent}`);
+}
+const truncatedMeta = sqlWindow.document.getElementById('resultsMeta').textContent;
+if (!truncatedMeta.includes('more rows exist') || truncatedMeta.includes(' of 3')) {
+  throw new Error(`A truncated result must not present the probe row count as a total. Meta: ${truncatedMeta}`);
+}
+sqlWindow.__exportRequests = [];
+sqlWindow.document.getElementById('exportAllCsvBtn').click();
+await flush();
+await flush();
+const exportRequest = sqlWindow.__exportRequests.at(-1);
+if (!exportRequest || exportRequest.format !== 'csv' || !exportRequest.query.includes('TRUNCATED_TEST') || !/^[0-9a-f-]{36}$/.test(String(exportRequest.runId || ''))) {
+  throw new Error(`Export all should post the result's query, the format and a run id. Posted: ${JSON.stringify(exportRequest)}`);
+}
+if ((await readBlob(exportedBlobs.at(-1))) !=='AlertId,Status\r\n1,NULL\r\n2,FAILED\r\n') {
+  throw new Error('Export all should save the streamed file exactly as the server sent it.');
+}
+if (sqlWindow.__lastDownloadName !== 'data-workbench-export-20260924-101112.csv') {
+  throw new Error(`Export all should keep the server's file name. Got: ${sqlWindow.__lastDownloadName}`);
+}
+if (!sqlWindow.document.getElementById('statusText').textContent.includes('Exported the full result')) {
+  throw new Error(`Export all should report success. Status: ${sqlWindow.document.getElementById('statusText').textContent}`);
 }
 
 const proceduresHtml = await readBuiltHtml(['procedures']);

@@ -6,7 +6,7 @@ Production-safe internal SQL workbench for Microsoft Fabric SQL endpoints, Fabri
 
 Data Workbench Console is built for controlled operational work: browse metadata, generate SQL, run read queries, preview writes before execution, run stored procedures from a dedicated flow, and keep an audit trail of important actions.
 
-Current app version: `1.5.0`. See [CHANGELOG.md](CHANGELOG.md) for release notes.
+Current app version: `1.5.1`. See [CHANGELOG.md](CHANGELOG.md) for release notes.
 
 <p>
   <img alt="Next.js" src="https://img.shields.io/badge/Next.js-15-111827?style=for-the-badge&logo=nextdotjs" />
@@ -751,7 +751,26 @@ The results area supports:
 - audit log loading into the results grid
 - filtered audit loading into the results grid
 - `Copy rows`
-- `Export CSV`
+- `Export CSV` and `Export JSON` of the loaded rows
+- right-click a row for `Copy row as INSERT`, `Copy loaded rows as INSERT` and `Copy loaded rows
+  as Markdown`. INSERT statements target the table when the result is editable, otherwise a
+  `[target_table]` placeholder; SQL NULL stays `NULL`, strings are `N'...'`, and `timestamp`/
+  `rowversion` columns are left out because they cannot be inserted
+- an honest row-limit banner: when a read has more rows than `RESPONSE_ROW_LIMIT`, the grid says
+  it shows only the first rows and never presents the loaded count as the total
+
+Full export:
+
+- `Export all as CSV` / `Export all as JSON` (on the row-limit banner) re-run the result's read
+  query on the server and stream every row into a file, up to `EXPORT_ROW_LIMIT` (default
+  100000). `Export CSV` / `Export JSON` in the toolbar only ever write the rows already loaded.
+- only plain reads can be exported; writes, `SELECT ... INTO` and batches are refused
+- the download can be cancelled from the editor's `Cancel` button; closing the tab also stops
+  the query on the server
+- CSV exports use the same formula escaping as the grid's CSV export, write SQL NULL as `NULL`,
+  and write binary values as `0x...` hex
+- `EXPORT_REQUEST_TIMEOUT_MS` (default 10 minutes) bounds the whole export, including time the
+  download spends waiting for the browser; the audit log records each export's exact row count
 
 Long-value handling:
 
@@ -1062,6 +1081,8 @@ Safety and execution:
 - `HEIGHTENED_CONFIRM_LIMIT`
 - `CONFIRMATION_TTL_MS`
 - `RESPONSE_ROW_LIMIT`
+- `EXPORT_ROW_LIMIT`
+- `EXPORT_REQUEST_TIMEOUT_MS`
 - `MAX_QUERY_LENGTH`
 - `MAX_PROCEDURE_PARAM_LENGTH`
 

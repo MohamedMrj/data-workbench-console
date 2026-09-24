@@ -298,6 +298,7 @@ function ResultsCard() {
           <button id="toggleEditResultsBtn" className="ghost-btn small hidden" type="button" aria-pressed="false">Edit results</button>
           <button id="copyResultsBtn" className="ghost-btn small">Copy rows</button>
           <button id="exportCsvBtn" className="ghost-btn small">Export CSV</button>
+          <button id="exportJsonBtn" className="ghost-btn small" type="button">Export JSON</button>
           <button id="scrollResultsLeftBtn" className="ghost-btn small result-scroll-btn" type="button" data-tooltip="Scroll result columns left." aria-label="Scroll result columns left">← Columns</button>
           <button id="scrollResultsRightBtn" className="ghost-btn small result-scroll-btn" type="button" data-tooltip="Scroll result columns right." aria-label="Scroll result columns right">Columns →</button>
           <button id="prevPageBtn" className="ghost-btn small">Prev</button>
@@ -308,6 +309,13 @@ function ResultsCard() {
       </div>
       <div id="resultTabs" className="result-tabs" aria-label="Result tabs" />
       <div id="resultsMeta" className="results-meta">No results yet.</div>
+      <div id="resultsTruncatedBanner" className="results-truncated-banner hidden" role="status">
+        <span id="resultsTruncatedText" />
+        <div className="button-row wrap">
+          <button id="exportAllCsvBtn" className="ghost-btn small" type="button">Export all as CSV</button>
+          <button id="exportAllJsonBtn" className="ghost-btn small" type="button">Export all as JSON</button>
+        </div>
+      </div>
       <div id="resultEditModeNote" className="edit-mode-note hidden" role="note" />
       <div id="pendingEditsBar" className="pending-edits-bar hidden" aria-live="polite">
         <span id="pendingEditsSummary">0 unsaved edits</span>
@@ -741,6 +749,9 @@ export default function WorkbenchShell({ pageMode = 'sql' }) {
         <button id="contextCopyColumnBtn" className="context-menu-item" role="menuitem">Copy column name</button>
         <button id="contextCopyJsonBtn" className="context-menu-item" role="menuitem">Copy row as JSON</button>
         <button id="contextCopyCsvBtn" className="context-menu-item" role="menuitem">Copy row as CSV</button>
+        <button id="contextCopyInsertBtn" className="context-menu-item" role="menuitem">Copy row as INSERT</button>
+        <button id="contextCopyAllInsertBtn" className="context-menu-item" role="menuitem">Copy loaded rows as INSERT</button>
+        <button id="contextCopyMarkdownBtn" className="context-menu-item" role="menuitem">Copy loaded rows as Markdown</button>
       </div>
 
       <div id="auditFilterDialog" className="modal-backdrop hidden" aria-hidden="true">

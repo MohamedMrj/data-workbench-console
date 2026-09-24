@@ -282,8 +282,10 @@ WHERE <review scope before execution>;`}</pre>
           <li><strong>Column resizing</strong> lets you widen important columns and reset by double-clicking handles.</li>
           <li><strong>NULL values</strong> appear as a visible pill so blanks are easier to distinguish from missing data.</li>
           <li><strong>Long JSON/text</strong> is collapsed with Show more / Show less, while copy/export still uses the full value.</li>
-          <li><strong>Cell context menu</strong> can copy the clicked cell value, column name, formatted JSON, or the whole row as JSON/CSV.</li>
-          <li><strong>Copy rows</strong> and <strong>Export CSV</strong> use the current result data.</li>
+          <li><strong>Cell context menu</strong> can copy the clicked cell value, column name, formatted JSON, or the whole row as JSON/CSV/INSERT, and all loaded rows as <code>INSERT</code> statements or a Markdown table. INSERT targets the table when the result is editable, otherwise a <code>[target_table]</code> placeholder you replace; SQL NULL stays <code>NULL</code>, and <code>timestamp</code>/<code>rowversion</code> columns are left out.</li>
+          <li><strong>Copy rows</strong>, <strong>Export CSV</strong> and <strong>Export JSON</strong> use the rows already loaded in the grid.</li>
+          <li><strong>Row limit</strong>: a read returns at most the response row limit (250 by default). When there are more rows, a banner says the grid shows only the first rows — it never shows the loaded count as the total — and offers <strong>Export all as CSV</strong> / <strong>Export all as JSON</strong>.</li>
+          <li><strong>Export all</strong> re-runs the same read query on the server and streams every row into a file, up to the export row limit (100,000 by default). Only plain reads can be exported. It can be cancelled with the editor's <strong>Cancel</strong> button, and the audit log records how many rows each export wrote.</li>
           <li><strong>Audit log</strong> opens filters for event, outcome, action, source type, database, search text, and limit. Use it to review metadata reads, query previews, confirmations, executions, and errors.</li>
         </ul>
         <div className="docs-callout">

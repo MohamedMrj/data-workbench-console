@@ -124,6 +124,9 @@ window.createConsoleApp = function createConsoleApp() {
     localResultsFilter: 'Filter the currently loaded result rows in this browser.',
     copyResultsBtn: 'Copy the currently loaded result rows.',
     exportCsvBtn: 'Export the currently loaded result rows as CSV.',
+    exportJsonBtn: 'Export the currently loaded result rows as JSON.',
+    exportAllCsvBtn: 'Re-run this query on the server and download every row as CSV, not just the rows loaded in the grid.',
+    exportAllJsonBtn: 'Re-run this query on the server and download every row as JSON, not just the rows loaded in the grid.',
     scrollResultsLeftBtn: 'Move the result grid to earlier columns.',
     scrollResultsRightBtn: 'Move the result grid to later columns.',
     scrollResultsDockLeftBtn: 'Move the result grid left from the floating column navigator.',
@@ -327,6 +330,8 @@ window.createConsoleApp = function createConsoleApp() {
       visualKind: '',
       visualObject: '',
       elapsedMs: null,
+      // The SQL that produced this result, so Export all can re-run it on the server.
+      sourceQuery: '',
       // Row-editability state (results-grid inline editor). Deliberately not
       // persisted across session restore or tab snapshots: normalizeResultsSnapshot
       // below always resets these to the defaults here regardless of what a
@@ -2283,7 +2288,8 @@ window.createConsoleApp = function createConsoleApp() {
       localFilter: String(snapshot.localFilter || ''),
       visualKind: String(snapshot.visualKind || ''),
       visualObject: String(snapshot.visualObject || ''),
-      elapsedMs: Number.isFinite(Number(snapshot.elapsedMs)) && snapshot.elapsedMs !== null ? Number(snapshot.elapsedMs) : null
+      elapsedMs: Number.isFinite(Number(snapshot.elapsedMs)) && snapshot.elapsedMs !== null ? Number(snapshot.elapsedMs) : null,
+      sourceQuery: String(snapshot.sourceQuery || '')
     };
   }
 
@@ -5962,6 +5968,7 @@ window.createConsoleApp = function createConsoleApp() {
       visualKind: meta.visualKind || '',
       visualObject: meta.visualObject || meta.object || '',
       elapsedMs: Number.isFinite(Number(meta.elapsedMs)) && meta.elapsedMs !== undefined && meta.elapsedMs !== null ? Number(meta.elapsedMs) : null,
+      sourceQuery: String(meta.sourceQuery || ''),
       // A brand new result set never inherits the previous one's editability or
       // in-progress edits (this spreads ...state.results above, unlike
       // resetResultsForRun/renderResultError which rebuild from
@@ -6001,6 +6008,7 @@ window.createConsoleApp = function createConsoleApp() {
     if ($('resultsMeta')) {
       $('resultsMeta').textContent = message;
     }
+    $('resultsTruncatedBanner')?.classList.add('hidden');
     if ($('pageIndicator')) {
       $('pageIndicator').textContent = 'Page 1/1';
     }
@@ -6365,7 +6373,7 @@ window.createConsoleApp = function createConsoleApp() {
       return counts;
     }, {});
     return [
-      `<div class="artifact-card visual-helper-card"><strong>Result shape</strong><code>${state.results.totalRows} row${state.results.totalRows === 1 ? '' : 's'} • ${state.results.columns.length} column${state.results.columns.length === 1 ? '' : 's'}</code><span>${state.results.truncated ? 'Server row cap applied.' : 'Returned within current row cap.'}</span></div>`,
+      `<div class="artifact-card visual-helper-card"><strong>Result shape</strong><code>${state.results.truncated ? `${state.results.rows.length}+ rows` : `${state.results.totalRows} row${state.results.totalRows === 1 ? '' : 's'}`} • ${state.results.columns.length} column${state.results.columns.length === 1 ? '' : 's'}</code><span>${state.results.truncated ? 'Server row cap applied.' : 'Returned within current row cap.'}</span></div>`,
       `<div class="artifact-card visual-helper-card"><strong>Column types</strong><div class="visual-chip-row">${Object.entries(typeCounts).map(([kind, count]) => `<span class="visual-chip">${esc(kind)} ${count}</span>`).join('')}</div></div>`,
       `<div class="artifact-card visual-helper-card"><strong>Null scan</strong>${nullColumns.length ? `<div class="visual-list compact">${nullColumns.slice(0, 5).map((item) => `<div class="visual-row"><span>${esc(item.column)}</span><code>${item.nulls}</code></div>`).join('')}</div>` : '<span>No null or blank values in the visible sample.</span>'}</div>`
     ];
@@ -6560,6 +6568,7 @@ window.createConsoleApp = function createConsoleApp() {
 
   function renderResults() {
     renderNewRows();
+    renderTruncationBanner();
     const panel = $('resultsPanel');
     const resultsCard = panel?.closest('.results-card');
     const rows = sortedRows();
@@ -6604,7 +6613,9 @@ window.createConsoleApp = function createConsoleApp() {
     const start = (state.results.page - 1) * pageSize;
     const visibleRows = rows.slice(start, start + pageSize);
     const ranIn = state.results.elapsedMs === null ? '' : ` Ran in ${formatElapsed(state.results.elapsedMs)}.`;
-    $('resultsMeta').textContent = (state.results.truncated ? `Showing ${rows.length} of ${state.results.totalRows} rows returned by the server cap.` : `Showing ${start + 1}-${Math.min(start + visibleRows.length, rows.length)} of ${rows.length} rows.`) + ranIn;
+    // When truncated, totalRows is only "limit + 1" (the probe row), not a real count, so it is never shown.
+    const range = `Showing ${start + 1}-${Math.min(start + visibleRows.length, rows.length)} of ${rows.length}`;
+    $('resultsMeta').textContent = (state.results.truncated ? `${range} loaded rows; more rows exist beyond the row limit.` : `${range} rows.`) + ranIn;
 
     const getColIcon = (column) => {
       for (const row of rows.slice(0, 50)) {
@@ -7349,14 +7360,170 @@ window.createConsoleApp = function createConsoleApp() {
       state.results.columns.map(csvCell).join(','),
       ...sortedRows().map((row) => state.results.columns.map((column) => csvCell(row[column])).join(','))
     ].join('\n');
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+    downloadBlob(new Blob([csv], { type: 'text/csv;charset=utf-8' }), `query-results-${new Date().toISOString().replace(/[:.]/g, '-')}.csv`);
+    setStatus('success', state.results.truncated
+      ? 'CSV exported from the loaded rows only. Use Export all for the full result.'
+      : 'CSV exported from the currently loaded result set.');
+  }
+
+  // ─── Copy as INSERT / Markdown ────────────────────────────────────────────
+
+  const INSERT_SKIPPED_TYPES = new Set(['timestamp', 'rowversion']);
+  // SQL Server accepts at most 1000 rows in one VALUES list.
+  const INSERT_VALUES_BATCH = 1000;
+
+  function copyColumnTypes() {
+    return new Map((state.results.editableInfo?.columns || []).map((column) => [String(column.name).toLowerCase(), String(column.type || '').toLowerCase()]));
+  }
+
+  // Unlike encodeResultEditValue (which parses typed text), this starts from the real cell
+  // value, so SQL NULL becomes NULL while the string 'null' stays a string.
+  function sqlLiteralForCopy(value, type = '') {
+    if (value === null || value === undefined) return 'NULL';
+    if (typeof value === 'boolean') return value ? '1' : '0';
+    if (typeof value === 'number') return Number.isFinite(value) ? String(value) : 'NULL';
+    if (typeof value === 'bigint') return value.toString();
+    if (value instanceof Date) return `'${value.toISOString()}'`;
+    if (value && typeof value === 'object' && value.type === 'Buffer' && Array.isArray(value.data)) {
+      return `0x${value.data.map((byte) => Number(byte).toString(16).padStart(2, '0')).join('').toUpperCase()}`;
+    }
+    const text = typeof value === 'object' ? JSON.stringify(value) : String(value);
+    if (type === 'bit' && /^(true|false|1|0)$/i.test(text)) return /^(true|1)$/i.test(text) ? '1' : '0';
+    if (NUMERIC_RESULT_EDIT_TYPES.has(type) && /^-?\d+(\.\d+)?$/.test(text)) return text;
+    return `N'${text.replace(/'/g, "''")}'`;
+  }
+
+  function rowsAsInsertStatements(rows) {
+    const types = copyColumnTypes();
+    // result_set is the grid's own marker for multi-recordset results, not a real column.
+    const columns = state.results.columns.filter((column) => column !== 'result_set' && !INSERT_SKIPPED_TYPES.has(types.get(column.toLowerCase())));
+    const target = state.results.editableInfo?.object ? quoteFullObjectName(state.results.editableInfo.object) : '[target_table]';
+    const header = `INSERT INTO ${target} (${columns.map(bid).join(', ')})\nVALUES`;
+    const statements = [];
+    for (let index = 0; index < rows.length; index += INSERT_VALUES_BATCH) {
+      const values = rows.slice(index, index + INSERT_VALUES_BATCH)
+        .map((row) => `  (${columns.map((column) => sqlLiteralForCopy(row[column], types.get(column.toLowerCase()))).join(', ')})`);
+      statements.push(`${header}\n${values.join(',\n')};`);
+    }
+    return statements.join('\n\n');
+  }
+
+  function rowsAsMarkdownTable(rows) {
+    const cell = (value) => serializeCellValueForCopy(value).replace(/\|/g, '\\|').replace(/\r?\n/g, '<br>');
+    const columns = state.results.columns;
+    return [
+      `| ${columns.map(cell).join(' | ')} |`,
+      `| ${columns.map(() => '---').join(' | ')} |`,
+      ...rows.map((row) => `| ${columns.map((column) => cell(row[column])).join(' | ')} |`)
+    ].join('\n');
+  }
+
+  function copyRowsAs(format, rows = sortedRows()) {
+    if (!state.results.columns.length || !rows.length) {
+      setStatus('error', 'No result rows to copy.');
+      return;
+    }
+    const scope = rows.length === 1 ? 'Row' : `${rows.length} rows`;
+    const suffix = state.results.truncated && rows.length > 1 ? ' (loaded rows only)' : '';
+    if (format === 'insert') {
+      const placeholder = state.results.editableInfo?.object ? '' : ' Replace [target_table] with the destination table.';
+      copyText(rowsAsInsertStatements(rows), `${scope} copied as INSERT${suffix}.${placeholder}`);
+    } else {
+      copyText(rowsAsMarkdownTable(rows), `${scope} copied as a Markdown table${suffix}.`);
+    }
+  }
+
+  function downloadBlob(blob, fileName) {
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `query-results-${new Date().toISOString().replace(/[:.]/g, '-')}.csv`;
+    link.download = fileName;
     link.click();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
-    setStatus('success', 'CSV exported from the currently loaded result set.');
+  }
+
+  function exportJson() {
+    if (!state.results.columns.length || !state.results.rows.length) {
+      setStatus('error', 'No result rows to export.');
+      return;
+    }
+    const rows = sortedRows().map((row) => {
+      const record = {};
+      state.results.columns.forEach((column) => {
+        record[column] = row[column] === undefined ? null : row[column];
+      });
+      return record;
+    });
+    const payload = { columns: state.results.columns, rows, rowCount: rows.length, truncated: Boolean(state.results.truncated) };
+    downloadBlob(new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json;charset=utf-8' }), `query-results-${new Date().toISOString().replace(/[:.]/g, '-')}.json`);
+    setStatus('success', state.results.truncated
+      ? 'JSON exported from the loaded rows only. Use Export all for the full result.'
+      : 'JSON exported from the currently loaded result set.');
+  }
+
+  // Re-runs the result's query on the server and streams every row (up to EXPORT_ROW_LIMIT)
+  // into a file, instead of exporting only the rows the grid loaded.
+  async function exportAllResults(format) {
+    const query = String(state.results.sourceQuery || '').trim();
+    if (!query) {
+      setStatus('error', 'Only results of a SQL query can be exported in full. Run the query again first.');
+      return;
+    }
+    if (state.activeRun) {
+      setStatus('neutral', 'A query is already running. Wait for it or cancel it first.');
+      return;
+    }
+    if (!ensureReadyConnection('exporting the full result')) {
+      return;
+    }
+    const label = `Exporting all rows as ${format.toUpperCase()}...`;
+    const run = beginRun({ kind: 'export', label, metaTarget: 'statusText' });
+    setStatus('loading', label);
+    try {
+      const response = await fetch('/api/query/export', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(requestConnection({ query, format, runId: run.runId })),
+        signal: run.controller?.signal
+      });
+      const contentType = response.headers.get('content-type') || '';
+      if (!response.ok || contentType.includes('application/json') && format !== 'json') {
+        const payload = await response.json().catch(() => ({}));
+        const error = new Error(payload.error || `Export failed with status ${response.status}`);
+        Object.assign(error, payload);
+        throw error;
+      }
+      const blob = await response.blob();
+      const fileName = /filename="([^"]+)"/.exec(response.headers.get('content-disposition') || '')?.[1] || `data-workbench-export.${format}`;
+      const limit = Number(response.headers.get('x-export-row-limit') || state.health?.exportRowLimit || 0);
+      endRun(run);
+      downloadBlob(blob, fileName);
+      setStatus('success', `Exported the full result as ${format.toUpperCase()} in ${formatElapsed(Date.now() - run.startedAt)}.${limit ? ` Exports stop at ${limit.toLocaleString()} rows; the audit log records the exact count.` : ''}`);
+    } catch (error) {
+      endRun(run);
+      if (isAbortOrCancel(error) || run.cancelRequested) {
+        setStatus('neutral', 'Export cancelled.');
+        return;
+      }
+      setStatus('error', `Export failed: ${error.message}`);
+    }
+  }
+
+  function renderTruncationBanner() {
+    const banner = $('resultsTruncatedBanner');
+    if (!banner) return;
+    const truncated = Boolean(state.results.truncated) && state.results.rows.length > 0;
+    banner.classList.toggle('hidden', !truncated);
+    if (!truncated) return;
+    const loaded = state.results.rows.length;
+    const canExport = Boolean(String(state.results.sourceQuery || '').trim());
+    $('resultsTruncatedText').textContent = canExport
+      ? `Showing the first ${loaded.toLocaleString()} rows. More rows exist beyond the grid's row limit — export all to get the full result.`
+      : `Showing the first ${loaded.toLocaleString()} rows. More rows exist beyond the grid's row limit.`;
+    ['exportAllCsvBtn', 'exportAllJsonBtn'].forEach((id) => {
+      if ($(id)) $(id).classList.toggle('hidden', !canExport);
+    });
   }
 
   function loadTemplateIntoEditor(query, message) {
@@ -7778,7 +7945,7 @@ window.createConsoleApp = function createConsoleApp() {
 
   // One run at a time: a second Ctrl+Enter while a query is still running would otherwise
   // race the first for the results grid.
-  function beginRun({ kind, label }) {
+  function beginRun({ kind, label, metaTarget = 'resultsMeta' }) {
     const run = {
       runId: newRunId(),
       kind,
@@ -7792,7 +7959,7 @@ window.createConsoleApp = function createConsoleApp() {
     const tick = () => {
       if (state.activeRun !== run) return;
       const text = `${run.cancelRequested ? 'Cancelling' : run.label.replace(/\.\.\.$/, '')}... ${formatElapsed(Date.now() - run.startedAt)}`;
-      if ($('resultsMeta')) $('resultsMeta').textContent = text;
+      if ($(metaTarget)) $(metaTarget).textContent = text;
     };
     run.timer = setInterval(tick, 250);
     renderRunControls();
@@ -7947,6 +8114,8 @@ window.createConsoleApp = function createConsoleApp() {
         totalRows: Number(payload.totalRows ?? (payload.rows || []).length),
         truncated: Boolean(payload.truncated),
         elapsedMs: payload.elapsedMs ?? (Date.now() - run.startedAt),
+        // Writes never reach this point (they go through confirmPendingAction), so this is a read.
+        sourceQuery: query,
         visualKind: 'query',
         tabTitle: state.activeObject ? `Query ${state.activeObject}` : 'Query result',
         tabKey: ''
@@ -7954,7 +8123,7 @@ window.createConsoleApp = function createConsoleApp() {
       addQueryHistory(query);
       const rowCount = Array.isArray(payload.rows) ? payload.rows.length : 0;
       const affected = Number(payload.rowsAffected || 0);
-      setStatus('success', rowCount ? `Returned ${rowCount} rows${payload.truncated ? ' (truncated in app)' : ''}.` : `Completed. ${affected ? `${affected} row${affected === 1 ? '' : 's'} affected.` : 'No rows returned.'}`);
+      setStatus('success', rowCount ? `Returned ${payload.truncated ? 'the first ' : ''}${rowCount} rows${payload.truncated ? '; more rows exist' : ''}.` : `Completed. ${affected ? `${affected} row${affected === 1 ? '' : 's'} affected.` : 'No rows returned.'}`);
       if (rowCount > 0) {
         // Advisory, fire-and-forget: decides whether to show the Edit results
         // button. See checkResultEditability's own comment for the staleness
@@ -8446,6 +8615,9 @@ window.createConsoleApp = function createConsoleApp() {
     $('decreaseResultsTextBtn').onclick = () => changeResultsTextSize(-0.04);
     $('increaseResultsTextBtn').onclick = () => changeResultsTextSize(0.04);
     $('exportCsvBtn').onclick = exportCsv;
+    $('exportJsonBtn').onclick = exportJson;
+    $('exportAllCsvBtn').onclick = () => exportAllResults('csv');
+    $('exportAllJsonBtn').onclick = () => exportAllResults('json');
     if ($('scrollResultsLeftBtn')) {
       $('scrollResultsLeftBtn').onclick = () => scrollResultsHorizontal(-1);
     }
@@ -8626,6 +8798,18 @@ window.createConsoleApp = function createConsoleApp() {
         }
       };
     }
+    [
+      ['contextCopyInsertBtn', () => state.results.contextRow && copyRowsAs('insert', [state.results.contextRow])],
+      ['contextCopyAllInsertBtn', () => copyRowsAs('insert')],
+      ['contextCopyMarkdownBtn', () => copyRowsAs('markdown')]
+    ].forEach(([id, action]) => {
+      if ($(id)) {
+        $(id).onclick = () => {
+          action();
+          $('resultsContextMenu')?.classList.add('hidden');
+        };
+      }
+    });
     if (window.__dataWorkbenchKeydownHandler) {
       document.removeEventListener('keydown', window.__dataWorkbenchKeydownHandler);
     }

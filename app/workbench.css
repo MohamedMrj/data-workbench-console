@@ -1942,6 +1942,25 @@ html[data-ambient-motion='enabled'] .shell-orbit-b {
   line-height: 1.4;
 }
 
+.results-truncated-banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+  margin: 0 0 10px;
+  padding: 8px 14px;
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 34%, transparent);
+  font-size: 0.86rem;
+  line-height: 1.4;
+}
+
+.results-truncated-banner.hidden {
+  display: none;
+}
+
 .pending-edits-bar {
   display: flex;
   flex-wrap: wrap;

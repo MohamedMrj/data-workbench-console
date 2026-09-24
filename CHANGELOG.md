@@ -5,6 +5,49 @@ All notable Data Workbench Console changes are tracked here.
 The in-app version is read from `package.json` and exposed through `/api/version`
 together with the current git commit and build information.
 
+## 1.5.1 - 2026-09-24
+
+Results you can trust: the grid now says when a result was cut off, and a full result can be
+exported from the server instead of only the rows the grid loaded.
+
+### Added
+
+- **Export all as CSV / JSON.** A banner on a cut-off result offers to re-run the same read query
+  on the server and stream every row into a file, up to the new `EXPORT_ROW_LIMIT` (default
+  100,000). Rows are streamed with back-pressure, so a large export does not build up in memory,
+  and the database request is held open only for the download. Only plain reads qualify: writes,
+  `SELECT ... INTO` and batches are refused. The editor's `Cancel` stops an export, closing the
+  tab stops the query on the server, and the audit log records each export's exact row count as
+  a new `query_export` event. `EXPORT_REQUEST_TIMEOUT_MS` (default 10 minutes) bounds the whole
+  export, because the normal 2-minute request timeout keeps running while a slow download has the
+  query paused.
+- **Export JSON** of the loaded rows, next to `Export CSV`.
+- **Copy as INSERT and Markdown** from the results context menu: one row or all loaded rows as
+  `INSERT ... VALUES` statements (batched at SQL Server's 1000-row limit), or all loaded rows as a
+  Markdown table. INSERT targets the table when the result is editable, otherwise a
+  `[target_table]` placeholder. It starts from the real cell values, so SQL NULL becomes `NULL`
+  while the string `'null'` stays a string, and it leaves out `timestamp`/`rowversion` columns.
+
+### Fixed
+
+- Fixed a result that hit the row limit never saying so. The read was capped in SQL at exactly
+  `RESPONSE_ROW_LIMIT` rows, so "exactly 250 rows" and "250 of several million" looked the same and
+  the `truncated` flag could never become true; exporting such a result silently wrote only the
+  first 250 rows. The read now fetches one extra row to detect more data, the grid shows a banner
+  ("showing the first N rows; more rows exist"), and the loaded count is never presented as a
+  total. The toolbar's CSV/JSON export says when it wrote only the loaded rows.
+
+### Verification
+
+- `server-unit.test.mjs` covers the export's CSV formula escaping, NULL and binary encoding,
+  column de-duplication, multi-recordset output, the server-side row limit cancelling the
+  database request, errors before the first row, the browser closing the download, and
+  `runHandler` passing a streamed body through with the security headers.
+- `route-contract.test.mjs` asserts the export route refuses writes, `SELECT ... INTO` and unknown
+  formats before touching a database.
+- `ui-smoke.mjs` covers the truncation banner and meta text, Export all posting the query with a
+  run id and saving the server's file under its name, Export JSON, and copy as INSERT/Markdown.
+
 ## 1.5.0 - 2026-09-24
 
 A faster SQL editor for daily work: run one statement at a time, cancel long queries, get

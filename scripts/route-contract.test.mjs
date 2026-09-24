@@ -192,6 +192,26 @@ try {
   assert.equal(selectIntoReview.payload.action, 'SELECT INTO');
   assert.equal(selectIntoReview.payload.expectedText, 'EXECUTE SELECT INTO');
 
+  // Export all runs the statement uncapped by the grid limit, so only reads may use it; both
+  // refusals happen before any database connection.
+  const exportWrite = await request('/api/query/export', {
+    method: 'POST',
+    body: { ...safeSqlLogin, query: 'DELETE FROM dbo.Alerts WHERE AlertId = 1', format: 'csv' }
+  });
+  assert.equal(exportWrite.response.status, 400);
+  assert.match(exportWrite.payload.error, /Only read/);
+  const exportSelectInto = await request('/api/query/export', {
+    method: 'POST',
+    body: { ...safeSqlLogin, query: 'SELECT * INTO dbo.Copy FROM dbo.Alerts', format: 'csv' }
+  });
+  assert.equal(exportSelectInto.response.status, 400);
+  const exportBadFormat = await request('/api/query/export', {
+    method: 'POST',
+    body: { ...safeSqlLogin, query: 'SELECT 1', format: 'xlsx' }
+  });
+  assert.equal(exportBadFormat.response.status, 400);
+  assert.match(exportBadFormat.payload.error, /csv or json/);
+
   const cancelBadId = await request('/api/query/cancel', { method: 'POST', body: { runId: 'nope' } });
   assert.equal(cancelBadId.response.status, 400);
   const cancelUnknown = await request('/api/query/cancel', {
