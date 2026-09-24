@@ -299,6 +299,7 @@ function ResultsCard() {
           <button id="copyResultsBtn" className="ghost-btn small">Copy rows</button>
           <button id="exportCsvBtn" className="ghost-btn small">Export CSV</button>
           <button id="exportJsonBtn" className="ghost-btn small" type="button">Export JSON</button>
+          <button id="compareTabsBtn" className="ghost-btn small" type="button">Compare tabs</button>
           <button id="scrollResultsLeftBtn" className="ghost-btn small result-scroll-btn" type="button" data-tooltip="Scroll result columns left." aria-label="Scroll result columns left">← Columns</button>
           <button id="scrollResultsRightBtn" className="ghost-btn small result-scroll-btn" type="button" data-tooltip="Scroll result columns right." aria-label="Scroll result columns right">Columns →</button>
           <button id="prevPageBtn" className="ghost-btn small">Prev</button>
@@ -787,6 +788,66 @@ export default function WorkbenchShell({ pageMode = 'sql' }) {
         </div>
       </div>
 
+      <div id="compareDialog" className="modal-backdrop hidden" aria-hidden="true">
+        <div className="modal-card compare-card" role="dialog" aria-modal="true" aria-labelledby="compareDialogTitle">
+          <div className="modal-header">
+            <h2 id="compareDialogTitle">Compare schema</h2>
+            <button id="closeCompareBtn" className="icon-btn" type="button" aria-label="Close">×</button>
+          </div>
+          <p id="compareLeftSummary" className="modal-message" />
+          <div className="editor-controls-grid">
+            <label className="field compact-field">
+              <span>Compare with</span>
+              <select id="compareProfileSelect" />
+            </label>
+            <label className="field compact-field">
+              <span>Object on that side</span>
+              <input id="compareRightObjectInput" type="text" autoComplete="off" />
+            </label>
+            <label id="comparePasswordField" className="field compact-field hidden">
+              <span>Password for that profile <em className="tiny-note">(not stored)</em></span>
+              <input id="comparePasswordInput" type="password" autoComplete="off" />
+            </label>
+            <label className="field compact-field compare-checkbox">
+              <input id="compareRowCountsInput" type="checkbox" defaultChecked />
+              <span>Also compare row counts</span>
+            </label>
+          </div>
+          <div className="button-row wrap right modal-actions">
+            <button id="cancelCompareBtn" className="ghost-btn" type="button">Cancel</button>
+            <button id="runCompareBtn" className="primary-btn" type="button">Compare</button>
+          </div>
+        </div>
+      </div>
+
+      <div id="compareTabsDialog" className="modal-backdrop hidden" aria-hidden="true">
+        <div className="modal-card compare-card" role="dialog" aria-modal="true" aria-labelledby="compareTabsDialogTitle">
+          <div className="modal-header">
+            <h2 id="compareTabsDialogTitle">Compare result tabs</h2>
+            <button id="closeCompareTabsBtn" className="icon-btn" type="button" aria-label="Close">×</button>
+          </div>
+          <p className="modal-message">Compares the rows loaded in two result tabs. The difference opens as a new result tab you can sort, copy and export.</p>
+          <div className="editor-controls-grid">
+            <label className="field compact-field">
+              <span>Left tab</span>
+              <select id="compareTabsLeftSelect" />
+            </label>
+            <label className="field compact-field">
+              <span>Right tab</span>
+              <select id="compareTabsRightSelect" />
+            </label>
+            <label className="field compact-field">
+              <span>Match rows by <em className="tiny-note">(key columns, comma-separated; blank = row order)</em></span>
+              <input id="compareTabsKeyInput" type="text" autoComplete="off" placeholder="e.g. AlertId" />
+            </label>
+          </div>
+          <div className="button-row wrap right modal-actions">
+            <button id="cancelCompareTabsBtn" className="ghost-btn" type="button">Cancel</button>
+            <button id="runCompareTabsBtn" className="primary-btn" type="button">Compare tabs</button>
+          </div>
+        </div>
+      </div>
+
       <div id="supportDialog" className="modal-backdrop hidden" aria-hidden="true">
         <div className="modal-card support-card">
           <div className="modal-header">
@@ -894,12 +955,19 @@ export default function WorkbenchShell({ pageMode = 'sql' }) {
             <section className="tools-panel">
               <div className="section-title-row tight">
                 <div>
-                  <div className="eyebrow">Workspace</div>
-                  <h3>Scratchpads</h3>
+                  <div className="eyebrow">Library</div>
+                  <h3>Saved queries</h3>
                 </div>
-                <button id="saveScratchpadBtn" className="ghost-btn small" type="button">Save SQL</button>
+                <button id="saveQueryBtn" className="ghost-btn small" type="button">Save SQL</button>
               </div>
-              <div id="scratchpadList" className="tools-list" />
+              <div className="saved-query-filters">
+                <input id="savedQuerySearchInput" type="text" placeholder="Search saved queries..." autoComplete="off" aria-label="Search saved queries" />
+                <label className="compare-checkbox">
+                  <input id="savedQueryThisProfileInput" type="checkbox" />
+                  <span>This profile only</span>
+                </label>
+              </div>
+              <div id="savedQueryList" className="tools-list" />
             </section>
 
             <section className="tools-panel">

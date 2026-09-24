@@ -300,6 +300,27 @@ try {
   assert.equal(savedWindowsDelete.response.status, 200);
   assert.equal(savedWindowsDelete.payload.success, true);
 
+  // Saved query library round trip.
+  const queryCreate = await request('/api/saved-queries', {
+    method: 'POST',
+    body: { name: 'Contract query', folder: 'Contract', query: 'SELECT 1 AS n' }
+  });
+  assert.equal(queryCreate.response.status, 200);
+  assert.equal(queryCreate.payload.item.folder, 'Contract');
+  const queryUpdate = await request('/api/saved-queries', {
+    method: 'POST',
+    body: { name: 'Contract query', folder: 'Contract', query: 'SELECT 2 AS n' }
+  });
+  assert.equal(queryUpdate.payload.item.id, queryCreate.payload.item.id);
+  const queryList = await request('/api/saved-queries');
+  assert.equal(queryList.payload.items.filter((item) => item.name === 'Contract query').length, 1);
+  const queryMissingName = await request('/api/saved-queries', { method: 'POST', body: { query: 'SELECT 1' } });
+  assert.equal(queryMissingName.response.status, 400);
+  const queryDelete = await request('/api/saved-queries', { method: 'DELETE', body: { id: queryCreate.payload.item.id } });
+  assert.equal(queryDelete.response.status, 200);
+  const queryDeleteAgain = await request('/api/saved-queries', { method: 'DELETE', body: { id: queryCreate.payload.item.id } });
+  assert.equal(queryDeleteAgain.response.status, 404);
+
   // A profile tagged prod (the tag alone, never the host name) makes every write on that
   // database need a phrase naming the profile. The batch review never touches the database.
   const prodTagged = await request('/api/saved-connections', {

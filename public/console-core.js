@@ -16,6 +16,7 @@ window.createConsoleApp = function createConsoleApp() {
   const PINNED_OBJECTS_KEY = 'dataWorkbenchPinnedObjectsV1';
   const RECENT_OBJECTS_KEY = 'dataWorkbenchRecentObjectsV1';
   const SCRATCHPADS_KEY = 'dataWorkbenchScratchpadsV1';
+  const SCRATCHPADS_IMPORTED_KEY = 'dataWorkbenchScratchpadsImportedV1';
   const SUPPORT_EMAIL = 'mohamed.al-mefrej@hotmail.com';
   const RESULT_TABS_MAX = 5;
   const LIFECYCLE_HEARTBEAT_MS = 10_000;
@@ -113,7 +114,9 @@ window.createConsoleApp = function createConsoleApp() {
     dependencyViewBtn: 'Load dependency metadata for the selected object when the source exposes it.',
     rowCountInsightBtn: 'Estimate or count rows for the selected object depending on source support.',
     topValuesInsightBtn: 'Profile common values plus null and blank counts for selected columns.',
-    schemaCompareBtn: 'Compare the active object with another saved-profile-based source object.',
+    schemaCompareBtn: 'Compare the active object\'s columns (and optionally row counts) with an object on this connection or on any saved profile.',
+    compareProfileSelect: 'The right-hand side: this connection, or any saved profile such as dev versus prod.',
+    runCompareBtn: 'Run the comparison. It only reads metadata (and row counts when ticked).',
     resultShapeBtn: 'Inspect result metadata for a query or selected object without changing data.',
     queryPlanBtn: 'Request an estimated query plan for read-only SQL when supported and permitted.',
     loadAuditBtn: 'Open audit filters and load matching audit events.',
@@ -125,6 +128,7 @@ window.createConsoleApp = function createConsoleApp() {
     copyResultsBtn: 'Copy the currently loaded result rows.',
     exportCsvBtn: 'Export the currently loaded result rows as CSV.',
     exportJsonBtn: 'Export the currently loaded result rows as JSON.',
+    compareTabsBtn: 'Compare the loaded rows of two result tabs, matched by key columns, and open the differences as a new tab.',
     profileEnvironmentSelect: 'Tag this profile. On a Prod profile every write and procedure needs a typed phrase naming the profile, enforced by the server.',
     exportAllCsvBtn: 'Re-run this query on the server and download every row as CSV, not just the rows loaded in the grid.',
     exportAllJsonBtn: 'Re-run this query on the server and download every row as JSON, not just the rows loaded in the grid.',
@@ -148,7 +152,8 @@ window.createConsoleApp = function createConsoleApp() {
     clearProcedureScriptBtn: 'Clear the stored procedure script editor.',
     runProcedureScriptBtn: 'Run the stored procedure script through the SQL confirmation path.',
     commandSearchInput: 'Search quick actions available in Workbench Tools.',
-    saveScratchpadBtn: 'Save the current SQL editor text as a local scratchpad.',
+    saveQueryBtn: 'Save the current SQL to the query library (Ctrl+S). Use "Folder / Name" to file it in a folder.',
+    savedQueryThisProfileInput: 'Show only queries saved while connected to this profile, plus queries saved with no profile.',
     copyDiagnosticsBtn: 'Copy safe diagnostics without passwords, secrets, or result data.',
     supportNameInput: 'Enter your name so the support request has a contact person.',
     supportEmailInput: 'Enter the email address support should reply to.',
@@ -270,6 +275,8 @@ window.createConsoleApp = function createConsoleApp() {
     suggestColumnRequests: {},
     editorTabs: [],
     activeEditorTabId: '',
+    savedQueries: [],
+    savedQueriesError: '',
     pendingAction: null,
     lastFocusedElement: null,
     connectionTest: null,
@@ -4812,6 +4819,11 @@ window.createConsoleApp = function createConsoleApp() {
     };
   }
 
+  // ─── Saved query library ──────────────────────────────────────────────────
+  // Server-side, so saved queries survive a cleared browser and are shared by every tab. The
+  // old localStorage scratchpads are imported once (into a "Scratchpads" folder) and their key
+  // is left in place, so nothing is lost if the import is interrupted.
+
   function loadScratchpads() {
     try {
       const parsed = JSON.parse(safeGet(SCRATCHPADS_KEY) || '[]');
@@ -4821,62 +4833,140 @@ window.createConsoleApp = function createConsoleApp() {
     }
   }
 
-  function saveScratchpads(items) {
-    safeSet(SCRATCHPADS_KEY, JSON.stringify((items || []).slice(0, 10)));
+  function currentProfileId() {
+    const signature = savedProfileSignature(connection());
+    return state.connectionHistory.find((item) => savedProfileSignature(item) === signature)?.id || '';
   }
 
-  function saveCurrentScratchpad() {
+  async function importScratchpadsOnce() {
+    if (safeGet(SCRATCHPADS_IMPORTED_KEY) === '1') return;
+    const pads = loadScratchpads().filter((item) => String(item?.query || '').trim());
+    for (const pad of pads) {
+      await api('/api/saved-queries', {
+        method: 'POST',
+        data: { name: String(pad.name || 'Scratchpad').slice(0, 120), folder: 'Scratchpads', query: String(pad.query) }
+      });
+    }
+    safeSet(SCRATCHPADS_IMPORTED_KEY, '1');
+  }
+
+  async function loadSavedQueries() {
+    try {
+      await importScratchpadsOnce();
+    } catch {
+      // Retried on the next load; the scratchpads are still in local storage.
+    }
+    try {
+      const payload = await api('/api/saved-queries');
+      state.savedQueries = Array.isArray(payload.items) ? payload.items : [];
+    } catch (error) {
+      state.savedQueriesError = error.message;
+    }
+    renderSavedQueries();
+  }
+
+  // "Reports / Monthly Viva" files the query under Reports; the last segment is the name.
+  function parseSavedQueryName(raw) {
+    const parts = String(raw || '').split('/').map((part) => part.trim()).filter(Boolean);
+    const name = parts.pop() || '';
+    return { name, folder: parts.join(' / ') };
+  }
+
+  async function saveCurrentQuery() {
     const query = getQuery().trim();
     if (!query) {
-      setStatus('error', 'Write SQL before saving a scratchpad.');
+      setStatus('error', 'Write SQL before saving it to the query library.');
       return;
     }
-    const summary = currentActionSummary(query);
-    const name = window.prompt('Scratchpad name', `${summary.action} ${state.activeObject || state.activeProcedure || 'SQL'}`.trim());
-    if (!name) {
-      return;
+    const tab = activeEditorTab();
+    const suggested = tab && !/^Query \d+$/.test(tab.title) ? tab.title : `${currentActionSummary(query).action} ${state.activeObject || 'SQL'}`.trim();
+    const raw = window.prompt('Save query as (use "Folder / Name" to file it in a folder)', suggested);
+    if (!raw) return;
+    const { name, folder } = parseSavedQueryName(raw);
+    if (!name) return;
+    try {
+      const payload = await api('/api/saved-queries', {
+        method: 'POST',
+        data: { name, folder, query, profileId: currentProfileId() }
+      });
+      const saved = payload.item;
+      state.savedQueries = [...state.savedQueries.filter((item) => item.id !== saved.id), saved];
+      if (tab) {
+        tab.title = saved.name.slice(0, 40);
+        renderEditorTabs();
+        persistWorkspaceState('sql');
+      }
+      renderSavedQueries();
+      setStatus('success', `Saved "${saved.folder ? `${saved.folder} / ` : ''}${saved.name}" to the query library.`);
+    } catch (error) {
+      setStatus('error', `Could not save the query: ${error.message}`);
     }
-    const item = {
-      id: `${Date.now()}-${Math.random().toString(16).slice(2, 8)}`,
-      name: String(name).slice(0, 80),
-      query: query.slice(0, 20000),
-      connectionSignature: connectionSignature(),
-      database: connection().database,
-      savedAt: new Date().toISOString()
-    };
-    saveScratchpads([item, ...loadScratchpads().filter((existing) => existing.name !== item.name)]);
-    renderScratchpads();
-    setStatus('success', `Scratchpad "${item.name}" saved.`);
   }
 
-  function renderScratchpads() {
-    const list = $('scratchpadList');
-    if (!list) {
-      return;
+  function openSavedQuery(item) {
+    const tab = activeEditorTab();
+    // Opening into a tab that already holds SQL would overwrite it, so that goes to a new tab.
+    if (getQuery().trim() && state.editorTabs.length < EDITOR_TABS_MAX) {
+      newEditorTab(item.query);
+    } else {
+      setQuery(item.query);
     }
-    const items = loadScratchpads();
+    const target = activeEditorTab() || tab;
+    if (target) {
+      target.title = String(item.name || target.title).slice(0, 40);
+      renderEditorTabs();
+      persistWorkspaceState('sql');
+    }
+    closeWorkbenchTools();
+    setStatus('success', `Opened saved query "${item.name}".`);
+  }
+
+  function renderSavedQueries() {
+    const list = $('savedQueryList');
+    if (!list) return;
+    const search = String($('savedQuerySearchInput')?.value || '').trim().toLowerCase();
+    const profileOnly = Boolean($('savedQueryThisProfileInput')?.checked);
+    const profileId = currentProfileId();
+    const items = (state.savedQueries || []).filter((item) => (
+      (!search || `${item.folder} ${item.name} ${item.query}`.toLowerCase().includes(search))
+      && (!profileOnly || !item.profileId || item.profileId === profileId)
+    ));
     if (!items.length) {
-      list.innerHTML = '<div class="empty-note">Saved SQL scratchpads will appear here.</div>';
+      list.innerHTML = `<div class="empty-note">${esc(state.savedQueriesError
+        ? `The query library could not be loaded: ${state.savedQueriesError}`
+        : state.savedQueries.length ? 'No saved queries match.' : 'Save SQL from the editor (Ctrl+S) to build your query library.')}</div>`;
       return;
     }
-    list.innerHTML = items.map((item) => (
-      `<div class="tools-item"><div><strong>${esc(item.name)}</strong><span>${esc(item.database || 'local')} • ${esc(formatTimestamp(item.savedAt))}</span></div><button class="ghost-btn" data-load-scratchpad="${esc(item.id)}" type="button">Load</button><button class="ghost-btn" data-delete-scratchpad="${esc(item.id)}" type="button">Delete</button></div>`
-    )).join('');
-    list.querySelectorAll('[data-load-scratchpad]').forEach((button) => {
+    const folders = new Map();
+    items
+      .slice()
+      .sort((left, right) => String(left.folder).localeCompare(String(right.folder)) || String(left.name).localeCompare(String(right.name)))
+      .forEach((item) => {
+        const key = item.folder || '';
+        if (!folders.has(key)) folders.set(key, []);
+        folders.get(key).push(item);
+      });
+    list.innerHTML = [...folders.entries()].map(([folder, entries]) => `<div class="saved-query-folder">${folder ? `<h4>${esc(folder)}</h4>` : ''}${entries.map((item) => (
+      `<div class="tools-item"><div><strong>${esc(item.name)}</strong><span>${esc(item.query.replace(/\s+/g, ' ').slice(0, 90))}</span></div><button class="ghost-btn" data-open-saved-query="${esc(item.id)}" type="button">Open</button><button class="ghost-btn" data-delete-saved-query="${esc(item.id)}" type="button">Delete</button></div>`
+    )).join('')}</div>`).join('');
+    list.querySelectorAll('[data-open-saved-query]').forEach((button) => {
       button.onclick = () => {
-        const item = loadScratchpads().find((scratchpad) => scratchpad.id === button.dataset.loadScratchpad);
-        if (!item) return;
-        setQuery(item.query || '');
-        closeWorkbenchTools();
-        setStatus('success', `Scratchpad "${item.name}" loaded.`);
+        const item = state.savedQueries.find((entry) => entry.id === button.dataset.openSavedQuery);
+        if (item) openSavedQuery(item);
       };
     });
-    list.querySelectorAll('[data-delete-scratchpad]').forEach((button) => {
-      button.onclick = () => {
-        const next = loadScratchpads().filter((scratchpad) => scratchpad.id !== button.dataset.deleteScratchpad);
-        saveScratchpads(next);
-        renderScratchpads();
-        setStatus('success', 'Scratchpad deleted.');
+    list.querySelectorAll('[data-delete-saved-query]').forEach((button) => {
+      button.onclick = async () => {
+        const item = state.savedQueries.find((entry) => entry.id === button.dataset.deleteSavedQuery);
+        if (!item || !window.confirm(`Delete saved query "${item.name}"?`)) return;
+        try {
+          await api('/api/saved-queries', { method: 'DELETE', data: { id: item.id } });
+          state.savedQueries = state.savedQueries.filter((entry) => entry.id !== item.id);
+          renderSavedQueries();
+          setStatus('success', `Deleted saved query "${item.name}".`);
+        } catch (error) {
+          setStatus('error', `Could not delete the query: ${error.message}`);
+        }
       };
     });
   }
@@ -4889,7 +4979,7 @@ window.createConsoleApp = function createConsoleApp() {
       { id: 'format-sql', label: 'Format SQL', detail: 'Format the current SQL editor text.', shortcut: 'Ctrl+Shift+F', run: () => formatSql() },
       { id: 'new-editor-tab', label: 'New editor tab', detail: 'Open another SQL buffer next to the current one.', shortcut: 'Ctrl+Alt+N', run: () => newEditorTab() },
       { id: 'shortcuts', label: 'Keyboard shortcuts', detail: 'Show every keyboard shortcut.', shortcut: '?', run: () => openShortcutsDialog() },
-      { id: 'save-scratchpad', label: 'Save scratchpad', detail: 'Store the current SQL locally for quick restore.', shortcut: 'Local', run: () => saveCurrentScratchpad() },
+      { id: 'save-query', label: 'Save query', detail: 'Save the current SQL to the query library.', shortcut: 'Ctrl+S', run: () => saveCurrentQuery() },
       { id: 'settings', label: 'App settings', detail: 'Edit local .env settings with descriptions and validation.', shortcut: '.env', run: () => openEnvSettingsDialog() },
       { id: 'audit', label: 'Open audit filters', detail: 'Load or filter recent audit events.', shortcut: 'Audit', run: () => openAuditFilters() },
       { id: 'profile', label: 'Profile active object', detail: 'Run read-only object profiling.', shortcut: 'Read', run: () => loadObjectProfile().catch((error) => setStatus('error', error.message)) },
@@ -4922,7 +5012,7 @@ window.createConsoleApp = function createConsoleApp() {
     renderCommandPalette();
     renderInfoGrid($('sqlExplainPanel'), sqlExplanationRows());
     renderCapabilities();
-    renderScratchpads();
+    renderSavedQueries();
     renderInfoGrid($('diagnosticsPanel'), diagnosticRows());
   }
 
@@ -4953,6 +5043,7 @@ window.createConsoleApp = function createConsoleApp() {
         { group: 'Editor', keys: 'Ctrl+Space', label: 'Show table and column suggestions' },
         { group: 'Editor', keys: 'Tab / Enter', label: 'Accept the highlighted suggestion' },
         { group: 'Editor', keys: 'Ctrl+Shift+F', label: 'Format SQL' },
+        { group: 'Editor', keys: 'Ctrl+S', label: 'Save the SQL to the query library' },
         { group: 'Editor tabs', keys: 'Ctrl+Alt+N', label: 'New editor tab' },
         { group: 'Editor tabs', keys: 'Ctrl+Alt+W', label: 'Close the editor tab' },
         { group: 'Editor tabs', keys: 'Ctrl+Alt+PageDown / PageUp', label: 'Next / previous editor tab' }
@@ -7754,23 +7845,94 @@ window.createConsoleApp = function createConsoleApp() {
     }
   }
 
-  async function loadSchemaCompare() {
+  // Schema compare used to send the current connection as both sides, so it could only ever
+  // compare two objects in the same database. The dialog lets the right side be any saved
+  // profile; its password (when the auth mode needs one) is asked for here and never stored.
+  function openCompareDialog() {
     if (!ensureReadyConnection('comparing schemas')) return;
     if (!state.activeObject) {
       setStatus('error', 'Select a table or view first.');
       return;
     }
-    setStatus('loading', `Comparing ${state.activeObject}...`);
+    const current = connection();
+    const select = $('compareProfileSelect');
+    const profiles = state.connectionHistory || [];
+    select.innerHTML = [
+      `<option value="">Current connection (${esc(current.database)})</option>`,
+      ...profiles.map((item, index) => `<option value="${index}">${esc(item.profileName || item.database)}${item.environment ? ` [${esc(ENVIRONMENT_LABELS[item.environment] || item.environment)}]` : ''} — ${esc(item.server)} / ${esc(item.database)}</option>`)
+    ].join('');
+    $('compareLeftSummary').textContent = `Left side: ${state.activeObject} on ${current.server} / ${current.database}.`;
+    $('compareRightObjectInput').value = $('advancedSourceObjectSelect')?.value || state.activeObject;
+    $('comparePasswordInput').value = '';
+    syncComparePasswordField();
+    const dialog = $('compareDialog');
+    state.lastFocusedElement = document.activeElement;
+    dialog.classList.remove('hidden');
+    dialog.setAttribute('aria-hidden', 'false');
+    select.focus();
+  }
+
+  function closeCompareDialog() {
+    const dialog = $('compareDialog');
+    if (!dialog || dialog.classList.contains('hidden')) return;
+    dialog.classList.add('hidden');
+    dialog.setAttribute('aria-hidden', 'true');
+    $('comparePasswordInput').value = '';
+    state.lastFocusedElement?.focus?.();
+    state.lastFocusedElement = null;
+  }
+
+  function selectedCompareProfile() {
+    const value = $('compareProfileSelect')?.value;
+    return value === '' || value === undefined ? null : (state.connectionHistory || [])[Number(value)] || null;
+  }
+
+  function syncComparePasswordField() {
+    const profile = selectedCompareProfile();
+    const needsPassword = Boolean(profile) && authModeNeedsPassword(profile.authMode);
+    $('comparePasswordField')?.classList.toggle('hidden', !needsPassword);
+  }
+
+  function compareRightConnection() {
+    const profile = selectedCompareProfile();
+    if (!profile) return requestConnection();
+    return {
+      sourceType: profile.sourceType,
+      authMode: profile.authMode,
+      server: profile.server,
+      port: profile.port,
+      database: profile.database,
+      domain: profile.domain,
+      username: profile.username,
+      password: authModeNeedsPassword(profile.authMode) ? $('comparePasswordInput').value : '',
+      trustServerCertificate: profile.trustServerCertificate !== false
+    };
+  }
+
+  async function loadSchemaCompare() {
+    const profile = selectedCompareProfile();
+    const rightObject = String($('compareRightObjectInput').value || '').trim() || state.activeObject;
+    if (profile && authModeNeedsPassword(profile.authMode) && !$('comparePasswordInput').value) {
+      setStatus('error', `Enter the password for ${profile.profileName || profile.database} to compare with it.`);
+      $('comparePasswordInput').focus();
+      return;
+    }
+    const rightConnection = compareRightConnection();
+    const rightLabel = profile ? (profile.profileName || profile.database) : 'current connection';
+    const includeRowCounts = Boolean($('compareRowCountsInput')?.checked);
+    closeCompareDialog();
+    setStatus('loading', `Comparing ${state.activeObject} with ${rightObject} (${rightLabel})...`);
     resetResultsForRun(`Comparing ${state.activeObject}...`);
     try {
       const payload = await api('/api/schema-compare', {
         method: 'POST',
         data: {
           leftConnection: requestConnection(),
-          rightConnection: requestConnection(),
+          rightConnection,
           leftObject: state.activeObject,
-          rightObject: $('advancedSourceObjectSelect')?.value || state.activeObject,
-          objectType: state.activeObjectType || 'table'
+          rightObject,
+          objectType: state.activeObjectType || 'table',
+          includeRowCounts
         }
       });
       setResults(payload.columns || [], payload.rows || [], {
@@ -7778,13 +7940,144 @@ window.createConsoleApp = function createConsoleApp() {
         output: payload.summary || {},
         visualKind: 'query',
         visualObject: state.activeObject,
-        tabTitle: `Compare ${state.activeObject}`,
-        tabKey: `schemaCompare:${state.activeObject}:${$('advancedSourceObjectSelect')?.value || state.activeObject}`
+        tabTitle: profile ? `Compare ${state.activeObject} vs ${rightLabel}` : `Compare ${state.activeObject}`,
+        tabKey: `schemaCompare:${state.activeObject}:${profile?.id || 'current'}:${rightObject}`
       });
-      setStatus('success', `Schema compare found ${payload.differences?.length || 0} difference(s).`);
+      const rowNote = payload.rowCounts && payload.rowCounts.left !== null && payload.rowCounts.right !== null
+        ? ` Rows: ${Number(payload.rowCounts.left).toLocaleString()} vs ${Number(payload.rowCounts.right).toLocaleString()}.`
+        : '';
+      setStatus('success', `Schema compare with ${rightLabel} found ${payload.differences?.length || 0} column difference(s).${rowNote}`);
     } catch (error) {
       renderResultError(error, { title: 'Schema compare failed', operation: 'schema compare', object: state.activeObject });
     }
+  }
+
+  // ─── Compare two result tabs ──────────────────────────────────────────────
+
+  function comparableTabs() {
+    syncActiveResultsToTab();
+    return state.resultTabs.filter((tab) => tab.workspace === state.workspace && tab.results?.columns?.length);
+  }
+
+  function openCompareTabsDialog() {
+    const tabs = comparableTabs();
+    if (tabs.length < 2) {
+      setStatus('error', 'Open at least two result tabs with rows to compare them.');
+      return;
+    }
+    const options = tabs.map((tab) => `<option value="${esc(tab.id)}">${esc(tab.title)}</option>`).join('');
+    $('compareTabsLeftSelect').innerHTML = options;
+    $('compareTabsRightSelect').innerHTML = options;
+    $('compareTabsLeftSelect').value = state.activeResultTabId && tabs.some((tab) => tab.id === state.activeResultTabId) ? state.activeResultTabId : tabs[0].id;
+    $('compareTabsRightSelect').value = tabs.find((tab) => tab.id !== $('compareTabsLeftSelect').value).id;
+    const dialog = $('compareTabsDialog');
+    state.lastFocusedElement = document.activeElement;
+    dialog.classList.remove('hidden');
+    dialog.setAttribute('aria-hidden', 'false');
+    $('compareTabsLeftSelect').focus();
+  }
+
+  function closeCompareTabsDialog() {
+    const dialog = $('compareTabsDialog');
+    if (!dialog || dialog.classList.contains('hidden')) return;
+    dialog.classList.add('hidden');
+    dialog.setAttribute('aria-hidden', 'true');
+    state.lastFocusedElement?.focus?.();
+    state.lastFocusedElement = null;
+  }
+
+  // Long format (one row per changed cell) so the diff is sortable, copyable and exportable
+  // like any other result, however wide the tables are.
+  function diffResultRows(left, right, keyColumns) {
+    const sameValue = (a, b) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
+    const leftColumns = left.columns || [];
+    const rightColumns = right.columns || [];
+    const common = leftColumns.filter((column) => rightColumns.includes(column));
+    const missingKey = keyColumns.find((column) => !common.includes(column));
+    if (missingKey) {
+      throw new Error(`Key column ${missingKey} is not in both tabs.`);
+    }
+    const keyOf = (row, index) => (keyColumns.length ? keyColumns.map((column) => JSON.stringify(row[column] ?? null)).join('|') : String(index));
+    const index = (rows, label) => {
+      const map = new Map();
+      rows.forEach((row, position) => {
+        const key = keyOf(row, position);
+        if (map.has(key)) {
+          throw new Error(`The key ${keyColumns.join(', ')} is not unique in the ${label} tab, so rows cannot be matched. Pick columns that identify one row.`);
+        }
+        map.set(key, row);
+      });
+      return map;
+    };
+    const leftRows = index(left.rows || [], 'left');
+    const rightRows = index(right.rows || [], 'right');
+    const keyValues = (row) => keyColumns.reduce((record, column) => ({ ...record, [column]: row[column] }), {});
+    const rowLabel = (key, row) => (keyColumns.length ? keyValues(row) : { row: Number(key) + 1 });
+    const out = [];
+    const counts = { same: 0, changed: 0, added: 0, removed: 0 };
+    leftRows.forEach((leftRow, key) => {
+      const rightRow = rightRows.get(key);
+      if (!rightRow) {
+        counts.removed += 1;
+        out.push({ change: 'only in left', ...rowLabel(key, leftRow), column: '(row)', left: JSON.stringify(leftRow), right: null });
+        return;
+      }
+      const changedColumns = common.filter((column) => !keyColumns.includes(column) && !sameValue(leftRow[column], rightRow[column]));
+      if (!changedColumns.length) {
+        counts.same += 1;
+        return;
+      }
+      counts.changed += 1;
+      changedColumns.forEach((column) => out.push({ change: 'changed', ...rowLabel(key, leftRow), column, left: leftRow[column] ?? null, right: rightRow[column] ?? null }));
+    });
+    rightRows.forEach((rightRow, key) => {
+      if (!leftRows.has(key)) {
+        counts.added += 1;
+        out.push({ change: 'only in right', ...rowLabel(key, rightRow), column: '(row)', left: null, right: JSON.stringify(rightRow) });
+      }
+    });
+    const labelColumns = keyColumns.length ? keyColumns : ['row'];
+    return {
+      columns: ['change', ...labelColumns, 'column', 'left', 'right'],
+      rows: out,
+      summary: {
+        same_rows: counts.same,
+        changed_rows: counts.changed,
+        only_in_left: counts.removed,
+        only_in_right: counts.added,
+        columns_only_in_left: leftColumns.filter((column) => !rightColumns.includes(column)).join(', ') || 'none',
+        columns_only_in_right: rightColumns.filter((column) => !leftColumns.includes(column)).join(', ') || 'none'
+      },
+      counts
+    };
+  }
+
+  function runCompareTabs() {
+    const tabs = comparableTabs();
+    const leftTab = tabs.find((tab) => tab.id === $('compareTabsLeftSelect').value);
+    const rightTab = tabs.find((tab) => tab.id === $('compareTabsRightSelect').value);
+    if (!leftTab || !rightTab || leftTab.id === rightTab.id) {
+      setStatus('error', 'Choose two different result tabs.');
+      return;
+    }
+    const keyColumns = String($('compareTabsKeyInput').value || '').split(',').map((column) => column.trim()).filter(Boolean);
+    let diff;
+    try {
+      diff = diffResultRows(leftTab.results, rightTab.results, keyColumns);
+    } catch (error) {
+      setStatus('error', error.message);
+      return;
+    }
+    closeCompareTabsDialog();
+    const partial = leftTab.results.truncated || rightTab.results.truncated ? ' Only loaded rows were compared; at least one tab was cut off at the row limit.' : '';
+    setResults(diff.columns, diff.rows, {
+      output: diff.summary,
+      visualKind: 'query',
+      tabTitle: `Diff ${leftTab.title} vs ${rightTab.title}`,
+      tabKey: ''
+    });
+    const { same, changed, added, removed } = diff.counts;
+    setStatus('success', `Compared tabs: ${changed} changed, ${removed} only in left, ${added} only in right, ${same} identical.${partial}`);
   }
 
   async function testConnection() {
@@ -8550,7 +8843,9 @@ window.createConsoleApp = function createConsoleApp() {
       $('envSettingsContent').addEventListener('change', handleAmbientLivePreview);
     }
     if ($('closeSupportBtn')) $('closeSupportBtn').onclick = closeSupportDialog;
-    if ($('saveScratchpadBtn')) $('saveScratchpadBtn').onclick = saveCurrentScratchpad;
+    if ($('saveQueryBtn')) $('saveQueryBtn').onclick = () => saveCurrentQuery();
+    if ($('savedQuerySearchInput')) $('savedQuerySearchInput').oninput = renderSavedQueries;
+    if ($('savedQueryThisProfileInput')) $('savedQueryThisProfileInput').onchange = renderSavedQueries;
     if ($('copyDiagnosticsBtn')) $('copyDiagnosticsBtn').onclick = copyDiagnostics;
     if ($('copySupportReportBtn')) $('copySupportReportBtn').onclick = copySupportReport;
     if ($('sendSupportReportBtn')) $('sendSupportReportBtn').onclick = sendSupportReport;
@@ -8587,7 +8882,11 @@ window.createConsoleApp = function createConsoleApp() {
     $('dependencyViewBtn').onclick = () => loadDependencyView().catch((error) => setStatus('error', error.message));
     $('rowCountInsightBtn').onclick = () => loadRowCountInsight().catch((error) => setStatus('error', error.message));
     $('topValuesInsightBtn').onclick = () => loadTopValuesInsight().catch((error) => setStatus('error', error.message));
-    $('schemaCompareBtn').onclick = () => loadSchemaCompare().catch((error) => setStatus('error', error.message));
+    $('schemaCompareBtn').onclick = openCompareDialog;
+    $('runCompareBtn').onclick = () => loadSchemaCompare().catch((error) => setStatus('error', error.message));
+    $('cancelCompareBtn').onclick = closeCompareDialog;
+    $('closeCompareBtn').onclick = closeCompareDialog;
+    $('compareProfileSelect').onchange = syncComparePasswordField;
     $('resultShapeBtn').onclick = () => loadResultShapeInsight().catch((error) => setStatus('error', error.message));
     $('queryPlanBtn').onclick = () => loadEstimatedPlan().catch((error) => setStatus('error', error.message));
     $('previewRowsBtn').onclick = () => {
@@ -8693,6 +8992,10 @@ window.createConsoleApp = function createConsoleApp() {
     $('increaseResultsTextBtn').onclick = () => changeResultsTextSize(0.04);
     $('exportCsvBtn').onclick = exportCsv;
     $('exportJsonBtn').onclick = exportJson;
+    $('compareTabsBtn').onclick = openCompareTabsDialog;
+    $('runCompareTabsBtn').onclick = runCompareTabs;
+    $('cancelCompareTabsBtn').onclick = closeCompareTabsDialog;
+    $('closeCompareTabsBtn').onclick = closeCompareTabsDialog;
     $('exportAllCsvBtn').onclick = () => exportAllResults('csv');
     $('exportAllJsonBtn').onclick = () => exportAllResults('json');
     if ($('scrollResultsLeftBtn')) {
@@ -8895,9 +9198,22 @@ window.createConsoleApp = function createConsoleApp() {
         closeShortcutsDialog();
         return;
       }
+      if (event.key === 'Escape' && !$('compareDialog')?.classList.contains('hidden')) {
+        closeCompareDialog();
+        return;
+      }
+      if (event.key === 'Escape' && !$('compareTabsDialog')?.classList.contains('hidden')) {
+        closeCompareTabsDialog();
+        return;
+      }
       if ((event.ctrlKey || event.metaKey) && event.key === '/') {
         event.preventDefault();
         openShortcutsDialog();
+        return;
+      }
+      if ((event.ctrlKey || event.metaKey) && !event.shiftKey && !event.altKey && event.key.toLowerCase() === 's' && state.workspace !== 'procedure' && $('queryEditor')) {
+        event.preventDefault();
+        saveCurrentQuery();
         return;
       }
       const dialogOpen = [...document.querySelectorAll('.modal-backdrop')].some((element) => !element.classList.contains('hidden'));
@@ -9011,6 +9327,7 @@ window.createConsoleApp = function createConsoleApp() {
     applyTextPreferences();
     loadTheme();
     await loadConnectionHistory();
+    loadSavedQueries().catch(() => {});
     loadQueryHistory();
     loadProcedureHistory();
     setWorkspace(state.workspace);

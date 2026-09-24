@@ -276,6 +276,24 @@ for (const item of await savedStore.listSavedConnections()) {
 }
 assert.equal((await savedStore.listSavedConnections()).length, 0);
 
+// Saved query library: validation, same-name updates instead of duplicates, delete.
+const queryStore = await import('../lib/server/saved-queries-store.js');
+await assert.rejects(queryStore.upsertSavedQuery({ name: '', query: 'SELECT 1' }), (error) => error.httpStatus === 400);
+await assert.rejects(queryStore.upsertSavedQuery({ name: 'Empty', query: '   ' }), (error) => error.httpStatus === 400);
+const monthly = await queryStore.upsertSavedQuery({ name: 'Monthly  Viva', folder: 'Reports', query: 'SELECT 1', profileId: 'p1' });
+assert.equal(monthly.name, 'Monthly Viva');
+const monthlyAgain = await queryStore.upsertSavedQuery({ name: 'monthly viva', folder: 'reports', query: 'SELECT 2' });
+assert.equal(monthlyAgain.id, monthly.id, 'saving the same folder and name again updates the query');
+assert.equal(monthlyAgain.query, 'SELECT 2');
+assert.equal(monthlyAgain.createdAt, monthly.createdAt);
+await queryStore.upsertSavedQuery({ name: 'Adhoc', query: 'SELECT 3' });
+assert.deepEqual((await queryStore.listSavedQueries()).map((item) => `${item.folder}/${item.name}`), ['/Adhoc', 'reports/monthly viva']);
+assert.equal(await queryStore.deleteSavedQuery(monthly.id), true);
+assert.equal(await queryStore.deleteSavedQuery(monthly.id), false);
+assert.equal((await queryStore.listSavedQueries()).length, 1);
+const savedQueryDirEntries = await fs.readdir(process.env.APP_DATA_DIR);
+assert.deepEqual(savedQueryDirEntries.filter((name) => name.endsWith('.tmp')), []);
+
 // Typed acknowledgement: statement-implied phrases, plus the row-count escalation.
 const writeAck = await import('../lib/server/write-acknowledgement.js');
 const previewedUpdate = { kind: 'write', action: 'UPDATE', requiresAcknowledgement: false };

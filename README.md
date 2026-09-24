@@ -6,7 +6,7 @@ Production-safe internal SQL workbench for Microsoft Fabric SQL endpoints, Fabri
 
 Data Workbench Console is built for controlled operational work: browse metadata, generate SQL, run read queries, preview writes before execution, run stored procedures from a dedicated flow, and keep an audit trail of important actions.
 
-Current app version: `1.5.2`. See [CHANGELOG.md](CHANGELOG.md) for release notes.
+Current app version: `1.5.3`. See [CHANGELOG.md](CHANGELOG.md) for release notes.
 
 <p>
   <img alt="Next.js" src="https://img.shields.io/badge/Next.js-15-111827?style=for-the-badge&logo=nextdotjs" />
@@ -44,7 +44,9 @@ the copyright owner.
 | Connection profiles | Save reusable connection details without storing passwords or client secrets. |
 | Explorer workflow | Pin and filter objects/procedures by type, schema, recent use, pinned state, object name, and loaded column names. |
 | Audit | Track and filter connection tests, catalog loads, metadata reads, query execution, write previews, procedure execution, and saved profile changes. |
-| Workbench tools | Open quick actions, SQL safety summary, local scratchpads, and safe diagnostics from one compact modal. |
+| Workbench tools | Open quick actions, SQL safety summary, the saved query library, and safe diagnostics from one compact modal. |
+| Saved queries | A server-side query library with folders, search and a "this profile only" filter; `Ctrl+S` saves the editor to it. |
+| Compare | Compare an object's columns and row counts across two saved profiles (for example dev versus prod), and compare the rows of two result tabs. |
 | App settings | Edit local `.env` settings through a guided interface with descriptions, typed controls, and restart guidance. |
 | Support | Fill a support form, include safe diagnostics, select a screenshot, and open an email draft to the maintainer. |
 | Self-update | Git-installed local copies can show an `Update` button when the remote app version is newer. |
@@ -78,7 +80,7 @@ the copyright owner.
 7. Use `Procedure Runner` for stored procedures where the selected source supports them.
 8. Switch modes from the top of the workspace. The app keeps each mode where you left it during the same browser tab session.
 9. Use Advanced Operations for read-only metadata tools such as profile, dependency view, row count, top values, result shape, schema compare, and estimated plans.
-10. Use `Tools` for command shortcuts, scratchpads, current SQL review, and diagnostics.
+10. Use `Tools` for command shortcuts, the saved query library, current SQL review, and diagnostics.
 11. Use `Settings` to edit local `.env` values without opening files manually. Restart the app after applying changes.
 12. Use `Support` to prepare a bug report email with safe app context.
 
@@ -640,8 +642,14 @@ Object scripting actions:
 
 Schema compare behavior:
 
-- `Schema compare` compares the active object with the selected advanced source object, or with itself when no source object is selected.
-- The backend API also supports comparing objects across two explicit connection payloads.
+- `Schema compare` opens a dialog: compare the active object with an object on this connection or on
+  any saved profile (for example the same table on dev and prod). A saved profile that uses SQL
+  login or Windows authentication asks for its password in the dialog; it is sent with that one
+  request and never stored.
+- `Also compare row counts` adds a `(row count)` line using metadata counts, falling back to
+  `COUNT_BIG(*)`; a side whose count cannot be read shows `unavailable` instead of failing the
+  comparison.
+- the audit entry names both sides when they are different connections.
 - v1 focuses on table/view existence and column-level metadata, with richer table metadata where the source exposes it.
 
 Performance helper behavior:
@@ -658,7 +666,20 @@ The top header includes:
 - `Documentation`
   opens the relevant guide.
 - `Tools`
-  opens a compact workbench modal with quick actions, current SQL safety summary, local scratchpads, capability notes, and diagnostics.
+  opens a compact workbench modal with quick actions, current SQL safety summary, the saved query library, capability notes, and diagnostics.
+
+Saved query library:
+
+- saved queries are stored server-side in `data/saved-queries.json` (up to 200), so they survive a
+  cleared browser; they may hold literal values, so the file is on the release never-commit list
+- `Save SQL` or `Ctrl+S` asks for a name; `Folder / Name` files the query in a folder, and saving
+  the same folder and name again replaces the earlier version
+- each query remembers the profile it was saved under; tick `This profile only` to hide queries
+  saved for other profiles (queries saved with no profile always show)
+- `Open` loads the query into the editor, in a new tab named after the query when the current tab
+  already holds SQL
+- the old local scratchpads are imported into a `Scratchpads` folder on first load; the local copy
+  is kept
 - `Support`
   opens a support report form for bug reports and questions.
 - `Hide/Show connection panel`
@@ -769,6 +790,9 @@ The results area supports:
 - filtered audit loading into the results grid
 - `Copy rows`
 - `Export CSV` and `Export JSON` of the loaded rows
+- `Compare tabs`: compare the loaded rows of two result tabs, matched by key columns you choose (or
+  by row order), and open the differences as a new tab with one row per changed cell plus rows
+  found on only one side. A key that is not unique is refused rather than guessed.
 - right-click a row for `Copy row as INSERT`, `Copy loaded rows as INSERT` and `Copy loaded rows
   as Markdown`. INSERT statements target the table when the result is editable, otherwise a
   `[target_table]` placeholder; SQL NULL stays `NULL`, strings are `N'...'`, and `timestamp`/

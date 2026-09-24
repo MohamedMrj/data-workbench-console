@@ -552,6 +552,7 @@ function attachMocks(window) {
     }
 
     if (String(url).includes('/api/schema-compare')) {
+      window.__schemaCompareBodies = [...(window.__schemaCompareBodies || []), body];
       return new Response(JSON.stringify({
         success: true,
         leftObject: body.leftObject || 'dbo.Alerts',
@@ -581,6 +582,22 @@ function attachMocks(window) {
         status: 200,
         headers: { 'Content-Type': 'application/json' }
       });
+    }
+
+    if (String(url).includes('/api/saved-queries')) {
+      window.__savedQueries = window.__savedQueries || [];
+      const method = String(options.method || 'GET').toUpperCase();
+      if (method === 'POST') {
+        const existing = window.__savedQueries.find((item) => item.folder === (body.folder || '') && item.name === body.name);
+        const item = { id: existing?.id || `sq-${window.__savedQueries.length + 1}`, name: body.name, folder: body.folder || '', query: body.query, profileId: body.profileId || '' };
+        window.__savedQueries = [...window.__savedQueries.filter((entry) => entry.id !== item.id), item];
+        return new Response(JSON.stringify({ success: true, item }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
+      if (method === 'DELETE') {
+        window.__savedQueries = window.__savedQueries.filter((entry) => entry.id !== body.id);
+        return new Response(JSON.stringify({ success: true, id: body.id }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
+      return new Response(JSON.stringify({ success: true, items: window.__savedQueries }), { status: 200, headers: { 'Content-Type': 'application/json' } });
     }
 
     if (String(url).includes('/api/query/export')) {
@@ -1011,11 +1028,26 @@ const legacyWindow = await createWindow(
         db: 'legacy_meta_store'
       }
     }));
+    window.localStorage.setItem('dataWorkbenchScratchpadsV1', JSON.stringify([
+      { id: 'old-1', name: 'Old draft', query: 'SELECT 42 AS legacy', database: 'legacy_meta_store', savedAt: '2026-01-01T00:00:00Z' }
+    ]));
   }
 );
 
 if (!legacyWindow.document.getElementById('savedConnections').textContent.includes('legacy_meta_store')) {
   throw new Error('Legacy saved connections were not migrated into the visible saved connections list.');
+}
+await flush();
+{
+  // Old local scratchpads are imported into the server library once, into a Scratchpads
+  // folder; the local copy is kept, and a second load does not import them again.
+  const imported = (legacyWindow.__savedQueries || []).filter((item) => item.name === 'Old draft');
+  if (imported.length !== 1 || imported[0].folder !== 'Scratchpads' || imported[0].query !== 'SELECT 42 AS legacy') {
+    throw new Error(`Legacy scratchpads should be imported into the query library once. Library: ${JSON.stringify(legacyWindow.__savedQueries)}`);
+  }
+  if (legacyWindow.localStorage.getItem('dataWorkbenchScratchpadsImportedV1') !== '1' || !legacyWindow.localStorage.getItem('dataWorkbenchScratchpadsV1')) {
+    throw new Error('The scratchpad import should be recorded without deleting the local copy.');
+  }
 }
 
 legacyWindow.document.getElementById('serverInput').value = 'fresh-demo';
@@ -1098,7 +1130,7 @@ if (sqlWindow.document.documentElement.style.getPropertyValue('--tooltip-delay-m
     throw new Error(`Safety Policy panel did not render the server safety limits. Got: ${policyText}`);
   }
 }
-['saveConnectionBtn', 'testConnectionBtn', 'loadTablesBtn', 'runQueryBtn', 'runAllQueryBtn', 'exportJsonBtn', 'exportAllCsvBtn', 'exportAllJsonBtn', 'contextCopyInsertBtn', 'contextCopyAllInsertBtn', 'contextCopyMarkdownBtn', 'clearHistoryBtn', 'toggleAdvancedOperationsBtn', 'insertSelectTemplateBtn', 'updateJoinTemplateBtn', 'mergePreviewBtn', 'profileObjectBtn', 'dependencyViewBtn', 'insertSqlHelperBtn', 'wrapSqlHelperBtn', 'openWorkbenchToolsBtn', 'openEnvSettingsBtn', 'openSupportBtn', 'scrollResultsLeftBtn', 'scrollResultsRightBtn', 'scrollResultsDockLeftBtn', 'scrollResultsDockRightBtn'].forEach((id) => {
+['saveConnectionBtn', 'testConnectionBtn', 'loadTablesBtn', 'runQueryBtn', 'runAllQueryBtn', 'exportJsonBtn', 'exportAllCsvBtn', 'exportAllJsonBtn', 'contextCopyInsertBtn', 'contextCopyAllInsertBtn', 'contextCopyMarkdownBtn', 'compareTabsBtn', 'runCompareTabsBtn', 'runCompareBtn', 'saveQueryBtn', 'clearHistoryBtn', 'toggleAdvancedOperationsBtn', 'insertSelectTemplateBtn', 'updateJoinTemplateBtn', 'mergePreviewBtn', 'profileObjectBtn', 'dependencyViewBtn', 'insertSqlHelperBtn', 'wrapSqlHelperBtn', 'openWorkbenchToolsBtn', 'openEnvSettingsBtn', 'openSupportBtn', 'scrollResultsLeftBtn', 'scrollResultsRightBtn', 'scrollResultsDockLeftBtn', 'scrollResultsDockRightBtn'].forEach((id) => {
   const element = sqlWindow.document.getElementById(id);
   if (!element || typeof element.onclick !== 'function') {
     throw new Error(`Expected ${id} to be wired on the SQL page.`);
@@ -1228,15 +1260,47 @@ if (!sqlWindow.__lastClipboardText.includes('"catalog"')) {
 }
 sqlWindow.document.getElementById('queryEditor').value = 'SELECT 1 AS SmokeValue;';
 sqlWindow.document.getElementById('queryEditor').dispatchEvent(new sqlWindow.Event('input', { bubbles: true }));
-sqlWindow.document.getElementById('saveScratchpadBtn').click();
-await flush();
-if (!sqlWindow.document.getElementById('scratchpadList').textContent.includes('Smoke scratchpad')) {
-  throw new Error('Saving a scratchpad did not render it in workbench tools.');
-}
-sqlWindow.document.querySelector('[data-load-scratchpad]')?.click();
-await flush();
-if (!sqlWindow.document.getElementById('queryEditor').value.includes('SmokeValue')) {
-  throw new Error('Loading a scratchpad did not restore SQL into the editor.');
+{
+  // Saved query library: "Folder / Name" files the query, search filters it, and opening it
+  // into an editor that already holds SQL uses a new tab named after the query.
+  const originalPrompt = sqlWindow.prompt;
+  sqlWindow.prompt = () => 'Smoke folder / Smoke query';
+  sqlWindow.document.getElementById('saveQueryBtn').click();
+  await flush();
+  sqlWindow.prompt = originalPrompt;
+  const saved = (sqlWindow.__savedQueries || []).find((item) => item.name === 'Smoke query');
+  if (!saved || saved.folder !== 'Smoke folder' || saved.query !== 'SELECT 1 AS SmokeValue;') {
+    throw new Error(`Save SQL should store the query in the library under its folder. Library: ${JSON.stringify(sqlWindow.__savedQueries)}`);
+  }
+  const libraryList = sqlWindow.document.getElementById('savedQueryList');
+  if (!libraryList.textContent.includes('Smoke folder') || !libraryList.textContent.includes('Smoke query')) {
+    throw new Error('The saved query should appear in the library list under its folder.');
+  }
+  const librarySearch = sqlWindow.document.getElementById('savedQuerySearchInput');
+  librarySearch.value = 'no-such-query';
+  librarySearch.dispatchEvent(new sqlWindow.Event('input', { bubbles: true }));
+  if (libraryList.querySelector('[data-open-saved-query]')) {
+    throw new Error('Searching the library should filter out non-matching queries.');
+  }
+  librarySearch.value = 'smokevalue';
+  librarySearch.dispatchEvent(new sqlWindow.Event('input', { bubbles: true }));
+  const tabsBeforeOpen = sqlWindow.document.querySelectorAll('#editorTabs [data-editor-tab]').length;
+  libraryList.querySelector('[data-open-saved-query]').click();
+  await flush();
+  if (!sqlWindow.document.getElementById('queryEditor').value.includes('SmokeValue')) {
+    throw new Error('Opening a saved query did not load its SQL into the editor.');
+  }
+  if (sqlWindow.document.querySelectorAll('#editorTabs [data-editor-tab]').length !== tabsBeforeOpen + 1 || !sqlWindow.document.querySelector('#editorTabs .editor-tab.active')?.textContent.includes('Smoke query')) {
+    throw new Error('Opening a saved query over existing SQL should use a new tab named after the query.');
+  }
+  // Close the extra tab again so later steps see a single editor tab. It holds SQL, so the
+  // close asks for confirmation, which jsdom does not implement.
+  const originalConfirm = sqlWindow.confirm;
+  sqlWindow.confirm = () => true;
+  sqlWindow.document.querySelector('#editorTabs .editor-tab.active [data-close-editor-tab]').click();
+  sqlWindow.confirm = originalConfirm;
+  librarySearch.value = '';
+  librarySearch.dispatchEvent(new sqlWindow.Event('input', { bubbles: true }));
 }
 if (!sqlWindow.document.getElementById('sqlHelperSelect')) {
   throw new Error('Expected SQL helper selector to render on the SQL page.');
@@ -1493,8 +1557,52 @@ if (!sqlWindow.document.querySelector('.results-table')?.textContent.includes('F
 }
 sqlWindow.document.getElementById('schemaCompareBtn').click();
 await flush();
+if (sqlWindow.document.getElementById('compareDialog').classList.contains('hidden')) {
+  throw new Error('Schema compare should open the compare dialog.');
+}
+if (sqlWindow.document.getElementById('compareProfileSelect').options.length < 2) {
+  throw new Error('The compare dialog should offer the current connection and the saved profiles.');
+}
+sqlWindow.__schemaCompareBodies = [];
+sqlWindow.document.getElementById('runCompareBtn').click();
+await flush();
 if (!sqlWindow.document.querySelector('.results-table')?.textContent.includes('nullable')) {
   throw new Error('Schema compare did not render difference rows.');
+}
+{
+  const compareBody = sqlWindow.__schemaCompareBodies.at(-1);
+  if (compareBody.rightConnection.database !== compareBody.leftConnection.database || compareBody.includeRowCounts !== true) {
+    throw new Error(`Comparing with the current connection should send it as the right side, with row counts. Sent: ${JSON.stringify(compareBody)}`);
+  }
+  // Picking a saved profile sends that profile as the right side. It is a SQL login profile,
+  // so its password is asked for in the dialog and sent only with this request.
+  sqlWindow.document.getElementById('schemaCompareBtn').click();
+  await flush();
+  const profileSelect = sqlWindow.document.getElementById('compareProfileSelect');
+  profileSelect.value = '0';
+  profileSelect.dispatchEvent(new sqlWindow.Event('change', { bubbles: true }));
+  const savedProfile = JSON.parse(sqlWindow.localStorage.getItem('dataWorkbenchConnectionsV2') || '[]')[0];
+  const needsPassword = ['sqlLogin', 'windowsNtlm'].includes(savedProfile?.authMode);
+  if (needsPassword === sqlWindow.document.getElementById('comparePasswordField').classList.contains('hidden')) {
+    throw new Error('The compare password field should appear exactly when the chosen profile needs a password.');
+  }
+  sqlWindow.document.getElementById('comparePasswordInput').value = 'profile-secret';
+  sqlWindow.document.getElementById('compareRowCountsInput').checked = false;
+  sqlWindow.document.getElementById('runCompareBtn').click();
+  await flush();
+  const profileBody = sqlWindow.__schemaCompareBodies.at(-1);
+  if (profileBody.rightConnection.server !== savedProfile.server || profileBody.rightConnection.database !== savedProfile.database || profileBody.includeRowCounts !== false) {
+    throw new Error(`Comparing with a saved profile should send that profile as the right side. Sent: ${JSON.stringify(profileBody)}`);
+  }
+  if (needsPassword && profileBody.rightConnection.password !== 'profile-secret') {
+    throw new Error('The compare dialog password should be sent for the chosen profile.');
+  }
+  if (sqlWindow.document.getElementById('comparePasswordInput').value !== '') {
+    throw new Error('The compare password must be cleared from the dialog after use.');
+  }
+  if (JSON.stringify(sqlWindow.localStorage).includes('profile-secret') || JSON.stringify(sqlWindow.sessionStorage).includes('profile-secret')) {
+    throw new Error('The compare password must never be stored.');
+  }
 }
 sqlWindow.document.getElementById('resultShapeBtn').click();
 await flush();
@@ -2034,6 +2142,39 @@ if (sqlWindow.__lastDownloadName !== 'data-workbench-export-20260924-101112.csv'
 }
 if (!sqlWindow.document.getElementById('statusText').textContent.includes('Exported the full result')) {
   throw new Error(`Export all should report success. Status: ${sqlWindow.document.getElementById('statusText').textContent}`);
+}
+
+// Compare result tabs: the full 3-row Alerts result against the cut-off 2-row one, matched by
+// AlertId. Row 3 exists only on the left; rows 1 and 2 are identical in their shared columns.
+editor.value = 'SELECT * FROM dbo.Alerts';
+editor.dispatchEvent(new sqlWindow.Event('input', { bubbles: true }));
+sqlWindow.document.getElementById('runQueryBtn').click();
+await flush();
+sqlWindow.document.getElementById('compareTabsBtn').click();
+if (sqlWindow.document.getElementById('compareTabsDialog').classList.contains('hidden')) {
+  throw new Error('Compare tabs should open its dialog when two result tabs exist.');
+}
+const leftTabSelect = sqlWindow.document.getElementById('compareTabsLeftSelect');
+const rightTabSelect = sqlWindow.document.getElementById('compareTabsRightSelect');
+leftTabSelect.value = leftTabSelect.options[0].value;
+rightTabSelect.value = rightTabSelect.options[1].value;
+sqlWindow.document.getElementById('compareTabsKeyInput').value = 'Nope';
+sqlWindow.document.getElementById('runCompareTabsBtn').click();
+if (!sqlWindow.document.getElementById('statusText').textContent.includes('not in both tabs')) {
+  throw new Error(`A key column missing from a tab should be refused. Status: ${sqlWindow.document.getElementById('statusText').textContent}`);
+}
+sqlWindow.document.getElementById('compareTabsKeyInput').value = 'AlertId';
+sqlWindow.document.getElementById('runCompareTabsBtn').click();
+await flush();
+const diffStatus = sqlWindow.document.getElementById('statusText').textContent;
+if (!diffStatus.includes('0 changed, 1 only in left, 0 only in right, 2 identical') || !diffStatus.includes('cut off')) {
+  throw new Error(`Compare tabs reported unexpected counts. Status: ${diffStatus}`);
+}
+if (!sqlWindow.document.querySelector('.results-table')?.textContent.includes('only in left')) {
+  throw new Error('The tab diff should open as a result table listing the differences.');
+}
+if (!sqlWindow.document.querySelector('.result-tab.active')?.textContent.includes('Diff')) {
+  throw new Error('The tab diff should open in its own result tab.');
 }
 
 const proceduresHtml = await readBuiltHtml(['procedures']);

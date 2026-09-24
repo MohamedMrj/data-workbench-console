@@ -58,7 +58,7 @@ export default function ProcedureRunnerDocsPage() {
       <DocsSection id="workspace-controls" title="Workspace Controls And Support" intro="The top workspace buttons are shared across SQL Studio and Procedure Runner. They control documentation, support, tools, panels, and the local desktop server.">
         <div className="docs-table">
           <div><strong>Documentation</strong><span>Opens this guide in a new tab. Use it when you need procedure workflow, parameter, support-source, or troubleshooting details.</span></div>
-          <div><strong>Tools</strong><span>Opens Workbench Tools. Use it for quick actions, current SQL/procedure context, scratchpads, safe diagnostics, and support information.</span></div>
+          <div><strong>Tools</strong><span>Opens Workbench Tools. Use it for quick actions, current SQL/procedure context, the saved query library, safe diagnostics, and support information.</span></div>
           <div><strong>Settings</strong><span>Opens a guided editor for local <code>.env</code> settings. Each setting includes a description, appropriate values, and restart guidance. Secret values can be replaced but are never shown after saving.</span></div>
           <div><strong>Support</strong><span>Opens a bug-report form. Fill in title, area, severity, description, reproduction steps, and optional screenshot, then open an email draft to support.</span></div>
           <div><strong>Update</strong><span>Appears only when the local Git checkout is behind the configured remote. It pulls the latest app code, preserves local <code>.env</code> and <code>.data</code>, rebuilds, restarts the local server, and reloads the browser.</span></div>
@@ -67,8 +67,8 @@ export default function ProcedureRunnerDocsPage() {
           <div><strong>Exit Data Workbench</strong><span>Requests shutdown of the local desktop server. Use it when you are done with the app.</span></div>
         </div>
         <DocsMiniSection title="Workbench Tools">
-          <p><strong>Quick actions</strong> can load catalog, run the current procedure/query path, format SQL, save scratchpads, open audit filters, load dependency/profile metadata, or script ALTER/Edit.</p>
-          <p><strong>Scratchpads</strong> are local SQL drafts. They are useful when a procedure script or investigation query is not ready to run.</p>
+          <p><strong>Quick actions</strong> can load catalog, run the current procedure/query path, format SQL, save queries to the library, open audit filters, load dependency/profile metadata, or script ALTER/Edit.</p>
+          <p><strong>Saved queries</strong> is the query library shared with SQL Studio, stored by the app server. It is useful for procedure scripts or investigation queries you come back to.</p>
           <p><strong>Diagnostics</strong> copies safe app/session context for troubleshooting. It does not include passwords or client secrets.</p>
         </DocsMiniSection>
         <DocsMiniSection title="App settings">

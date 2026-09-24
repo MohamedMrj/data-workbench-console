@@ -2465,6 +2465,43 @@ html[data-ambient-motion='enabled'] .shell-orbit-b {
   gap: 8px;
 }
 
+.saved-query-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  margin-bottom: 8px;
+}
+
+.saved-query-filters input[type='text'] {
+  flex: 1 1 180px;
+  min-width: 0;
+}
+
+.saved-query-folder {
+  display: grid;
+  gap: 8px;
+}
+
+.saved-query-folder h4 {
+  margin: 4px 0 0;
+  font-size: 0.74rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.compare-checkbox {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.86rem;
+}
+
+.modal-card.compare-card {
+  width: min(640px, calc(100vw - 32px));
+}
+
 .tools-command {
   width: 100%;
   min-height: 48px;

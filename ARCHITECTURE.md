@@ -233,12 +233,13 @@ caught centrally and mapped through `error.httpStatus` (default 500).
 | `/api/procedure-parameters` | GET POST | `getProcedureParameters` | |
 | `/api/object-insights` | POST | `postObjectInsight` | `profile` \| `dependencies` \| `rowcount` \| `topvalues` \| `resultshape` |
 | `/api/object-definition` | POST | `postObjectDefinition` | CREATE/ALTER scripting |
-| `/api/schema-compare` | POST | `postSchemaCompare` | Takes two full connection payloads |
+| `/api/schema-compare` | POST | `postSchemaCompare` | Takes two full connection payloads; the client sends a saved profile as the right side; optional `includeRowCounts` |
 | `/api/query-plan` | POST | `postQueryPlan` | Read queries only; blocked for Lakehouse |
 | `/api/query` | POST | `postQuery` | The main execution path; optional `runId` makes the run cancellable |
 | `/api/query/cancel` | POST | `postQueryCancel` | `{ runId }` → 202 cancelled, 404 unknown/other session, 409 committing |
 | `/api/query/export` | POST | `postQueryExport` | Reads only; streams the full result as CSV/JSON up to `EXPORT_ROW_LIMIT` |
 | `/api/saved-connections` | GET POST DELETE | `*SavedConnections` | |
+| `/api/saved-queries` | GET POST DELETE | `*SavedQueries` | Query library in `data/saved-queries.json`; audit names queries, never their SQL |
 | `/api/version` | GET | inline | Cached + de-duplicated git/remote check |
 | `/api/env-settings` | GET POST | inline | Local-only; POST requires Origin/Referer |
 | `/api/update` | POST | inline | Local-only; requires a Git checkout |
@@ -744,7 +745,8 @@ and nothing is lost on upgrade.
 | localStorage | `dataWorkbenchAdvancedOperationsVisibleV1` | disclosure state |
 | localStorage | `dataWorkbenchPinnedObjectsV1:<fingerprint>` | pins, scoped per connection |
 | localStorage | `dataWorkbenchRecentObjectsV1:<fingerprint>` | recents, capped at 40 |
-| localStorage | `dataWorkbenchScratchpadsV1` | up to 10 saved SQL drafts |
+| localStorage | `dataWorkbenchScratchpadsV1` | legacy SQL drafts, imported once into the server query library and then left in place |
+| localStorage | `dataWorkbenchScratchpadsImportedV1` | `1` once the scratchpads above were imported |
 | sessionStorage | `dataWorkbenchActiveConnectionV1` | connection form **without password** |
 | sessionStorage | `dataWorkbenchCatalogStateV1` | catalog + active selections, fingerprint-gated |
 | sessionStorage | `dataWorkbenchWorkspaceStateV1` | per-mode snapshot: editor text, caret, scroll, editor tabs, filters, sort, result tabs, pagination |

@@ -97,6 +97,7 @@ const routeFiles = [
   'app/api/query-plan/route.js',
   'app/api/schema-compare/route.js',
   'app/api/saved-connections/route.js',
+  'app/api/saved-queries/route.js',
   'app/api/lifecycle/heartbeat/route.js',
   'app/api/lifecycle/status/route.js',
   'app/api/lifecycle/exit/route.js'
@@ -115,6 +116,7 @@ const trackedSensitive = await gitLsFiles([
   'data',
   '.data',
   'saved-connections.json',
+  'saved-queries.json',
   'pending-confirmations.json'
 ]);
 if (trackedSensitive.length) {

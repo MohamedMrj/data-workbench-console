@@ -5,6 +5,51 @@ All notable Data Workbench Console changes are tracked here.
 The in-app version is read from `package.json` and exposed through `/api/version`
 together with the current git commit and build information.
 
+## 1.5.3 - 2026-09-24
+
+Compare and reuse: compare a table across two environments, compare two results, and keep
+queries in a shared library.
+
+### Added
+
+- **Compare across saved profiles.** `Schema compare` now opens a dialog where the right-hand side
+  can be this connection or any saved profile — for example the same table on dev and prod — with
+  an optional row-count comparison. A profile that uses SQL login or Windows authentication asks
+  for its password in the dialog; it is sent with that one request, cleared afterwards and never
+  stored. A side whose row count cannot be read shows `unavailable` instead of failing the
+  comparison.
+- **Compare result tabs.** `Compare tabs` compares the loaded rows of two result tabs, matched by
+  key columns you choose or by row order, and opens the differences as a new result tab (one row
+  per changed cell, plus rows found on only one side) that can be sorted, copied and exported. A
+  key that is not unique is refused with an explanation rather than guessed, and the result says
+  when a tab was cut off at the row limit.
+- **Saved query library** replacing local scratchpads. Queries are stored by the app server
+  (`data/saved-queries.json`, up to 200), so they survive a cleared browser. `Save SQL` or
+  `Ctrl+S` saves the editor; `Folder / Name` files it in a folder and saving the same name again
+  replaces it. The library can be searched and narrowed to the current profile; `Open` loads a
+  query into a new editor tab when the current one already holds SQL. Existing scratchpads are
+  imported once into a `Scratchpads` folder and the local copy is kept. The audit log records
+  which query was saved or deleted, never its SQL. `data/saved-queries.json` is git-ignored and on
+  the release never-commit list.
+
+### Fixed
+
+- Fixed `Schema compare` only ever comparing the current connection with itself. The client sent
+  the current connection as both sides, so despite its tooltip it could only compare two objects
+  in the same database. Its audit entry also recorded only the left side; it now names both when
+  they differ.
+
+### Verification
+
+- `server-unit.test.mjs` covers the query library's validation, same-name updates, ordering,
+  delete, and atomic writes.
+- `route-contract.test.mjs` round-trips the saved-queries route (create, update by name, list,
+  validation, delete, 404 on a repeat delete).
+- `ui-smoke.mjs` covers the compare dialog sending the current connection or a saved profile as
+  the right side (with its password only when needed, and never stored), the tab diff counts and
+  its refusal of an unknown key, the scratchpad import, and saving, filing, searching and opening
+  saved queries.
+
 ## 1.5.2 - 2026-09-24
 
 Safer writes: profiles can be tagged as production, and a write preview shows the actual rows it
