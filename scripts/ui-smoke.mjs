@@ -135,7 +135,16 @@ function attachMocks(window) {
 
     if (String(url).includes('/api/procedures')) {
       if (body.procedure || body.confirmToken) {
+        // __procedureProdMode simulates a profile tagged prod: the server then demands a typed
+        // phrase for procedures too, and refuses a confirm without it.
+        if (body.confirmToken && window.__procedureProdMode && String(body.acknowledgement || '').trim().toUpperCase() !== 'EXECUTE PROCEDURE ON PROD GOLD') {
+          return new Response(JSON.stringify({ success: false, error: 'Type the confirmation phrase exactly before executing this operation: EXECUTE PROCEDURE ON PROD GOLD' }), {
+            status: 400,
+            headers: { 'Content-Type': 'application/json' }
+          });
+        }
         if (body.confirmToken) {
+          window.__procedureConfirmBodies = [...(window.__procedureConfirmBodies || []), body];
           return new Response(JSON.stringify({
             success: true,
             mode: 'procedure',
@@ -161,8 +170,12 @@ function attachMocks(window) {
           confirmationToken: 'procedure-token',
           procedure: 'dbo.usp_ProcessAlert',
           parameterCount: 2,
-          expectedText: 'RUN DBO.USP_PROCESSALERT',
-          message: 'Stored procedures are executed directly in this app. Review the parameters and type the confirmation text before running dbo.usp_ProcessAlert.'
+          expectedText: window.__procedureProdMode ? 'EXECUTE PROCEDURE ON PROD GOLD' : '',
+          environment: window.__procedureProdMode ? 'prod' : '',
+          profileName: window.__procedureProdMode ? 'Gold' : '',
+          message: window.__procedureProdMode
+            ? 'Stored procedure dbo.usp_ProcessAlert is ready on a PRODUCTION connection. Review the parameters, type EXECUTE PROCEDURE ON PROD GOLD, then click Run procedure.'
+            : 'Stored procedure dbo.usp_ProcessAlert is ready. Review the parameters and click Run procedure to continue.'
         }), {
           status: 200,
           headers: { 'Content-Type': 'application/json' }
@@ -766,6 +779,17 @@ function attachMocks(window) {
           heightened: true,
           reviewRequired: true,
           warnings: [],
+          environment: 'test',
+          previewSample: {
+            mode: 'update',
+            columns: ['AlertId', 'Status'],
+            rows: [
+              { before: { AlertId: 1, Status: '<img src=x onerror="window.__xss=1">' }, after: { AlertId: 1, Status: 'HEIGHTENED_EDIT_TEST' } },
+              { before: { AlertId: 2, Status: null }, after: { AlertId: 2, Status: 'HEIGHTENED_EDIT_TEST' } }
+            ],
+            totalRows: 5,
+            truncated: true
+          },
           message: 'UPDATE requires explicit acknowledgement. This write touches 5 rows. Review the SQL, type EXECUTE UPDATE, then click Continue to execute.'
         }), {
           status: 200,
@@ -1328,6 +1352,37 @@ if (!sqlWindow.document.getElementById('testConnectionResult').textContent.inclu
     throw new Error('Hero active-source line did not return to the saved profile name when the fields matched again.');
   }
 }
+{
+  // Tagging the profile prod shows a PROD badge in the header and the saved list; re-saving
+  // updates the same profile rather than adding a copy. Untag again so later steps are
+  // unaffected.
+  const envSelect = sqlWindow.document.getElementById('profileEnvironmentSelect');
+  const savedCountBefore = sqlWindow.document.querySelectorAll('#savedConnections [data-connection-index]').length;
+  envSelect.value = 'prod';
+  sqlWindow.document.getElementById('saveConnectionBtn').click();
+  await flush();
+  if (!sqlWindow.document.querySelector('#activeSource .env-badge-prod') || sqlWindow.document.getElementById('activeSource').dataset.environment !== 'prod') {
+    throw new Error('A prod-tagged profile should show a PROD badge in the workspace header.');
+  }
+  if (!sqlWindow.document.querySelector('#savedConnections .env-badge-prod')) {
+    throw new Error('A prod-tagged profile should show a PROD badge in the saved profile list.');
+  }
+  if (sqlWindow.document.querySelectorAll('#savedConnections [data-connection-index]').length !== savedCountBefore) {
+    throw new Error('Re-saving a profile with a new tag should update it, not add a duplicate.');
+  }
+  envSelect.value = 'dev';
+  sqlWindow.document.querySelector('#savedConnections [data-connection-index="0"]').click();
+  await flush();
+  if (envSelect.value !== 'prod') {
+    throw new Error('Loading a saved profile should set the environment picker to its tag, so a re-save cannot silently untag it.');
+  }
+  envSelect.value = '';
+  sqlWindow.document.getElementById('saveConnectionBtn').click();
+  await flush();
+  if (sqlWindow.document.querySelector('#activeSource .env-badge')) {
+    throw new Error('Untagging the profile should remove the header badge.');
+  }
+}
 sqlWindow.document.getElementById('loadTablesBtn').click();
 await flush();
 if (sqlWindow.document.querySelector('[data-object="dbo.Alerts"]')?.hasAttribute('title')) {
@@ -1729,6 +1784,23 @@ if (sqlWindow.document.getElementById('secondConfirmWrap').classList.contains('h
 if (!sqlWindow.document.getElementById('confirmModalBtn').disabled) {
   throw new Error('A write above the heightened row limit must keep Continue disabled until the phrase is typed.');
 }
+{
+  // The rolled-back preview's sample rows render as before -> after, and row values are
+  // escaped like everything else the client puts into the page.
+  const previewRows = sqlWindow.document.getElementById('modalPreviewRows');
+  if (previewRows.classList.contains('hidden') || previewRows.querySelectorAll('tbody tr').length !== 2) {
+    throw new Error('The confirm dialog should show the preview sample rows.');
+  }
+  if (previewRows.querySelector('img') || sqlWindow.__xss) {
+    throw new Error('Preview sample values must be escaped, never rendered as HTML.');
+  }
+  if (!previewRows.querySelector('.preview-changed')?.textContent.includes('HEIGHTENED_EDIT_TEST') || !previewRows.textContent.includes('first 2 of 5')) {
+    throw new Error(`Changed cells should show before -> after with the sample size. Got: ${previewRows.textContent}`);
+  }
+  if (!previewRows.querySelector('.result-null')) {
+    throw new Error('A NULL before-value should render as the NULL pill.');
+  }
+}
 const heightenedConfirmInput = sqlWindow.document.getElementById('secondConfirmInput');
 heightenedConfirmInput.value = 'EXECUTE UPDATE';
 heightenedConfirmInput.dispatchEvent(new sqlWindow.Event('input', { bubbles: true }));
@@ -2121,7 +2193,12 @@ if (!procedureWindow.document.getElementById('modalReview').textContent.includes
   throw new Error('Procedure confirmation modal did not render review context.');
 }
 
-procedureWindow.document.getElementById('secondConfirmInput').value = 'RUN DBO.USP_PROCESSALERT';
+if (!procedureWindow.document.getElementById('secondConfirmWrap').classList.contains('hidden')) {
+  throw new Error('Outside production a procedure should not ask for a typed phrase.');
+}
+if (!procedureWindow.document.getElementById('modalProdBanner').classList.contains('hidden')) {
+  throw new Error('Outside production the confirmation must not show the PROD banner.');
+}
 procedureWindow.document.getElementById('confirmModalBtn').click();
 await flush();
 
@@ -2131,6 +2208,28 @@ if (!procedureWindow.document.querySelector('.artifact-card')) {
 if (!procedureWindow.document.getElementById('statusText').textContent.includes('executed successfully')) {
   throw new Error('Procedure execution did not update the status text.');
 }
+
+// On a prod-tagged profile a procedure needs a typed phrase naming the profile, the dialog
+// says PRODUCTION, and the typed phrase is sent with the confirm.
+procedureWindow.__procedureProdMode = true;
+procedureWindow.__procedureConfirmBodies = [];
+procedureWindow.document.getElementById('runProcedureBtn').click();
+await flush();
+if (procedureWindow.document.getElementById('modalProdBanner').classList.contains('hidden') || !procedureWindow.document.getElementById('modalProdBanner').textContent.includes('Gold')) {
+  throw new Error('A prod procedure confirmation should show the PRODUCTION banner with the profile name.');
+}
+if (procedureWindow.document.getElementById('secondConfirmWrap').classList.contains('hidden') || !procedureWindow.document.getElementById('confirmModalBtn').disabled) {
+  throw new Error('A prod procedure must require the typed phrase before Run procedure is enabled.');
+}
+const procedurePhraseInput = procedureWindow.document.getElementById('secondConfirmInput');
+procedurePhraseInput.value = 'execute procedure on prod gold';
+procedurePhraseInput.dispatchEvent(new procedureWindow.Event('input', { bubbles: true }));
+procedureWindow.document.getElementById('confirmModalBtn').click();
+await flush();
+if (procedureWindow.__procedureConfirmBodies.at(-1)?.acknowledgement !== 'execute procedure on prod gold') {
+  throw new Error(`The prod procedure confirm should send the typed phrase. Sent: ${JSON.stringify(procedureWindow.__procedureConfirmBodies.at(-1))}`);
+}
+procedureWindow.__procedureProdMode = false;
 
 procedureWindow.document.querySelector('[data-procedure="ops.usp_OtherProcedure"]').click();
 await flush();

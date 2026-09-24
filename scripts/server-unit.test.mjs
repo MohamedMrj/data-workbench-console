@@ -302,6 +302,41 @@ assert.deepEqual(writeAck.resolveWriteAcknowledgement({ classification: previewe
   heightened: false
 });
 
+// Prod: every write and procedure needs a phrase naming the profile, whatever its size.
+assert.deepEqual(writeAck.resolveWriteAcknowledgement({ classification: previewedUpdate, rowsAffected: 1, heightenedLimit: 3, environment: 'prod', profileName: 'Gold  store' }), {
+  expectedText: 'EXECUTE UPDATE ON PROD GOLD STORE',
+  heightened: true
+});
+assert.equal(writeAck.resolveWriteAcknowledgement({
+  classification: { action: 'BATCH', multiStatement: true, requiresAcknowledgement: true },
+  environment: 'prod',
+  profileName: 'gold'
+}).expectedText, 'RUN BATCH ON PROD GOLD');
+assert.equal(writeAck.resolveWriteAcknowledgement({ classification: previewedUpdate, rowsAffected: 1, environment: 'dev', profileName: 'dev box' }).expectedText, '');
+assert.equal(writeAck.resolveProcedureAcknowledgement({ environment: 'prod', profileName: 'Gold' }), 'EXECUTE PROCEDURE ON PROD GOLD');
+assert.equal(writeAck.resolveProcedureAcknowledgement({ environment: 'test', profileName: 'Gold' }), '');
+assert.doesNotThrow(() => writeAck.assertAcknowledgement('', 'anything'));
+assert.doesNotThrow(() => writeAck.assertAcknowledgement('EXECUTE UPDATE ON PROD GOLD', '  execute update on prod gold '));
+assert.throws(() => writeAck.assertAcknowledgement('EXECUTE UPDATE ON PROD GOLD', 'EXECUTE UPDATE'), (error) => error.httpStatus === 400);
+
+// Environment tags on saved profiles: round-trip, older clients cannot clear a prod tag,
+// explicit '' clears it, unknown tags are refused, and the resolver ignores auth and username.
+const envBase = { profileName: 'Gold', sourceType: 'sql-server', authMode: 'sqlLogin', server: 'Demo-Host', database: 'Meta_Store', username: 'tester' };
+const prodProfile = await savedStore.upsertSavedConnection({ ...envBase, environment: 'prod' });
+assert.equal(prodProfile.environment, 'prod');
+const resavedWithoutField = await savedStore.upsertSavedConnection({ ...envBase, id: prodProfile.id, profileName: 'Gold renamed' });
+assert.equal(resavedWithoutField.environment, 'prod', 'a save without the environment field must keep the prod tag');
+await assert.rejects(savedStore.upsertSavedConnection({ ...envBase, environment: 'production' }), (error) => error.httpStatus === 400);
+assert.deepEqual(
+  await savedStore.resolveConnectionEnvironment({ sourceType: 'sql-server', authMode: 'windowsNtlm', server: 'demo-host', database: 'meta_store', username: 'someone-else', domain: 'X' }),
+  { environment: 'prod', profileName: 'Gold renamed' }
+);
+assert.deepEqual(await savedStore.resolveConnectionEnvironment({ sourceType: 'sql-server', server: 'demo-host', database: 'other_db' }), { environment: '', profileName: '' });
+const clearedProfile = await savedStore.upsertSavedConnection({ ...envBase, id: prodProfile.id, environment: '' });
+assert.equal(clearedProfile.environment, '');
+assert.equal((await savedStore.resolveConnectionEnvironment(envBase)).environment, '');
+assert.equal(await savedStore.deleteSavedConnection(prodProfile.id), true);
+
 assert.equal(lifecycleStore.recordHeartbeat({ sessionId: 'bad' }).ok, false);
 const heartbeat = lifecycleStore.recordHeartbeat({ sessionId: 'session_1234567890', event: 'active', userAgent: 'unit' });
 assert.equal(heartbeat.ok, true);
@@ -520,6 +555,87 @@ const earlyCancelPool = fakePool();
 await assert.rejects(writeExecution.runRead(earlyCancelPool, 'SELECT 1', { runHandle: cancelBeforeRun }), (error) => error.code === 'CANCELLED');
 assert.deepEqual(earlyCancelPool.calls, [], 'the statement must not be sent after an early cancel');
 cancelBeforeRun.release();
+
+// previewWrite with OUTPUT samples: capped sample, correct row count, always rolled back,
+// count-only fallback when OUTPUT is rejected, and no fallback for a cancel.
+function fakeSamplingPool({ outputScript, countRowsAffected = [3] }) {
+  const calls = [];
+  let requestNumber = 0;
+  return {
+    calls,
+    transaction() {
+      return {
+        begin: async () => { calls.push('begin'); },
+        commit: async () => { calls.push('commit'); },
+        rollback: async () => { calls.push('rollback'); },
+        request: () => {
+          requestNumber += 1;
+          const request = new EventEmitter();
+          request.cancel = () => {};
+          const isOutputAttempt = requestNumber === 1;
+          request.query = async (sql) => {
+            calls.push(`${isOutputAttempt && request.stream ? 'stream' : 'query'}:${sql.replace(/\s+/g, ' ')}`);
+            if (request.stream) {
+              setImmediate(() => outputScript(request));
+              return undefined;
+            }
+            return { rowsAffected: countRowsAffected };
+          };
+          return request;
+        }
+      };
+    }
+  };
+}
+
+const updatePool = fakeSamplingPool({
+  outputScript: (request) => {
+    request.emit('recordset', [{ name: 'Id' }, { name: 'Status' }, { name: 'Id' }, { name: 'Status' }]);
+    for (let id = 1; id <= 25; id += 1) request.emit('row', [id, 'old', id, 'new']);
+    request.emit('rowsaffected', 25);
+    request.emit('done', {});
+  }
+});
+const sampledUpdate = await writeExecution.previewWrite(updatePool, "UPDATE dbo.T SET Status = 'new' WHERE Status = 'old'", { sampleLimit: 10, outputPreview: true });
+assert.equal(sampledUpdate.rowsAffected, 25);
+assert.equal(sampledUpdate.sample.mode, 'update');
+assert.deepEqual(sampledUpdate.sample.columns, ['Id', 'Status']);
+assert.equal(sampledUpdate.sample.rows.length, 10, 'the sample is capped at WRITE_PREVIEW_LIMIT rows');
+assert.deepEqual(sampledUpdate.sample.rows[0], { before: { Id: 1, Status: 'old' }, after: { Id: 1, Status: 'new' } });
+assert.equal(sampledUpdate.sample.truncated, true);
+assert.equal(sampledUpdate.sample.totalRows, 25);
+assert.deepEqual(updatePool.calls, ["begin", "stream:UPDATE dbo.T SET Status = 'new' OUTPUT deleted.*, inserted.* WHERE Status = 'old'", 'rollback']);
+
+// SQL Server rejects OUTPUT on a table with triggers (error 334); the preview falls back to a
+// fresh rolled-back count of the original statement.
+const triggerPool = fakeSamplingPool({
+  outputScript: (request) => {
+    request.emit('error', Object.assign(new Error('The target table cannot have any enabled triggers if the statement contains an OUTPUT clause without INTO clause.'), { code: 'EREQUEST', number: 334 }));
+    request.emit('done', {});
+  },
+  countRowsAffected: [7]
+});
+const fallbackPreview = await writeExecution.previewWrite(triggerPool, 'DELETE FROM dbo.T WHERE id > 1', { sampleLimit: 10, outputPreview: true });
+assert.equal(fallbackPreview.rowsAffected, 7);
+assert.equal(fallbackPreview.sample, null);
+assert.match(fallbackPreview.sampleUnavailable, /not available/);
+assert.deepEqual(triggerPool.calls.filter((call) => call === 'begin' || call === 'rollback' || call === 'commit'), ['begin', 'rollback', 'begin', 'rollback']);
+
+// A cancelled sampling preview is not retried.
+const cancelPool = fakeSamplingPool({
+  outputScript: (request) => {
+    request.emit('error', Object.assign(new Error('Canceled.'), { code: 'ECANCEL' }));
+    request.emit('done', {});
+  }
+});
+await assert.rejects(writeExecution.previewWrite(cancelPool, 'DELETE FROM dbo.T WHERE id = 1', { sampleLimit: 10, outputPreview: true }), (error) => error.code === 'ECANCEL');
+assert.equal(cancelPool.calls.filter((call) => call === 'begin').length, 1);
+
+// Sources without OUTPUT support (Fabric) and unrewritable shapes preview a count only.
+const fabricPool = fakeSamplingPool({ outputScript: () => {} });
+assert.deepEqual(await writeExecution.previewWrite(fabricPool, 'DELETE FROM dbo.T WHERE id = 1', { sampleLimit: 10, outputPreview: false }), { rowsAffected: 3 });
+const mergePool = fakeSamplingPool({ outputScript: () => {} });
+assert.deepEqual(await writeExecution.previewWrite(mergePool, 'UPDATE TOP (5) dbo.T SET a = 1', { sampleLimit: 10, outputPreview: true }), { rowsAffected: 3 });
 
 // query-export: CSV formula escaping, column de-duplication, and the streaming lifecycle
 // against a fake mssql request that emits recordset/row/error/done like the real driver.

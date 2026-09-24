@@ -461,6 +461,15 @@ export default function WorkbenchShell({ pageMode = 'sql' }) {
                   <span>Profile name <em className="tiny-note">(optional)</em></span>
                   <input id="profileNameInput" type="text" placeholder="e.g. Production Gold" autoComplete="off" />
                 </label>
+                <label className="field compact-field conn-profile-env">
+                  <span>Environment</span>
+                  <select id="profileEnvironmentSelect" defaultValue="">
+                    <option value="">Untagged</option>
+                    <option value="dev">Dev</option>
+                    <option value="test">Test</option>
+                    <option value="prod">Prod</option>
+                  </select>
+                </label>
                 <button id="saveConnectionBtn" className="save-conn-btn" type="button" data-tooltip="Save this connection profile without saving passwords or secrets.">
                   <span className="save-conn-icon" aria-hidden="true">💾</span>
                   Save profile
@@ -715,9 +724,11 @@ export default function WorkbenchShell({ pageMode = 'sql' }) {
             <h2 id="modalTitle">Confirm action</h2>
             <button id="closeModalBtn" className="icon-btn" type="button" aria-label="Close">×</button>
           </div>
+          <div id="modalProdBanner" className="modal-prod-banner hidden" role="alert" />
           <p id="modalMessage" className="modal-message" />
           <div id="modalMetrics" className="modal-metrics" />
           <div id="modalReview" className="modal-review hidden" />
+          <div id="modalPreviewRows" className="modal-preview-rows hidden" />
           <div id="secondConfirmWrap" className="field hidden">
             <span>Review the action details below, then continue when you are ready</span>
             <input id="secondConfirmInput" type="text" autoComplete="off" />

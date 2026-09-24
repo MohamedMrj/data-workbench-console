@@ -100,6 +100,7 @@ export default function SqlStudioDocsPage() {
             <div><strong>Test connection</strong><span>Verifies server, database, authentication mode, and credentials before you load metadata.</span></div>
             <div><strong>Load catalog</strong><span>Loads tables, views, and procedures when the selected source supports them. Required before object selection, scripting, profiling, dependency view, pins/recent filtering, and most advanced operations.</span></div>
             <div><strong>Saved profiles</strong><span>Save reusable source, auth mode, server, port, database, domain where relevant, username, and trust settings. Secrets are not stored. Clicking a saved profile loads its catalog automatically when the profile has enough connection information.</span></div>
+            <div><strong>Environment</strong><span>Tag a profile Dev, Test or Prod before saving. The tag shows as a badge in the workspace header and the saved list. On a <strong>Prod</strong> profile every write, batch, result-edit save and procedure needs a typed phrase that names the profile, such as <code>EXECUTE UPDATE ON PROD GOLD</code>, and the confirm dialog shows a red PRODUCTION banner. The server enforces this, and any saved prod profile for the same server and database counts, whichever login you use. It guards against mistakes; it is not a security boundary.</span></div>
           </div>
         </DocsMiniSection>
         <DocsExample title="Good connection flow">
@@ -219,6 +220,9 @@ ORDER BY [CreatedUtc] DESC;`}</pre>
         <DocsMiniSection title="Statements and autocomplete">
           <p>Statements are split only on <code>;</code>. A blank line is not a boundary on purpose: it keeps <code>UPDATE ... SET ...</code> and a <code>WHERE</code> on the next paragraph together, so a statement is never sent without its filter. End each statement with <code>;</code> if you want Ctrl+Enter to pick one of several.</p>
           <p>Autocomplete uses only metadata the app has already loaded. Table and view names come from the catalog; columns come from objects you have opened, and a table you have not opened yet has its columns fetched once when you type its alias. It stays quiet inside strings and comments, and can be turned off in Settings (<code>APP_EDITOR_AUTOCOMPLETE_ENABLED</code>).</p>
+        </DocsMiniSection>
+        <DocsMiniSection title="Sample rows in the preview">
+          <p>On SQL Server the preview also shows up to 10 sample rows the write touches — for an UPDATE each changed cell reads <em>before → after</em> — all taken from the rolled-back preview. When a statement cannot return them (a table with triggers, text columns, <code>TOP</code>, a CTE-led write, <code>MERGE</code>) the dialog shows the row count only. Fabric sources always show the row count only. The sample stays in the dialog; it is never stored or written to the audit log.</p>
         </DocsMiniSection>
         <DocsMiniSection title="Confirming a write">
           <p>When you run a write, the editor opens a confirmation dialog instead of executing immediately. The dialog shows the <strong>review context</strong> (server, database, detected action, statement count, and the row count from a rollback preview) so you can check the request before it commits.</p>

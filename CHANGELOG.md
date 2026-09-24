@@ -5,6 +5,61 @@ All notable Data Workbench Console changes are tracked here.
 The in-app version is read from `package.json` and exposed through `/api/version`
 together with the current git commit and build information.
 
+## 1.5.2 - 2026-09-24
+
+Safer writes: profiles can be tagged as production, and a write preview shows the actual rows it
+will change.
+
+### Added
+
+- **Environment tags on saved profiles** (`Dev`, `Test`, `Prod`), shown as a badge in the
+  workspace header and the saved list; a prod connection turns the header dot red.
+- **Prod connections need a typed phrase for every write.** On a profile tagged prod, every
+  write, batch, result-edit save and stored procedure must be confirmed by typing a phrase that
+  names the profile — `EXECUTE UPDATE ON PROD GOLD`, `RUN BATCH ON PROD GOLD`,
+  `EXECUTE PROCEDURE ON PROD GOLD` — however few rows it touches, and the confirm dialog shows a
+  red PRODUCTION banner. The phrase names the profile rather than the database because database
+  names are often long generated ids nobody could type per write. The server decides this from
+  the saved profiles, not from anything the browser sends: any saved prod profile for the same
+  source, server, port and database makes the connection prod, whichever login or user name is
+  used. Tagging a profile prod after a preview invalidates that preview. Procedures had no typed
+  phrase at all before; outside prod they still confirm with one click. This is a guard against
+  mistakes, not a security boundary (see ARCHITECTURE §21).
+- **Sample rows in the write preview.** On SQL Server the rolled-back preview now adds an
+  `OUTPUT` clause and the confirm dialog shows up to `WRITE_PREVIEW_LIMIT` (10) of the rows the
+  write touches — for an UPDATE each changed cell reads before → after. Rows are streamed and only
+  the first few kept, so previewing a million-row UPDATE does not load a million rows. When a
+  statement cannot take an `OUTPUT` clause (a table with triggers, text columns, `TOP`, a
+  CTE-led write, `MERGE`) or the source is Fabric, the preview falls back to the row count as
+  before. The sample is shown in the dialog only — never stored in the confirmation file or the
+  audit log — and the statement that runs on confirm is always your original text.
+  `WRITE_PREVIEW_LIMIT` was previously accepted but unused.
+
+### Changed
+
+- The review message names the exact phrase to type (including the prod suffix) instead of
+  always saying `EXECUTE <ACTION>`.
+- Re-saving a profile keeps its environment tag when the request does not mention one, so an
+  older client cannot silently untag a prod profile; loading a profile also sets the picker, so
+  re-saving it from the form cannot either.
+
+### Verification
+
+- `sql-classifier.test.mjs` gains 28 cases for `buildPreviewOutputQuery`: exact OUTPUT placement
+  for every UPDATE/DELETE/INSERT shape (subqueries in SET, `'WHERE'` in a literal, a `[Where]`
+  column, table hints, `OPTION`, `DEFAULT VALUES`), a check that stripping the clause back out
+  gives the original token stream, and every shape that must not be rewritten.
+- `server-unit.test.mjs` covers the prod phrases, the tag round-trip and preservation, the
+  resolver ignoring login and user name, the sample cap and row count, the count-only fallback on
+  a trigger error (two rolled-back transactions, never a commit), and no retry after a cancel.
+- `route-contract.test.mjs` tags a profile prod (by tag only, never a prod host name) and asserts
+  a batch then needs `RUN BATCH ON PROD <PROFILE>` from any login, rejects the plain phrase, and
+  goes back to `RUN BATCH` once the profile is removed.
+- `ui-smoke.mjs` covers tagging and untagging a profile, the header and list badges, the picker
+  following a loaded profile, the prod procedure phrase being required and sent, the PRODUCTION
+  banner, and the preview sample table (before → after, NULL pill, and an `<img>` value rendered
+  as text).
+
 ## 1.5.1 - 2026-09-24
 
 Results you can trust: the grid now says when a result was cut off, and a full result can be

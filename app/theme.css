@@ -587,6 +587,7 @@ select {
 
 .conn-save-row {
   display: flex;
+  flex-wrap: wrap;
   align-items: flex-end;
   gap: 10px;
   padding-top: 12px;
@@ -594,7 +595,12 @@ select {
 }
 
 .conn-profile-name {
-  flex: 1 1 0;
+  flex: 1 1 140px;
+  min-width: 0;
+}
+
+.conn-profile-env {
+  flex: 0 0 104px;
 }
 
 .save-conn-btn {

@@ -125,6 +125,7 @@ window.createConsoleApp = function createConsoleApp() {
     copyResultsBtn: 'Copy the currently loaded result rows.',
     exportCsvBtn: 'Export the currently loaded result rows as CSV.',
     exportJsonBtn: 'Export the currently loaded result rows as JSON.',
+    profileEnvironmentSelect: 'Tag this profile. On a Prod profile every write and procedure needs a typed phrase naming the profile, enforced by the server.',
     exportAllCsvBtn: 'Re-run this query on the server and download every row as CSV, not just the rows loaded in the grid.',
     exportAllJsonBtn: 'Re-run this query on the server and download every row as JSON, not just the rows loaded in the grid.',
     scrollResultsLeftBtn: 'Move the result grid to earlier columns.',
@@ -1644,13 +1645,14 @@ window.createConsoleApp = function createConsoleApp() {
     const details = `${sourceLabel} • ${current.server} • ${current.database}`;
 
     line.dataset.state = !ready ? 'empty' : profile ? 'profile' : 'ready';
+    line.dataset.environment = normalizeEnvironmentTag(profile?.environment);
     line.dataset.tooltip = !ready
       ? 'Enter a server and database, or pick a saved profile, to set the data source.'
       : profile ? `Saved profile ${profile.profileName || current.database}: ${details}` : details;
     if (!ready) {
       line.textContent = 'No data source configured';
     } else if (profile) {
-      line.innerHTML = `<span class="active-source-profile">${esc(profile.profileName || current.database)}</span>`;
+      line.innerHTML = `${environmentBadge(profile.environment)}<span class="active-source-profile">${esc(profile.profileName || current.database)}</span>`;
     } else {
       line.innerHTML = `<span class="active-source-type">${esc(sourceLabel)}</span><span class="active-source-server">${esc(current.server)}</span><span class="active-source-database">${esc(current.database)}</span>`;
     }
@@ -2553,6 +2555,18 @@ window.createConsoleApp = function createConsoleApp() {
     renderConnectionSummary();
   }
 
+  const ENVIRONMENT_LABELS = { dev: 'DEV', test: 'TEST', prod: 'PROD' };
+
+  function normalizeEnvironmentTag(value) {
+    const text = String(value || '').trim().toLowerCase();
+    return Object.hasOwn(ENVIRONMENT_LABELS, text) ? text : '';
+  }
+
+  function environmentBadge(environment) {
+    const tag = normalizeEnvironmentTag(environment);
+    return tag ? `<span class="env-badge env-badge-${tag}">${ENVIRONMENT_LABELS[tag]}</span>` : '';
+  }
+
   function normalizeStoredConnection(item) {
     if (!item || typeof item !== 'object') {
       return null;
@@ -2568,7 +2582,8 @@ window.createConsoleApp = function createConsoleApp() {
       database: String(item.database || item.database_name || item.db || item.name || '').trim(),
       domain: String(item.domain || item.windowsDomain || item.windows_domain || '').trim(),
       username: String(item.username || item.user || '').trim(),
-      trustServerCertificate: item.trustServerCertificate !== false && item.trust_server_certificate !== 0
+      trustServerCertificate: item.trustServerCertificate !== false && item.trust_server_certificate !== 0,
+      environment: normalizeEnvironmentTag(item.environment)
     };
 
     if (!normalized.server || !normalized.database) {
@@ -2965,7 +2980,7 @@ window.createConsoleApp = function createConsoleApp() {
     container.innerHTML = state.connectionHistory.map((item, index) => {
       const sourceLabel = (sourceOptions().find((source) => source.id === item.sourceType)?.label) || item.sourceType;
       const authLabel = authOptionsForSource(item.sourceType).find((auth) => auth.id === item.authMode)?.label || item.authMode;
-      return `<div class="saved-item"><button class="saved-item-main" data-connection-index="${index}" type="button"><strong>${esc(item.profileName || item.database)}</strong><span>${esc(sourceLabel)} / ${esc(authLabel)} • ${esc(item.server)} • ${esc(item.database)}</span></button><button class="saved-item-delete" data-delete-index="${index}" type="button">×</button></div>`;
+      return `<div class="saved-item"><button class="saved-item-main" data-connection-index="${index}" type="button"><strong>${environmentBadge(item.environment)}${esc(item.profileName || item.database)}</strong><span>${esc(sourceLabel)} / ${esc(authLabel)} • ${esc(item.server)} • ${esc(item.database)}</span></button><button class="saved-item-delete" data-delete-index="${index}" type="button">×</button></div>`;
     }).join('');
     container.querySelectorAll('[data-connection-index]').forEach((button) => {
       button.onclick = () => applySavedConnectionAndLoadCatalog(state.connectionHistory[Number(button.dataset.connectionIndex)]);
@@ -3007,6 +3022,7 @@ window.createConsoleApp = function createConsoleApp() {
     if ($('domainInput')) $('domainInput').value = item.domain || '';
     $('usernameInput').value = item.username || '';
     $('trustServerCertificateInput').checked = item.trustServerCertificate !== false;
+    if ($('profileEnvironmentSelect')) $('profileEnvironmentSelect').value = normalizeEnvironmentTag(item.environment);
     const nextSignature = connectionSignature();
     $('passwordInput').value = authModeNeedsPassword(authMode) && previousSignature === nextSignature
       ? previousSessionPassword
@@ -3067,7 +3083,8 @@ window.createConsoleApp = function createConsoleApp() {
           data: {
             ...current,
             id: existingProfile?.id || '',
-            profileName
+            profileName,
+            environment: normalizeEnvironmentTag($('profileEnvironmentSelect')?.value)
           }
         });
         saved = normalizeStoredConnection(payload.item || current);
@@ -3082,7 +3099,8 @@ window.createConsoleApp = function createConsoleApp() {
         saved = normalizeStoredConnection({
           ...current,
           id: `${Date.now()}-${Math.random().toString(16).slice(2, 10)}`,
-          profileName
+          profileName,
+          environment: normalizeEnvironmentTag($('profileEnvironmentSelect')?.value)
         });
         if (!saved) {
           throw error;
@@ -7277,6 +7295,10 @@ window.createConsoleApp = function createConsoleApp() {
         message: payload.message,
         confirmLabel: summary.total > 1 ? 'Save changes' : 'Save change',
         expectedText: payload.expectedText || '',
+        environment: payload.environment || '',
+        profileName: payload.profileName || '',
+        previewSample: payload.previewSample || null,
+        previewSampleNote: payload.previewSampleNote || '',
         metrics: [
           { label: 'Action', value: payload.action },
           { label: 'Changes', value: summary.total },
@@ -7803,9 +7825,48 @@ window.createConsoleApp = function createConsoleApp() {
     }
   }
 
+  // Sample rows from the rolled-back preview (UPDATE shows before -> after per changed cell).
+  function renderPreviewSample(sample, note = '') {
+    const container = $('modalPreviewRows');
+    if (!container) return;
+    const columns = Array.isArray(sample?.columns) ? sample.columns : [];
+    const rows = Array.isArray(sample?.rows) ? sample.rows : [];
+    if (!columns.length || !rows.length) {
+      container.innerHTML = note ? `<p class="tiny-note">${esc(note)}</p>` : '';
+      container.classList.toggle('hidden', !note);
+      return;
+    }
+    const show = (value) => (value === null || value === undefined ? '<span class="result-null">NULL</span>' : esc(typeof value === 'object' ? JSON.stringify(value) : String(value)));
+    const same = (left, right) => JSON.stringify(left ?? null) === JSON.stringify(right ?? null);
+    const label = { update: 'Rows this UPDATE changes', delete: 'Rows this DELETE removes', insert: 'Rows this INSERT adds' }[sample.mode] || 'Rows this write touches';
+    const count = sample.truncated
+      ? `first ${rows.length} of ${Number(sample.totalRows || 0).toLocaleString()}`
+      : `${rows.length} row${rows.length === 1 ? '' : 's'}`;
+    const body = rows.map((row) => `<tr>${columns.map((column) => {
+      if (sample.mode !== 'update') {
+        return `<td>${show(row[column])}</td>`;
+      }
+      const before = row.before?.[column];
+      const after = row.after?.[column];
+      return same(before, after)
+        ? `<td>${show(after)}</td>`
+        : `<td class="preview-changed">${show(before)} <span aria-hidden="true">→</span><span class="sr-only"> becomes </span> ${show(after)}</td>`;
+    }).join('')}</tr>`).join('');
+    container.innerHTML = `<h3>${esc(label)} <span class="tiny-note">(${esc(count)}, rolled back)</span></h3><div class="modal-preview-scroll"><table class="modal-preview-table"><thead><tr>${columns.map((column) => `<th>${esc(column)}</th>`).join('')}</tr></thead><tbody>${body}</tbody></table></div>`;
+    container.classList.remove('hidden');
+  }
+
   function openConfirm(config) {
     state.pendingAction = config;
     state.lastFocusedElement = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const prod = normalizeEnvironmentTag(config.environment) === 'prod';
+    $('confirmModal').dataset.environment = prod ? 'prod' : '';
+    if ($('modalProdBanner')) {
+      $('modalProdBanner').classList.toggle('hidden', !prod);
+      $('modalProdBanner').textContent = prod
+        ? `PRODUCTION${config.profileName ? ` — ${config.profileName}` : ''}. This runs against a connection tagged prod.`
+        : '';
+    }
     $('modalTitle').textContent = config.title;
     $('modalMessage').textContent = config.message;
     $('modalMetrics').innerHTML = (config.metrics || []).map((metric) => `<div class="artifact-card"><strong>${esc(metric.label)}</strong><code>${esc(metric.value)}</code></div>`).join('');
@@ -7817,6 +7878,7 @@ window.createConsoleApp = function createConsoleApp() {
       review.innerHTML = '';
       review.classList.add('hidden');
     }
+    renderPreviewSample(config.previewSample, config.previewSampleNote);
     $('confirmModalBtn').textContent = config.confirmLabel;
     const confirmButton = $('confirmModalBtn');
     const secondWrap = $('secondConfirmWrap');
@@ -7895,6 +7957,11 @@ window.createConsoleApp = function createConsoleApp() {
     }
     $('secondConfirmInput').value = '';
     $('secondConfirmInput').oninput = null;
+    // Preview samples hold real row values; do not leave them in the page after the dialog.
+    if ($('modalPreviewRows')) {
+      $('modalPreviewRows').innerHTML = '';
+      $('modalPreviewRows').classList.add('hidden');
+    }
     $('confirmModalBtn').disabled = false;
     $('cancelModalBtn').textContent = 'Cancel';
     $('cancelModalBtn').disabled = false;
@@ -8088,6 +8155,10 @@ window.createConsoleApp = function createConsoleApp() {
           message: payload.message,
           confirmLabel: payload.action === 'BATCH' ? 'Execute batch' : payload.action === 'DELETE' ? 'Execute delete' : 'Execute write',
           expectedText: payload.expectedText || '',
+          environment: payload.environment || '',
+          profileName: payload.profileName || '',
+          previewSample: payload.previewSample || null,
+          previewSampleNote: payload.previewSampleNote || '',
           metrics: [
             { label: 'Action', value: payload.action },
             { label: 'Statements', value: statements },
@@ -8164,6 +8235,9 @@ window.createConsoleApp = function createConsoleApp() {
           title: 'Confirm procedure execution',
           message: payload.message,
           confirmLabel: 'Run procedure',
+          expectedText: payload.expectedText || '',
+          environment: payload.environment || '',
+          profileName: payload.profileName || '',
           metrics: [{ label: 'Procedure', value: payload.procedure }, { label: 'Parameters', value: payload.parameterCount }],
           review: [
             { label: 'Server', value: current.server },
@@ -8209,7 +8283,10 @@ window.createConsoleApp = function createConsoleApp() {
     try {
       if (isProcedure) {
         const executedRequest = { ...state.pendingAction.request };
-        const payload = await api('/api/procedures', { method: 'POST', data: requestConnection({ ...executedRequest }) });
+        const payload = await api('/api/procedures', {
+          method: 'POST',
+          data: requestConnection({ ...executedRequest, acknowledgement: $('secondConfirmInput')?.value || '' })
+        });
         closeConfirm();
         setResults(payload.columns || [], payload.rows || [], {
           rowsAffected: Number(payload.rowsAffected || 0),

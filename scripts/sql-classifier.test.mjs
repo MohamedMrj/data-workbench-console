@@ -8,7 +8,7 @@
  */
 
 import assert from 'node:assert/strict';
-import { analyzeSingleTableSelect, buildLimitedReadQuery, classifyQuery, stripCommentsAndTrim, tokenizeSql, splitStatements } from '../lib/server/sql-classifier.js';
+import { analyzeSingleTableSelect, buildLimitedReadQuery, buildPreviewOutputQuery, classifyQuery, stripCommentsAndTrim, tokenizeSql, splitStatements } from '../lib/server/sql-classifier.js';
 
 let passed = 0;
 let failed = 0;
@@ -705,6 +705,61 @@ test('a batch containing SELECT INTO lists it as a high-risk action', () => {
 test('SELECT INTO results are not editable', () => {
   assert.equal(analyzeSingleTableSelect('SELECT * INTO dbo.N FROM dbo.T').ok, false);
 });
+
+// ─── buildPreviewOutputQuery ─────────────────────────────────────────────────
+
+console.log('\nbuildPreviewOutputQuery');
+
+// The rewrite must only ever add the OUTPUT clause: stripping it back out has to give the
+// original token stream, which proves it never landed inside a literal or identifier.
+function assertOnlyOutputAdded(original, rewritten) {
+  const withoutOutput = rewritten.replace(/\nOUTPUT (?:deleted\.\*, inserted\.\*|deleted\.\*|inserted\.\*)(?:\n|$)/, ' ');
+  assert.deepEqual(tokenizeSql(withoutOutput), tokenizeSql(original.replace(/;+\s*$/, '')));
+}
+
+for (const [label, query, expected, mode] of [
+  ['UPDATE with WHERE', 'UPDATE dbo.T SET a = 1 WHERE b = 2', 'UPDATE dbo.T SET a = 1\nOUTPUT deleted.*, inserted.*\nWHERE b = 2', 'update'],
+  ['UPDATE with FROM join', 'UPDATE t SET a = u.a FROM dbo.T t JOIN dbo.U u ON u.id = t.id', 'UPDATE t SET a = u.a\nOUTPUT deleted.*, inserted.*\nFROM dbo.T t JOIN dbo.U u ON u.id = t.id', 'update'],
+  ['UPDATE with a subquery in SET', 'UPDATE dbo.T SET a = (SELECT MAX(b) FROM dbo.U WHERE c = 1) WHERE d = 2', 'UPDATE dbo.T SET a = (SELECT MAX(b) FROM dbo.U WHERE c = 1)\nOUTPUT deleted.*, inserted.*\nWHERE d = 2', 'update'],
+  ["UPDATE with 'WHERE' in a literal", "UPDATE dbo.T SET note = 'WHERE x' WHERE id = 1", "UPDATE dbo.T SET note = 'WHERE x'\nOUTPUT deleted.*, inserted.*\nWHERE id = 1", 'update'],
+  ['UPDATE with a [Where] column', 'UPDATE dbo.T SET [Where] = 1 WHERE id = 1', 'UPDATE dbo.T SET [Where] = 1\nOUTPUT deleted.*, inserted.*\nWHERE id = 1', 'update'],
+  ['UPDATE with OPTION and no WHERE', 'UPDATE dbo.T SET a = 1 OPTION (MAXDOP 1);', 'UPDATE dbo.T SET a = 1\nOUTPUT deleted.*, inserted.*\nOPTION (MAXDOP 1)', 'update'],
+  ['UPDATE without WHERE', 'UPDATE dbo.T SET a = 1', 'UPDATE dbo.T SET a = 1\nOUTPUT deleted.*, inserted.*', 'update'],
+  ['DELETE FROM with WHERE', 'DELETE FROM dbo.T WHERE id = 1', 'DELETE FROM dbo.T\nOUTPUT deleted.*\nWHERE id = 1', 'delete'],
+  ['DELETE with a table hint', 'DELETE FROM dbo.T WITH (ROWLOCK) WHERE id = 1', 'DELETE FROM dbo.T WITH (ROWLOCK)\nOUTPUT deleted.*\nWHERE id = 1', 'delete'],
+  ['DELETE alias FROM join', 'DELETE t FROM dbo.T t JOIN dbo.U u ON u.id = t.id', 'DELETE t\nOUTPUT deleted.*\nFROM dbo.T t JOIN dbo.U u ON u.id = t.id', 'delete'],
+  ['DELETE without FROM keyword', 'DELETE dbo.T WHERE id = 1', 'DELETE dbo.T\nOUTPUT deleted.*\nWHERE id = 1', 'delete'],
+  ['INSERT VALUES', 'INSERT INTO dbo.T (a, b) VALUES (1, 2)', 'INSERT INTO dbo.T (a, b)\nOUTPUT inserted.*\nVALUES (1, 2)', 'insert'],
+  ['INSERT SELECT', 'INSERT INTO dbo.T (a) SELECT a FROM dbo.U WHERE b = 1', 'INSERT INTO dbo.T (a)\nOUTPUT inserted.*\nSELECT a FROM dbo.U WHERE b = 1', 'insert'],
+  ['INSERT DEFAULT VALUES', 'INSERT dbo.T DEFAULT VALUES', 'INSERT dbo.T\nOUTPUT inserted.*\nDEFAULT VALUES', 'insert'],
+  ['INSERT with a table hint', 'INSERT INTO dbo.T WITH (TABLOCK) (a) VALUES (1)', 'INSERT INTO dbo.T WITH (TABLOCK) (a)\nOUTPUT inserted.*\nVALUES (1)', 'insert']
+]) {
+  test(`OUTPUT placement: ${label}`, () => {
+    const result = buildPreviewOutputQuery(query);
+    assert.deepEqual(result, { text: expected, mode });
+    assertOnlyOutputAdded(query, result.text);
+  });
+}
+
+for (const [label, query] of [
+  ['a read', 'SELECT * FROM dbo.T'],
+  ['a CTE-led write', 'WITH x AS (SELECT 1 AS id) DELETE FROM dbo.T WHERE id IN (SELECT id FROM x)'],
+  ['MERGE', 'MERGE dbo.T AS t USING dbo.U AS u ON t.id = u.id WHEN MATCHED THEN DELETE;'],
+  ['UPDATE TOP', 'UPDATE TOP (5) dbo.T SET a = 1'],
+  ['DELETE TOP', 'DELETE TOP (5) FROM dbo.T'],
+  ['an existing OUTPUT', 'DELETE FROM dbo.T OUTPUT deleted.id WHERE id = 1'],
+  ['INSERT ... EXEC', 'INSERT INTO dbo.T (a) EXEC dbo.p'],
+  ['OPENQUERY target', "UPDATE OPENQUERY(linked, 'SELECT a FROM t') SET a = 1"],
+  ['UPDATE STATISTICS', 'UPDATE STATISTICS dbo.T'],
+  ['INSERT with a parenthesised SELECT only', 'INSERT INTO dbo.T (a) (SELECT 1)'],
+  ['two statements', 'DELETE FROM dbo.T WHERE id = 1; DELETE FROM dbo.U WHERE id = 1'],
+  ['unterminated text', "UPDATE dbo.T SET a = 'x WHERE id = 1"],
+  ['empty', '']
+]) {
+  test(`no OUTPUT rewrite for ${label}`, () => {
+    assert.equal(buildPreviewOutputQuery(query), null);
+  });
+}
 
 // ─── summary ─────────────────────────────────────────────────────────────────
 

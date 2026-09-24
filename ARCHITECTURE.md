@@ -1051,6 +1051,9 @@ with an explicit fallback for sources lacking the DMV, return
 | Textarea + highlight backdrop instead of a real editor | Zero dependencies, no bundler, preserves native textarea behaviour. |
 | Passwords excluded from the connection fingerprint | Fingerprints are used for pool reuse and client-side scoping, where a password would leak into storage keys. |
 | `data-workspace-mode="wide"` restated at higher specificity | It must beat the older `@container` fallbacks below it (1.4.22). |
+| Prod tags are matched by source/server/port/database, not by profile id or login | A prod tag has to follow the database, so signing in as another user or loading a copy of the profile cannot step around it. It is a guard against mistakes, not a security boundary: anyone using the app can retag a profile, and a server reached through a different host alias does not match. |
+| The prod phrase names the profile, not the database | Database names here are often long generated ids (`meta_store-3ede0524-…`) nobody could type per write; the profile name is short and chosen by the user. |
+| Write-preview samples are never persisted | They hold real row values. They go to the browser in the preview response only — not into `pending-confirmations.json` or the audit log — and the dialog clears them on close. |
 | A small `INSERT` requires no typed phrase | It cannot destroy existing rows and the rollback preview shows the row count. Above `HEIGHTENED_CONFIRM_LIMIT` rows it needs `EXECUTE INSERT`, like any other large write. |
 
 ### Genuine issues

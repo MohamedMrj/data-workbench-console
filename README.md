@@ -6,7 +6,7 @@ Production-safe internal SQL workbench for Microsoft Fabric SQL endpoints, Fabri
 
 Data Workbench Console is built for controlled operational work: browse metadata, generate SQL, run read queries, preview writes before execution, run stored procedures from a dedicated flow, and keep an audit trail of important actions.
 
-Current app version: `1.5.1`. See [CHANGELOG.md](CHANGELOG.md) for release notes.
+Current app version: `1.5.2`. See [CHANGELOG.md](CHANGELOG.md) for release notes.
 
 <p>
   <img alt="Next.js" src="https://img.shields.io/badge/Next.js-15-111827?style=for-the-badge&logo=nextdotjs" />
@@ -500,6 +500,23 @@ Saved connection behavior:
 - loading a saved connection restores source, auth mode, server, port, database, domain where relevant, username, and trust setting
 - loading a saved connection automatically loads the catalog when enough non-secret connection information is present
 - SQL login and Windows authentication profiles require the password again unless it is still available in the browser session
+- re-saving a profile with the same connection details updates it instead of adding a copy
+
+Environment tags:
+
+- each saved profile can be tagged `Dev`, `Test` or `Prod`; the tag shows as a badge in the
+  workspace header and the saved list, and a prod connection turns the header dot red
+- on a **prod** profile, every write, batch, result-edit save and stored procedure needs a typed
+  phrase that names the profile, for example `EXECUTE UPDATE ON PROD GOLD`,
+  `RUN BATCH ON PROD GOLD` or `EXECUTE PROCEDURE ON PROD GOLD`, however few rows it touches;
+  the confirm dialog shows a red PRODUCTION banner
+- the server enforces this from the saved profiles, not the browser: any saved prod profile
+  pointing at the same source, server, port and database makes the connection prod, whichever
+  login or user name is used
+- tagging a profile prod after a preview invalidates that preview; run it again to get the prod
+  phrase
+- the tag is a guard against mistakes, not a security boundary: anyone using the app can change
+  a profile's tag, and a server reached by a different host name alias does not match
 
 ### Object Explorer
 
@@ -934,10 +951,15 @@ Write flow:
 
 1. classify query
 2. block unsafe patterns early
-3. run preview in a rollback transaction
+3. run preview in a rollback transaction; on SQL Server the preview adds an `OUTPUT` clause so
+   the dialog can show up to `WRITE_PREVIEW_LIMIT` sample rows (before → after for an UPDATE),
+   and falls back to a plain row count when the statement cannot take one (triggers, text
+   columns, `TOP`, CTE-led writes, `MERGE`). The sample is shown in the dialog only; it is never
+   stored in the confirmation file or the audit log, and the statement that runs on confirm is
+   always your original text
 4. return rows affected and confirmation requirements
 5. require explicit confirmation token
-6. for larger writes, require typed second confirmation
+6. for larger writes, and for every write on a prod-tagged profile, require typed second confirmation
 7. execute in a transaction only after confirmation
 
 ### Confirmed SQL
@@ -978,7 +1000,8 @@ Stored procedures:
 
 Defaults:
 
-- write preview hard limit: `10`
+- write preview sample rows: `10` (SQL Server shows up to this many before/after rows; Fabric
+  shows the row count only)
 - typed confirmation threshold: `3`
 - API response row cap: `250`
 - confirmation TTL: `300000` ms

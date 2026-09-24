@@ -300,6 +300,46 @@ try {
   assert.equal(savedWindowsDelete.response.status, 200);
   assert.equal(savedWindowsDelete.payload.success, true);
 
+  // A profile tagged prod (the tag alone, never the host name) makes every write on that
+  // database need a phrase naming the profile. The batch review never touches the database.
+  const prodTagged = await request('/api/saved-connections', {
+    method: 'POST',
+    body: { ...safeSqlLogin, profileName: 'Contract Gold', environment: 'prod' }
+  });
+  assert.equal(prodTagged.response.status, 200);
+  assert.equal(prodTagged.payload.item.environment, 'prod');
+  const prodBatch = await request('/api/query', {
+    method: 'POST',
+    body: { ...safeSqlLogin, username: 'another-user', query: 'SELECT 1; SELECT 2' }
+  });
+  assert.equal(prodBatch.response.status, 200);
+  assert.equal(prodBatch.payload.expectedText, 'RUN BATCH ON PROD CONTRACT GOLD');
+  assert.equal(prodBatch.payload.environment, 'prod');
+  // The confirmation belongs to the session that prepared it, so reuse that session cookie.
+  const prodSessionCookie = String(prodBatch.response.headers.get('set-cookie') || '').split(';')[0];
+  const prodWrongPhrase = await request('/api/query', {
+    method: 'POST',
+    headers: { cookie: prodSessionCookie },
+    body: { ...safeSqlLogin, username: 'another-user', query: 'SELECT 1; SELECT 2', confirmToken: prodBatch.payload.confirmationToken, acknowledgement: 'RUN BATCH' }
+  });
+  assert.equal(prodWrongPhrase.response.status, 400);
+  assert.match(prodWrongPhrase.payload.error, /RUN BATCH ON PROD CONTRACT GOLD/);
+  const badEnvironment = await request('/api/saved-connections', {
+    method: 'POST',
+    body: { ...safeSqlLogin, profileName: 'Bad', environment: 'production' }
+  });
+  assert.equal(badEnvironment.response.status, 400);
+  const prodUntag = await request('/api/saved-connections', {
+    method: 'DELETE',
+    body: { id: prodTagged.payload.item.id }
+  });
+  assert.equal(prodUntag.response.status, 200);
+  const afterUntag = await request('/api/query', {
+    method: 'POST',
+    body: { ...safeSqlLogin, query: 'SELECT 1; SELECT 2' }
+  });
+  assert.equal(afterUntag.payload.expectedText, 'RUN BATCH');
+
   const objectDefinition = await request('/api/object-definition', {
     method: 'POST',
     body: { ...safeSqlLogin, objectType: 'table', scriptMode: 'create' }

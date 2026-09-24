@@ -146,7 +146,7 @@ export default function ProcedureRunnerDocsPage() {
             <div><strong>Script ALTER/Edit</strong><span>Loads an editable ALTER-style procedure definition into the script editor. It is not executed automatically.</span></div>
             <div><strong>Expand / Collapse editor</strong><span>Procedure scripts open in a wide editor mode by default. Collapse it when you want the normal parameter/result layout back.</span></div>
             <div><strong>Run script</strong><span>Saves a procedure definition change (CREATE/ALTER). It is high-risk SQL, so after preview you type <code>EXECUTE CREATE</code> or <code>EXECUTE ALTER</code>. It does not run the procedure with parameters.</span></div>
-            <div><strong>Run procedure</strong><span>Runs the selected procedure with the current values. Confirmation is a single review-and-click step with no phrase to type. Requires a selected procedure and a valid connection.</span></div>
+            <div><strong>Run procedure</strong><span>Runs the selected procedure with the current values. Confirmation is a single review-and-click step with no phrase to type — except on a profile tagged Prod, where you type <code>EXECUTE PROCEDURE ON PROD &lt;PROFILE&gt;</code> and the dialog shows a red PRODUCTION banner. Requires a selected procedure and a valid connection.</span></div>
           </div>
         </DocsMiniSection>
         <DocsMiniSection title="How to enter each value">
