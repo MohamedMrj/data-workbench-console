@@ -5,6 +5,27 @@ All notable Data Workbench Console changes are tracked here.
 The in-app version is read from `package.json` and exposed through `/api/version`
 together with the current git commit and build information.
 
+## 1.5.4 - 2026-09-30
+
+Fixed the self-update poller giving up on updates that were still legitimately running.
+
+### Fixed
+
+- Fixed `Update` showing `Update needs a manual check` for an update that was still working
+  correctly in the background. `waitForUpdateRestart()` in `public/console-core.js` gave up
+  after a fixed ~6 minutes (180 polls at 2s), but a real `npm install` can take far longer than
+  that on a loaded machine or a first-time dependency install — one observed run took 9 minutes
+  on `npm install` alone, before `npm run build` even started, while the browser had already
+  declared the update dead. The updater itself was never broken; the tab just stopped waiting
+  and stopped reloading once the server did come back. The give-up window is now a 25-minute
+  wall-clock budget instead of an attempt count, and the "still installing" message sets
+  realistic expectations instead of implying something is stuck.
+
+### Verification
+
+- `node --check public/console-core.js` (no server-side behaviour changed; full `ui-smoke`
+  coverage runs on the next full build).
+
 ## 1.5.3 - 2026-09-24
 
 Compare and reuse: compare a table across two environments, compare two results, and keep

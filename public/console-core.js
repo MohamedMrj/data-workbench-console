@@ -1217,13 +1217,20 @@ window.createConsoleApp = function createConsoleApp() {
     }
   }
 
+  // npm install alone has been observed taking 9+ minutes on a loaded machine (a clean
+  // node_modules or a slow disk), before npm run build even starts. The old ~6-minute
+  // give-up (180 attempts * 2s) fired while the updater was still legitimately working,
+  // showing "needs a manual check" for an update that finished fine moments later — the
+  // client had simply stopped polling, so the tab never reloaded on its own. Give it real
+  // headroom instead of guessing a shorter number that will just be wrong on someone else's
+  // machine.
+  const UPDATE_RESTART_GIVE_UP_MS = 25 * 60 * 1000;
+
   function waitForUpdateRestart() {
     const startedAt = Date.now();
     let sawOffline = false;
-    let attempts = 0;
 
     const poll = async () => {
-      attempts += 1;
       try {
         const response = await fetch(`/api/health?updatePoll=${Date.now()}`, {
           cache: 'no-store',
@@ -1252,7 +1259,7 @@ window.createConsoleApp = function createConsoleApp() {
         sawOffline = true;
       }
 
-      if (attempts > 180) {
+      if (Date.now() - startedAt > UPDATE_RESTART_GIVE_UP_MS) {
         showShutdownOverlay(
           'Update needs a manual check',
           'Data Workbench did not come back online automatically. Check .data/logs/data-workbench-update.log, then launch Data Workbench again.',
@@ -1264,7 +1271,7 @@ window.createConsoleApp = function createConsoleApp() {
 
       const elapsedSeconds = Math.max(1, Math.round((Date.now() - startedAt) / 1000));
       const message = sawOffline
-        ? `Installing update and restarting the local server. Waiting ${elapsedSeconds}s...`
+        ? `Installing the update and rebuilding. This can take several minutes — longer on a first-time dependency install or a slower machine — and this page will reload automatically when it's ready. Waiting ${elapsedSeconds}s...`
         : `Preparing update. Waiting for the local server to restart (${elapsedSeconds}s)...`;
       showShutdownOverlay('Updating Data Workbench', message);
       window.setTimeout(poll, 2000);
