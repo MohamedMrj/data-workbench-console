@@ -390,7 +390,7 @@ read-modify-write promise chain.
 
 ### `appearance-store.js`
 
-Up to 30 profiles `{ id, name, theme, buttonColors }` plus `defaultProfileId`, in
+Up to 30 profiles `{ id, name, theme, buttonColors, explorerSize? }` plus `defaultProfileId`, in
 `${APP_DATA_DIR}/appearance.json`. Kept on disk rather than only in localStorage because managed
 browsers are often set to clear site data on close. Input is strict (known theme, `#rrggbb` for
 known sections, else 400); stored rows are lenient, so a hand-edited file drops bad rows instead
@@ -755,6 +755,7 @@ and nothing is lost on upgrade.
 | localStorage | `dataWorkbenchProcedureHistoryV1` | procedure runs + parameter values |
 | localStorage | `dataWorkbenchThemeV2` | theme id |
 | localStorage | `dataWorkbenchButtonColorsV1` | per-section Liquid Glass tints, applied as `--tint-<section>` on `<html>` |
+| localStorage | `dataWorkbenchExplorerSizeV1` | object list size (`compact`/`default`/`large`/`xlarge`), applied as `--explorer-scale` on `<html>` |
 | server file | `data/appearance.json` | appearance profiles and the default one applied at start-up |
 | localStorage | `dataWorkbenchEditorTextSizeV1` / `…ResultsTextSizeV1` | font scales |
 | localStorage | `dataWorkbenchPanelLayoutV1` | six panel dimensions |

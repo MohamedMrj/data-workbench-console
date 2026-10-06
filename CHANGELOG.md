@@ -7,8 +7,8 @@ together with the current git commit and build information.
 
 ## Unreleased
 
-A foldable connection form, row selection in the results grid, and Liquid Glass on everything
-clickable.
+A foldable connection form with Saved Profiles at the top, row selection that copy respects, a
+choice of object list size, and Liquid Glass on everything clickable.
 
 ### Added
 
@@ -18,6 +18,15 @@ clickable.
   the form starts folded once saved profiles exist and open while there are none. Picking a profile
   that needs a password opens the form at the password field.
 - The saved profile in use is highlighted in the Saved Profiles list.
+- **Object list size** in Settings → Appearance: `Compact`, `Default`, `Large` or `Extra
+  large` text and row height for table, view and procedure names in the explorer. It is saved
+  with appearance profiles, so a profile the app opens with brings its size along; profiles saved
+  before this keep whatever size is current.
+- **Copy respects the selection**: with rows selected, `Copy rows` copies only those rows (in
+  grid order), and right-clicking a selected row copies the whole selection as JSON, CSV (with a
+  header line), INSERT or Markdown, with the menu saying how many rows. Right-clicking a row
+  outside the selection still copies just that row.
+- A small, faint "Made by" credit in the bottom-right corner.
 - **Row selection in the results grid**: click selects a row, `Ctrl`+click adds or removes one,
   `Shift`+click selects the range from the last clicked row (`Ctrl`+`Shift`+click adds it).
   Selected rows are highlighted with a bar on the row number and counted above the grid; the
@@ -26,14 +35,36 @@ clickable.
 
 ### Changed
 
+- **Saved Profiles moved to the top of the connection panel**, right under the app name, with the
+  Connection form below it and Safety Policy last. The Safety-first note, the session summary and
+  the documentation link moved from the brand card into Safety Policy, so the profiles you switch
+  between are visible without scrolling.
+- **Calmer results area**: the results toolbar is one row of natural-width buttons with the filter
+  taking the spare width (it was a grid of half-width bars), SQL `NULL` is a small dashed marker
+  instead of a full-width pill, and column header buttons are flat inside the glass header row.
+- Editor, Query Builder and header buttons keep their natural width when the studio is stacked
+  or compressed instead of stretching to half the card each.
 - **Liquid Glass everywhere you click**: explorer object and procedure rows, saved profiles,
   history items, editor and result tabs, column pills, theme chips, Tools commands, menu items,
   small text buttons (`All`, `Clear`, `Reset`) and the results grid's header cells now use the
   same tinted glass as the buttons, with a stronger tint on whatever is selected or active. Rows
   skip the background blur the buttons use, so a long catalog still scrolls smoothly.
 
+### Fixed
+
+- Fixed JSON in result cells putting every value on its own line (`"a":`, then `1`, then `,`).
+  The results panel keeps an `empty-state` class after a result renders, and that class made
+  every span inside it a block. Also fixed JSON keys and strings never being coloured: the
+  highlighter looked for quotes after they had already been escaped to `&quot;`.
+- The Button colours label for the history panel no longer says "Themes and history".
+
 ### Verification
 
+- `ui-smoke.mjs` covers the panel order, copying selected rows (Copy rows, the right-click menu
+  on and off the selection), the object list size (choosing, remembering, saving in a profile,
+  opening with a default profile's size), JSON cell highlighting with markup in a value staying
+  text, and the maker credit. `server-unit.test.mjs` covers the profile's optional size and its
+  validation.
 - `ui-smoke.mjs` covers the folded form at start-up with saved profiles, Show/Hide details and
   its remembered choice, the active-profile highlight and summary, and row selection (click,
   Ctrl+click add and remove, Shift+click range, the count, selection surviving a re-sort).

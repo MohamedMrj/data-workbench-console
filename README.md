@@ -487,6 +487,9 @@ The left panel contains:
 - saved connection list
 - safety policy summary
 
+Panel order, top to bottom: the app name and version, Saved Profiles, the Connection form, then
+Safety Policy (with the session summary and the documentation link).
+
 Connection behavior:
 
 - the connection form folds away behind `Show details ▾` / `Hide details ▴`, leaving a one-line
@@ -792,6 +795,12 @@ The results area supports:
 - double-click reset for resized result columns
 - horizontal scrolling for wide result sets
 - row index column
+- `Copy rows` and the right-click copy options use the selected rows when any are selected:
+  right-clicking a selected row copies the whole selection (as JSON, CSV, INSERT or Markdown),
+  right-clicking any other row copies just that row, and with nothing selected `Copy rows` copies
+  every loaded row as before
+- JSON values are pretty-printed with keys, strings, numbers and booleans coloured; SQL `NULL`
+  shows as a small dashed `NULL` marker
 - row selection: click a row to select it (it is highlighted, with a bar on the row number);
   `Ctrl`+click adds or removes a row; `Shift`+click selects every row between the last clicked
   row and this one (`Ctrl`+`Shift`+click adds that range). The selection follows the rows through
@@ -928,9 +937,15 @@ Theme behavior:
 - dark themes and the light paper theme have separate visual tuning
 - results cell contrast is elevated for dark themes
 
+Object list size:
+
+- `Compact`, `Default`, `Large` or `Extra large` under Settings → Appearance sets the text and
+  row height of table, view and procedure names in the explorer. It applies immediately, is
+  remembered, and is saved with appearance profiles
+
 Appearance profiles:
 
-- a profile is a named theme plus button colours. `Save current as…` stores what you see now
+- a profile is a named theme plus button colours and object list size. `Save current as…` stores what you see now
   (saving under an existing name updates it); pick one and `Apply` to switch to it
 - `Open with this profile` makes the selected profile the default: every time the app opens it
   starts with that theme and those colours, so nothing has to be set up again. `Stop opening with

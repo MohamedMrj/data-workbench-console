@@ -374,37 +374,21 @@ export default function WorkbenchShell({ pageMode = 'sql' }) {
                 <p>One production-safe workspace for Fabric SQL, Lakehouse SQL endpoints, and SQL Server operations.</p>
               </div>
             </div>
-            <Link
-              href={isProceduresPage ? '/docs/procedure-runner' : '/docs/sql-studio'}
-              className="page-link docs-link-button"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              Open documentation
-            </Link>
-            <div className="brand-highlights">
-              <div className="info-chip emphasis-chip">
-                <strong>Safety-first</strong>
-                <span>Write previews, button-based confirmation, and catalog-aware execution paths.</span>
-              </div>
-            </div>
-            <div id="connectionSummary" className="info-stack">
-              <div className="info-chip">
-                <strong>Session</strong>
-                <span>No active connection yet.</span>
-              </div>
-            </div>
             <div id="appVersionStatus" className="app-version-status" aria-live="polite">
               <span id="appVersionText">Version checking...</span>
               <span id="appUpdateText" className="app-update-text hidden" />
             </div>
           </section>
 
-          <section className="panel-section safety-section">
+          <section className="panel-section grow-section">
             <div className="section-title-row">
-              <h2>Safety Policy</h2>
+              <div>
+                <div className="eyebrow">Quick Connect</div>
+                <h2>Saved Profiles</h2>
+              </div>
+              <span className="tiny-note">Passwords never stored</span>
             </div>
-            <div id="policySummary" className="policy-summary" />
+            <div id="savedConnections" className="saved-connections" />
           </section>
 
           <section className="panel-section connection-section">
@@ -510,16 +494,33 @@ export default function WorkbenchShell({ pageMode = 'sql' }) {
             </div>
           </section>
 
-          <section className="panel-section grow-section">
+          <section className="panel-section safety-section">
             <div className="section-title-row">
-              <div>
-                <div className="eyebrow">Quick Connect</div>
-                <h2>Saved Profiles</h2>
-              </div>
-              <span className="tiny-note">Passwords never stored</span>
+              <h2>Safety Policy</h2>
             </div>
-            <div id="savedConnections" className="saved-connections" />
+            <div className="brand-highlights">
+              <div className="info-chip emphasis-chip">
+                <strong>Safety-first</strong>
+                <span>Write previews, button-based confirmation, and catalog-aware execution paths.</span>
+              </div>
+            </div>
+            <div id="policySummary" className="policy-summary" />
+            <div id="connectionSummary" className="info-stack">
+              <div className="info-chip">
+                <strong>Session</strong>
+                <span>No active connection yet.</span>
+              </div>
+            </div>
+            <Link
+              href={isProceduresPage ? '/docs/procedure-runner' : '/docs/sql-studio'}
+              className="page-link docs-link-button"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              Open documentation
+            </Link>
           </section>
+
         </aside>
 
         <div
@@ -763,6 +764,8 @@ export default function WorkbenchShell({ pageMode = 'sql' }) {
 
       <div id="appToastContainer" className="app-toast-container" aria-live="polite" />
 
+      <div id="madeByCredit" className="made-by-credit" aria-hidden="true">Made by: Mohamed Almefrej</div>
+
       <div id="shutdownOverlay" className="shutdown-overlay hidden" aria-hidden="true">
         <div className="shutdown-card">
           <div className="shutdown-spinner" aria-hidden="true" />
@@ -942,6 +945,11 @@ export default function WorkbenchShell({ pageMode = 'sql' }) {
               <div className="appearance-subsection">
                 <h4>Theme</h4>
                 <div id="themeList" className="theme-list" />
+              </div>
+              <div className="appearance-subsection">
+                <h4>Object list size</h4>
+                <div id="explorerSizeList" className="button-row wrap explorer-size-list" role="group" aria-label="Object list size" />
+                <p className="tiny-note">Text and row height of the table, view and procedure names in the explorer.</p>
               </div>
               <div className="appearance-subsection">
                 <div className="section-title-row tight button-colors-title">

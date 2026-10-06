@@ -404,7 +404,7 @@ html[data-ambient-motion='enabled'] .shell-orbit-b {
   color: var(--danger);
 }
 
-.brand-panel > .docs-link-button {
+.safety-section > .docs-link-button {
   margin-top: 8px;
 }
 
@@ -1342,9 +1342,9 @@ html[data-ambient-motion='enabled'] .shell-orbit-b {
 .procedure-item.explorer-row {
   display: flex;
   align-items: center;
-  gap: 10px;
-  min-height: 40px;
-  padding: 7px 12px;
+  gap: calc(10px * var(--explorer-scale, 1));
+  min-height: calc(40px * var(--explorer-scale, 1));
+  padding: calc(7px * var(--explorer-scale, 1)) 12px;
   border-radius: 12px;
 }
 
@@ -1356,7 +1356,7 @@ html[data-ambient-motion='enabled'] .shell-orbit-b {
   text-overflow: ellipsis;
   white-space: nowrap;
   overflow-wrap: normal;
-  font-size: 0.9rem;
+  font-size: calc(0.9rem * var(--explorer-scale, 1));
 }
 
 .explorer-row .item-type,
@@ -1369,10 +1369,10 @@ html[data-ambient-motion='enabled'] .shell-orbit-b {
 }
 
 .explorer-row .item-type {
-  width: 22px;
-  height: 22px;
+  width: calc(22px * var(--explorer-scale, 1));
+  height: calc(22px * var(--explorer-scale, 1));
   border-radius: 6px;
-  font-size: 0.68rem;
+  font-size: calc(0.68rem * var(--explorer-scale, 1));
   font-weight: 700;
   color: var(--tint-explorer);
   background: color-mix(in srgb, var(--tint-explorer) 16%, transparent);
@@ -4205,7 +4205,7 @@ tr.result-row-deleted .row-actions-cell {
 .app-shell[data-workspace-mode="compressed"] .hero-actions > *,
 .app-shell[data-studio-mode="stacked"] .section-title-row .button-row.wrap > *,
 .app-shell[data-studio-mode="stacked"] .hero-actions > * {
-  flex: 1 1 calc(50% - 8px);
+  flex: 0 1 auto;
 }
 
 .app-shell[data-workspace-mode="compressed"] .hero-action-group,
@@ -4225,7 +4225,7 @@ tr.result-row-deleted .row-actions-cell {
 }
 
 .app-shell[data-studio-mode="stacked"] .builder-actions > * {
-  flex: 1 1 calc(50% - 8px);
+  flex: 0 1 auto;
 }
 
 .app-shell[data-layout-mode="stacked"] .section-title-row,
@@ -5265,4 +5265,60 @@ body {
 
 .control-rail .connection-section > .section-title-row > .connection-details-toggle {
   width: auto;
+}
+
+/* SQL NULL reads as a quiet marker, not a control: it is not clickable, and a column full of
+   NULLs drawn as glass pills looked like a column of buttons. */
+.results-table .result-null {
+  display: inline-block;
+  width: auto;
+  max-width: max-content;
+  padding: 1px 7px;
+  border: 1px dashed color-mix(in srgb, var(--muted) 45%, transparent);
+  border-radius: 6px;
+  background: transparent;
+  color: color-mix(in srgb, var(--muted) 85%, transparent);
+  font-size: 0.72rem;
+  font-style: italic;
+  letter-spacing: 0.04em;
+}
+
+/* The header cell is already glass; a second glass box inside it read as a card in a card.
+   The sort button stays flat until hovered or focused. */
+.results-table .table-header-btn {
+  border-color: color-mix(in srgb, var(--btn-tint, var(--accent)) 16%, transparent);
+  background: transparent;
+  box-shadow: none;
+}
+
+/* Status and buttons at their natural size; the filter takes the spare width. */
+.results-toolbar > .status-badge {
+  flex: 0 0 auto;
+  min-width: 96px;
+}
+
+.results-toolbar > .local-filter-input {
+  flex: 1 1 220px;
+  min-width: 160px;
+}
+
+/* The results panel keeps its .empty-state class after a result renders, and .empty-state span
+   is display: block, which put every highlighted JSON token on a line of its own. */
+.json-cell-pre span {
+  display: inline;
+}
+
+/* The maker's credit: fixed in the bottom-right corner, small and faint enough to sit in the
+   page margin without competing with anything, and never in the way of a click. */
+.made-by-credit {
+  position: fixed;
+  right: 8px;
+  bottom: 4px;
+  z-index: 1;
+  color: var(--muted);
+  font-size: 0.6rem;
+  letter-spacing: 0.02em;
+  opacity: 0.28;
+  pointer-events: none;
+  user-select: none;
 }

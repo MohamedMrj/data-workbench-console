@@ -202,7 +202,7 @@ export default function ProcedureRunnerDocsPage() {
         <ul className="docs-check-list">
           <li><strong>Result tabs</strong> keep up to five procedure, query, and metadata results available for comparison.</li>
           <li><strong>More ▾ → A- / A+</strong> changes result text size for dense procedure output or screen sharing.</li>
-          <li><strong>Select rows</strong>: click a row to select it, <span className="docs-kbd">Ctrl</span> + click to add or remove a row, and <span className="docs-kbd">Shift</span> + click to select a range. Selected rows are highlighted and counted above the grid.</li>
+          <li><strong>Select rows</strong>: click a row to select it, <span className="docs-kbd">Ctrl</span> + click to add or remove a row, and <span className="docs-kbd">Shift</span> + click to select a range. Selected rows are highlighted and counted above the grid, and <strong>Copy rows</strong> and the right-click copy options then copy only the selection.</li>
           <li><strong>Recordsets</strong> appear in the results grid when the procedure returns tabular data.</li>
           <li><strong>Rows affected</strong> shows the count reported by the database driver when available.</li>
           <li><strong>Output parameters</strong> are displayed after the confirmed execution finishes.</li>
@@ -229,7 +229,8 @@ export default function ProcedureRunnerDocsPage() {
           <div><strong>Session restore</strong><span>The selected procedure, parameters, result tabs, filters, pagination, and history are restored for the same browser tab where possible.</span></div>
           <div><strong>Panel layout</strong><span>Resizable panels, hidden side panels, result height, and layout choices are saved locally and adapt on narrower screens.</span></div>
           <div><strong>Themes and button colours</strong><span>Choose a theme and per-section button colours in <strong>Settings → Appearance</strong>. Changes apply immediately, and the theme also applies to these documentation pages.</span></div>
-          <div><strong>Appearance profiles</strong><span>Save the current theme and colours as a named profile with <strong>Save current as…</strong>, switch with <strong>Apply</strong>, and use <strong>Open with this profile</strong> so the app starts with it every time. Profiles are stored by the app, not only in the browser.</span></div>
+          <div><strong>Object list size</strong><span>Under <strong>Settings → Appearance</strong>, pick <strong>Compact</strong>, <strong>Default</strong>, <strong>Large</strong> or <strong>Extra large</strong> for the names in the explorer. It applies immediately and is saved with appearance profiles.</span></div>
+          <div><strong>Appearance profiles</strong><span>Save the current theme, colours and object list size as a named profile with <strong>Save current as…</strong>, switch with <strong>Apply</strong>, and use <strong>Open with this profile</strong> so the app starts with it every time. Profiles are stored by the app, not only in the browser.</span></div>
           <div><strong>Next-step glow</strong><span>When there is an obvious next click, that button pulses for about five seconds: <strong>Load catalog</strong> after a successful test, and the confirm button once the typed phrase matches. Clicking it stops the glow.</span></div>
           <div><strong>Panel auto-hide</strong><span>The connection and history panels can fade and collapse after an idle delay. Use Settings to turn this off entirely or adjust the timing.</span></div>
           <div><strong>Ambient motion</strong><span>The app can use very slow background color movement for a livelier feel. It is configurable in Settings and respects reduced-motion preferences.</span></div>

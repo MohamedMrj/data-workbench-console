@@ -650,6 +650,17 @@ function attachMocks(window) {
       window.__postedQueries = [...(window.__postedQueries || []), queryText];
       window.__postedRunIds = [...(window.__postedRunIds || []), body.runId];
       // A read that hit the row limit: the server fetched limit + 1 rows and reports truncated.
+      if (queryText.includes('JSON_CELL_TEST')) {
+        return new Response(JSON.stringify({
+          success: true,
+          mode: 'read',
+          columns: ['Payload'],
+          rows: [{ Payload: JSON.stringify({ name: '<img src=x onerror=alert(1)>', count: 2, ok: true }) }],
+          totalRows: 1,
+          rowsAffected: 0,
+          elapsedMs: 1
+        }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
       if (queryText.includes('ROW_SELECTION_TEST')) {
         return new Response(JSON.stringify({
           success: true,
@@ -1067,7 +1078,7 @@ const legacyWindow = await createWindow(
     ]));
     // The app has a default appearance profile saved; the browser itself remembers nothing.
     window.__appearanceStore = {
-      profiles: [{ id: 'look-1', name: 'Paper look', theme: 'paper', buttonColors: { explorer: '#ff3366' } }],
+      profiles: [{ id: 'look-1', name: 'Paper look', theme: 'paper', buttonColors: { explorer: '#ff3366' }, explorerSize: 'xlarge' }],
       defaultProfileId: 'look-1'
     };
   }
@@ -1075,6 +1086,9 @@ const legacyWindow = await createWindow(
 
 if (legacyWindow.document.documentElement.getAttribute('data-theme') !== 'paper' || legacyWindow.document.documentElement.style.getPropertyValue('--tint-explorer') !== '#ff3366') {
   throw new Error('The app should open with its default appearance profile (theme and button colours).');
+}
+if (legacyWindow.document.documentElement.style.getPropertyValue('--explorer-scale') !== '1.3') {
+  throw new Error('The app should open with the default profile\'s object list size.');
 }
 if (!legacyWindow.document.getElementById('appearanceProfileStatus').textContent.includes('Paper look')) {
   throw new Error('Settings should say which appearance profile the app opens with.');
@@ -1143,6 +1157,12 @@ if (!legacyWindow.document.getElementById('tableList').textContent.includes('dbo
 }
 
 const sqlWindow = await createWindow('http://127.0.0.1:3100/');
+{
+  const credit = sqlWindow.document.getElementById('madeByCredit');
+  if (!credit || credit.textContent !== 'Made by: Mohamed Almefrej' || credit.getAttribute('aria-hidden') !== 'true') {
+    throw new Error('The maker credit should be present, read exactly, and be hidden from screen readers.');
+  }
+}
 if (sqlWindow.document.querySelector('.glow-next')) {
   throw new Error('Nothing should glow while the app is still restoring the workspace at start-up.');
 }
@@ -1441,11 +1461,20 @@ if (sqlWindow.document.getElementById('toggleAdvancedOperationsBtn').getAttribut
   if (!safetySection || !connectionSection || !savedProfilesSection) {
     throw new Error('Connection panel should render Safety Policy, Connection, and Saved Profiles sections.');
   }
-  if (!(safetySection.compareDocumentPosition(connectionSection) & sqlWindow.Node.DOCUMENT_POSITION_FOLLOWING)) {
-    throw new Error('Safety Policy should appear above Connection in the left panel.');
+  // Saved Profiles is what people use most, so it sits right under the brand header; the
+  // connection form follows, and the safety summary goes last.
+  const brandPanel = sqlWindow.document.querySelector('.control-rail .brand-panel');
+  if (brandPanel.nextElementSibling !== savedProfilesSection) {
+    throw new Error('Saved Profiles should come directly after the brand header in the left panel.');
   }
-  if (!(connectionSection.compareDocumentPosition(savedProfilesSection) & sqlWindow.Node.DOCUMENT_POSITION_FOLLOWING)) {
-    throw new Error('Saved Profiles should remain below Connection in the left panel.');
+  if (!(savedProfilesSection.compareDocumentPosition(connectionSection) & sqlWindow.Node.DOCUMENT_POSITION_FOLLOWING)) {
+    throw new Error('Connection should come after Saved Profiles in the left panel.');
+  }
+  if (!(connectionSection.compareDocumentPosition(safetySection) & sqlWindow.Node.DOCUMENT_POSITION_FOLLOWING)) {
+    throw new Error('Safety Policy should come after Connection in the left panel.');
+  }
+  if (!safetySection.querySelector('#connectionSummary') || !safetySection.querySelector('.docs-link-button')) {
+    throw new Error('The session summary and documentation link should live in the Safety Policy section.');
   }
 }
 
@@ -1546,6 +1575,19 @@ if (!sqlWindow.document.getElementById('loadTablesBtn').classList.contains('glow
   if (sqlWindow.document.querySelector('.activity-panel #themeList, .activity-panel #buttonColorList')) {
     throw new Error('The side panel should no longer hold configuration.');
   }
+  // Object list size: four sizes in Settings, applied as one scale on <html>, remembered, and
+  // saved as part of the appearance profile below.
+  const sizeButtons = sqlWindow.document.querySelectorAll('#explorerSizeList [data-explorer-size]');
+  if (sizeButtons.length !== 4 || !settingsDialog.contains(sqlWindow.document.getElementById('explorerSizeList'))) {
+    throw new Error('Settings should offer four object list sizes.');
+  }
+  sqlWindow.document.querySelector('#explorerSizeList [data-explorer-size="large"]').click();
+  if (sqlWindow.document.documentElement.style.getPropertyValue('--explorer-scale') !== '1.15' || sqlWindow.localStorage.getItem('dataWorkbenchExplorerSizeV1') !== 'large') {
+    throw new Error('Choosing Large should scale the object list and remember the choice.');
+  }
+  if (sqlWindow.document.querySelector('#explorerSizeList [data-explorer-size="large"]').getAttribute('aria-pressed') !== 'true') {
+    throw new Error('The chosen object list size should show as pressed.');
+  }
   // Save the current look as a profile, make it the one the app opens with, then undo that.
   const originalPrompt = sqlWindow.prompt;
   sqlWindow.prompt = () => 'Smoke look';
@@ -1559,6 +1601,10 @@ if (!sqlWindow.document.getElementById('loadTablesBtn').classList.contains('glow
   if (sqlWindow.document.getElementById('appearanceProfileSelect').value !== savedLook.id) {
     throw new Error('The saved appearance profile should be selected after saving.');
   }
+  if (savedLook.explorerSize !== 'large') {
+    throw new Error(`An appearance profile should include the object list size. Saved: ${JSON.stringify(savedLook)}`);
+  }
+  sqlWindow.document.querySelector('#explorerSizeList [data-explorer-size="default"]').click();
   sqlWindow.document.getElementById('defaultAppearanceProfileBtn').click();
   await flush();
   if (sqlWindow.__appearanceStore.defaultProfileId !== savedLook.id || !sqlWindow.document.getElementById('appearanceProfileStatus').textContent.includes('Smoke look')) {
@@ -1721,12 +1767,56 @@ if (!sqlWindow.document.querySelector('.visual-helper-card')?.textContent.includ
   if (JSON.stringify(selected()) !== '[2]') {
     throw new Error(`A plain click should replace the selection. Selected: ${selected()}`);
   }
+  {
+    // Copy uses the selection when there is one: Copy rows, and the right-click menu on a
+    // selected row. Right-clicking an unselected row still acts on that row alone.
+    clickRow(4, { ctrlKey: true });
+    await flush();
+    sqlWindow.document.getElementById('copyResultsBtn').click();
+    await flush();
+    const copied = sqlWindow.__lastClipboardText.split('\n');
+    if (copied.length !== 3 || !copied[1].startsWith('3\t') || !copied[2].startsWith('5\t')) {
+      throw new Error(`Copy rows should copy only the selected rows, in grid order. Copied: ${JSON.stringify(copied)}`);
+    }
+    const rightClick = (index) => rows()[index].querySelector('td:last-child').dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
+    rightClick(4);
+    if (sqlWindow.document.getElementById('contextCopyJsonBtn').textContent !== 'Copy 2 selected rows as JSON' || sqlWindow.document.getElementById('contextCopyMarkdownBtn').textContent !== 'Copy 2 selected rows as Markdown') {
+      throw new Error(`The menu on a selected row should name the selection. Got: ${sqlWindow.document.getElementById('contextCopyJsonBtn').textContent}`);
+    }
+    sqlWindow.document.getElementById('contextCopyJsonBtn').click();
+    await flush();
+    const json = JSON.parse(sqlWindow.__lastClipboardText);
+    if (!Array.isArray(json) || json.map((row) => row.AlertId).join() !== '3,5') {
+      throw new Error(`Copy as JSON on a selected row should copy every selected row. Copied: ${sqlWindow.__lastClipboardText}`);
+    }
+    rightClick(0);
+    sqlWindow.document.getElementById('contextCopyCsvBtn').click();
+    await flush();
+    if (sqlWindow.__lastClipboardText !== '1,OK') {
+      throw new Error(`Right-clicking an unselected row should copy that row only. Copied: ${sqlWindow.__lastClipboardText}`);
+    }
+    clickRow(2);
+  }
   // Sorting keeps the same rows selected (by row, not by position).
   sqlWindow.document.querySelector('.results-table [data-sort="AlertId"]').click();
   sqlWindow.document.querySelector('.results-table [data-sort="AlertId"]').click();
   const selectedIds = rows().filter((tr) => tr.classList.contains('result-row-selected')).map((tr) => tr.querySelector('td:last-child').previousElementSibling.textContent.trim());
   if (JSON.stringify(selectedIds) !== '["3"]') {
     throw new Error(`Selection should follow the row through a re-sort. Selected AlertIds: ${selectedIds}`);
+  }
+  queryEditor.value = 'SELECT Payload FROM dbo.Alerts /* JSON_CELL_TEST */';
+  queryEditor.dispatchEvent(new sqlWindow.Event('input', { bubbles: true }));
+  sqlWindow.document.getElementById('runAllQueryBtn').click();
+  await flush();
+  const jsonPre = sqlWindow.document.querySelector('.results-table .json-cell-pre');
+  if (!jsonPre || jsonPre.querySelector('img')) {
+    throw new Error('A JSON cell should render, and markup inside a value must stay text.');
+  }
+  if (!jsonPre.querySelector('.json-key') || !jsonPre.querySelector('.json-string') || !jsonPre.querySelector('.json-number') || !jsonPre.querySelector('.json-boolean')) {
+    throw new Error(`JSON keys, strings, numbers and booleans should each be highlighted. Got: ${jsonPre.innerHTML}`);
+  }
+  if (!jsonPre.textContent.includes('"name": "<img src=x onerror=alert(1)>"')) {
+    throw new Error(`The JSON text should read exactly as formatted. Got: ${jsonPre.textContent}`);
   }
   queryEditor.value = previousQuery;
   queryEditor.dispatchEvent(new sqlWindow.Event('input', { bubbles: true }));

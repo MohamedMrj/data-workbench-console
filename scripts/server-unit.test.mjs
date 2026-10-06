@@ -303,6 +303,11 @@ await assert.rejects(appearanceStore.saveAppearanceProfile({ name: 'Bad section'
 const look = await appearanceStore.saveAppearanceProfile({ name: 'Work', theme: 'paper', buttonColors: { explorer: '#FF3366' } }, { makeDefault: true });
 assert.equal(look.profile.buttonColors.explorer, '#ff3366');
 assert.equal(look.defaultProfileId, look.profile.id);
+await assert.rejects(appearanceStore.saveAppearanceProfile({ name: 'Bad size', theme: 'paper', explorerSize: 'huge' }), (error) => error.httpStatus === 400);
+const sized = await appearanceStore.saveAppearanceProfile({ name: 'Big names', theme: 'midnight', explorerSize: 'Large' });
+assert.equal(sized.profile.explorerSize, 'large');
+assert.equal(look.profile.explorerSize, undefined, 'a profile saved without a size keeps none');
+await appearanceStore.deleteAppearanceProfile(sized.profile.id);
 const lookAgain = await appearanceStore.saveAppearanceProfile({ name: 'work', theme: 'ink' });
 assert.equal(lookAgain.profile.id, look.profile.id, 'saving the same name again updates the profile');
 assert.equal((await appearanceStore.getAppearance()).profiles.length, 1);

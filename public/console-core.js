@@ -19,6 +19,13 @@ window.createConsoleApp = function createConsoleApp() {
   const SCRATCHPADS_KEY = 'dataWorkbenchScratchpadsV1';
   const SCRATCHPADS_IMPORTED_KEY = 'dataWorkbenchScratchpadsImportedV1';
   const BUTTON_COLORS_KEY = 'dataWorkbenchButtonColorsV1';
+  const EXPLORER_SIZE_KEY = 'dataWorkbenchExplorerSizeV1';
+  const EXPLORER_SIZES = [
+    { id: 'compact', label: 'Compact', scale: 0.9 },
+    { id: 'default', label: 'Default', scale: 1 },
+    { id: 'large', label: 'Large', scale: 1.15 },
+    { id: 'xlarge', label: 'Extra large', scale: 1.3 }
+  ];
   // One Liquid Glass tint per section card; the CSS defaults live in theme.css (--tint-*).
   const BUTTON_TINT_SECTIONS = [
     { id: 'connection', label: 'Connection panel' },
@@ -27,7 +34,7 @@ window.createConsoleApp = function createConsoleApp() {
     { id: 'builder', label: 'Query Builder' },
     { id: 'editor', label: 'SQL Editor and procedures' },
     { id: 'results', label: 'Results' },
-    { id: 'activity', label: 'Themes and history' },
+    { id: 'activity', label: 'History' },
     { id: 'dialogs', label: 'Dialogs' }
   ];
   const SUPPORT_EMAIL = 'mohamed.al-mefrej@hotmail.com';
@@ -139,7 +146,7 @@ window.createConsoleApp = function createConsoleApp() {
     saveResultEditsBtn: 'Save all staged changes (modified, deleted, and new rows). Builds one DELETE/UPDATE/INSERT statement per row and runs them through the normal write preview and confirmation.',
     discardResultEditsBtn: 'Discard all unsaved changes in this result set — modified cells, marked-for-deletion rows, and new rows — without saving anything.',
     localResultsFilter: 'Filter the currently loaded result rows in this browser.',
-    copyResultsBtn: 'Copy the currently loaded result rows.',
+    copyResultsBtn: 'Copy the selected result rows, or every loaded row when none are selected.',
     exportCsvBtn: 'Export the currently loaded result rows as CSV.',
     exportJsonBtn: 'Export the currently loaded result rows as JSON.',
     compareTabsBtn: 'Compare the loaded rows of two result tabs, matched by key columns, and open the differences as a new tab.',
@@ -1080,7 +1087,7 @@ window.createConsoleApp = function createConsoleApp() {
       if (!state.sidePanels.activityPanelCollapsed) {
         scheduleSidePanelAutoHide(panelName);
       }
-      setStatus('success', state.sidePanels.activityPanelCollapsed ? 'Themes and history panel hidden.' : 'Themes and history panel restored.');
+      setStatus('success', state.sidePanels.activityPanelCollapsed ? 'History panel hidden.' : 'History panel restored.');
     }
   }
 
@@ -5689,13 +5696,46 @@ window.createConsoleApp = function createConsoleApp() {
     });
   }
 
+  // ─── Object list size ─────────────────────────────────────────────────────
+  // One --explorer-scale on <html>; the explorer row rules multiply their sizes by it.
+
+  function readExplorerSize() {
+    const stored = safeGet(EXPLORER_SIZE_KEY);
+    return EXPLORER_SIZES.some((size) => size.id === stored) ? stored : 'default';
+  }
+
+  function applyExplorerSize(sizeId) {
+    const size = EXPLORER_SIZES.find((item) => item.id === sizeId) || EXPLORER_SIZES[1];
+    safeSet(EXPLORER_SIZE_KEY, size.id);
+    document.documentElement.style.setProperty('--explorer-scale', String(size.scale));
+    $('explorerSizeList')?.querySelectorAll('[data-explorer-size]').forEach((button) => {
+      const active = button.dataset.explorerSize === size.id;
+      button.classList.toggle('active', active);
+      button.setAttribute('aria-pressed', active ? 'true' : 'false');
+    });
+  }
+
+  function renderExplorerSizes() {
+    const list = $('explorerSizeList');
+    if (list) {
+      list.innerHTML = EXPLORER_SIZES.map((size) => `<button class="segment-btn" type="button" data-explorer-size="${esc(size.id)}" aria-pressed="false">${esc(size.label)}</button>`).join('');
+      list.querySelectorAll('[data-explorer-size]').forEach((button) => {
+        button.onclick = () => {
+          applyExplorerSize(button.dataset.explorerSize);
+          setStatus('success', `Object list size set to ${button.textContent.toLowerCase()}.`);
+        };
+      });
+    }
+    applyExplorerSize(readExplorerSize());
+  }
+
   // ─── Appearance profiles ──────────────────────────────────────────────────
   // Named looks (theme + button colours) kept by the app in data/appearance.json, not only in
   // the browser: managed browsers often clear site data on close, which made people re-pick
   // their look every launch. The default profile is applied each time the app opens.
 
   function currentAppearance() {
-    return { theme: state.currentTheme, buttonColors: readButtonColors() };
+    return { theme: state.currentTheme, buttonColors: readButtonColors(), explorerSize: readExplorerSize() };
   }
 
   function applyAppearance(profile) {
@@ -5704,6 +5744,9 @@ window.createConsoleApp = function createConsoleApp() {
     safeSet(BUTTON_COLORS_KEY, JSON.stringify(profile.buttonColors || {}));
     applyButtonColors();
     renderButtonColors();
+    if (profile.explorerSize) {
+      applyExplorerSize(profile.explorerSize);
+    }
   }
 
   function selectedAppearanceProfile() {
@@ -5751,7 +5794,7 @@ window.createConsoleApp = function createConsoleApp() {
 
   async function saveAppearanceProfile() {
     const selected = selectedAppearanceProfile();
-    const name = window.prompt('Save the current theme and button colours as', selected?.name || 'My look');
+    const name = window.prompt('Save the current theme, button colours and object list size as', selected?.name || 'My look');
     if (!name || !String(name).trim()) return;
     try {
       const payload = await api('/api/appearance', { method: 'POST', data: { profile: { name: String(name).trim(), ...currentAppearance() } } });
@@ -6684,19 +6727,28 @@ window.createConsoleApp = function createConsoleApp() {
     return parsed ? JSON.stringify(parsed, null, 2) : '';
   }
 
+  // Tokens are matched on the raw text and each piece is escaped on its own. Matching after
+  // esc() never saw a quote (they had become &quot;), so keys and strings were never coloured.
   function highlightJsonText(text) {
-    return esc(text).replace(/("(\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d*)?(?:[eE][+\-]?\d+)?)/g, (match) => {
+    const source = String(text ?? '');
+    const pattern = /("(\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d*)?(?:[eE][+\-]?\d+)?)/g;
+    let html = '';
+    let last = 0;
+    let match;
+    while ((match = pattern.exec(source))) {
+      const token = match[0];
       let cls = 'json-number';
-      if (/^"/.test(match)) {
-        if (/:$/.test(match)) cls = 'json-key';
-        else cls = 'json-string';
-      } else if (/true|false/.test(match)) {
+      if (/^"/.test(token)) {
+        cls = /:$/.test(token) ? 'json-key' : 'json-string';
+      } else if (/true|false/.test(token)) {
         cls = 'json-boolean';
-      } else if (/null/.test(match)) {
+      } else if (/null/.test(token)) {
         cls = 'json-null';
       }
-      return `<span class="${cls}">${match}</span>`;
-    });
+      html += `${esc(source.slice(last, match.index))}<span class="${cls}">${esc(token)}</span>`;
+      last = match.index + token.length;
+    }
+    return html + esc(source.slice(last));
   }
 
   function inlineEditCellMarkup(value, column, row) {
@@ -7154,6 +7206,7 @@ window.createConsoleApp = function createConsoleApp() {
         const column = cellIndex >= 0 ? state.results.columns[cellIndex] : '';
         const row = visibleRows[index];
         state.results.contextRow = row;
+        state.results.contextRows = contextMenuRows(row);
         state.results.contextCell = column ? {
           column,
           value: row?.[column],
@@ -7174,6 +7227,7 @@ window.createConsoleApp = function createConsoleApp() {
           if (copyColumnBtn) {
             copyColumnBtn.disabled = !column;
           }
+          renderContextMenuRowLabels();
           menu.classList.remove('hidden');
           const maxLeft = window.innerWidth - menu.offsetWidth - 10;
           const maxTop = window.innerHeight - menu.offsetHeight - 10;
@@ -7195,6 +7249,36 @@ window.createConsoleApp = function createConsoleApp() {
       selection.anchor = null;
     }
     return selection;
+  }
+
+  // In display order, so a copy reads top to bottom the way the grid shows it.
+  function selectedResultRows() {
+    const selection = currentResultSelection();
+    return selection.selected.size ? sortedRows().filter((row) => selection.selected.has(row)) : [];
+  }
+
+  // Right-clicking inside the selection acts on the whole selection; right-clicking any other
+  // row acts on that row alone, so the menu never copies rows the pointer is not on by surprise.
+  function contextMenuRows(row) {
+    const selected = selectedResultRows();
+    return selected.length > 1 && selected.includes(row) ? selected : (row ? [row] : []);
+  }
+
+  function renderContextMenuRowLabels() {
+    const rows = state.results.contextRows || [];
+    const many = rows.length > 1 ? `${rows.length} selected rows` : 'row';
+    const selectedCount = selectedResultRows().length;
+    const bulk = selectedCount ? `${selectedCount} selected row${selectedCount === 1 ? '' : 's'}` : 'loaded rows';
+    const labels = {
+      contextCopyJsonBtn: `Copy ${many} as JSON`,
+      contextCopyCsvBtn: `Copy ${many} as CSV`,
+      contextCopyInsertBtn: `Copy ${many} as INSERT`,
+      contextCopyAllInsertBtn: `Copy ${bulk} as INSERT`,
+      contextCopyMarkdownBtn: `Copy ${bulk} as Markdown`
+    };
+    Object.entries(labels).forEach(([id, text]) => {
+      if ($(id)) $(id).textContent = text;
+    });
   }
 
   function bindResultRowSelection(panel, visibleRows) {
@@ -7899,10 +7983,12 @@ window.createConsoleApp = function createConsoleApp() {
       setStatus('error', 'No result rows to copy.');
       return;
     }
+    const selected = selectedResultRows();
+    const rows = selected.length ? selected : sortedRows();
     // Use the same serializer as the single-cell copy action so SQL NULL stays
     // distinguishable from an empty string, matching what the grid shows.
-    const lines = [state.results.columns.join('\t'), ...sortedRows().map((row) => state.results.columns.map((column) => serializeCellValueForCopy(row[column])).join('\t'))];
-    copyText(lines.join('\n'), 'Result rows copied.');
+    const lines = [state.results.columns.join('\t'), ...rows.map((row) => state.results.columns.map((column) => serializeCellValueForCopy(row[column])).join('\t'))];
+    copyText(lines.join('\n'), selected.length ? `${selected.length} selected row${selected.length === 1 ? '' : 's'} copied.` : 'Result rows copied.');
   }
 
   // Encode one CSV field: neutralize spreadsheet formula injection (a cell that
@@ -7992,7 +8078,7 @@ window.createConsoleApp = function createConsoleApp() {
       return;
     }
     const scope = rows.length === 1 ? 'Row' : `${rows.length} rows`;
-    const suffix = state.results.truncated && rows.length > 1 ? ' (loaded rows only)' : '';
+    const suffix = state.results.truncated && rows.length > 1 && !selectedResultRows().length ? ' (loaded rows only)' : '';
     if (format === 'insert') {
       const placeholder = state.results.editableInfo?.object ? '' : ' Replace [target_table] with the destination table.';
       copyText(rowsAsInsertStatements(rows), `${scope} copied as INSERT${suffix}.${placeholder}`);
@@ -9639,25 +9725,29 @@ window.createConsoleApp = function createConsoleApp() {
     }
     if ($('contextCopyJsonBtn')) {
       $('contextCopyJsonBtn').onclick = () => {
-        if (state.results.contextRow) {
-          copyText(JSON.stringify(state.results.contextRow, null, 2), 'Row copied as JSON.');
+        const rows = state.results.contextRows || [];
+        if (rows.length) {
+          copyText(JSON.stringify(rows.length > 1 ? rows : rows[0], null, 2), rows.length > 1 ? `${rows.length} rows copied as JSON.` : 'Row copied as JSON.');
           $('resultsContextMenu')?.classList.add('hidden');
         }
       };
     }
     if ($('contextCopyCsvBtn')) {
       $('contextCopyCsvBtn').onclick = () => {
-        if (state.results.contextRow) {
-          const csv = state.results.columns.map((c) => csvCell(state.results.contextRow[c])).join(',');
-          copyText(csv, 'Row copied as CSV.');
+        const rows = state.results.contextRows || [];
+        if (rows.length) {
+          const lines = rows.map((row) => state.results.columns.map((c) => csvCell(row[c])).join(','));
+          // Several rows get a header line so the copy pastes as a table; one row stays a bare line.
+          const csv = rows.length > 1 ? [state.results.columns.map(csvCell).join(','), ...lines].join('\n') : lines[0];
+          copyText(csv, rows.length > 1 ? `${rows.length} rows copied as CSV.` : 'Row copied as CSV.');
           $('resultsContextMenu')?.classList.add('hidden');
         }
       };
     }
     [
-      ['contextCopyInsertBtn', () => state.results.contextRow && copyRowsAs('insert', [state.results.contextRow])],
-      ['contextCopyAllInsertBtn', () => copyRowsAs('insert')],
-      ['contextCopyMarkdownBtn', () => copyRowsAs('markdown')]
+      ['contextCopyInsertBtn', () => (state.results.contextRows || []).length && copyRowsAs('insert', state.results.contextRows)],
+      ['contextCopyAllInsertBtn', () => copyRowsAs('insert', selectedResultRows().length ? selectedResultRows() : sortedRows())],
+      ['contextCopyMarkdownBtn', () => copyRowsAs('markdown', selectedResultRows().length ? selectedResultRows() : sortedRows())]
     ].forEach(([id, action]) => {
       if ($(id)) {
         $(id).onclick = () => {
@@ -9809,6 +9899,7 @@ window.createConsoleApp = function createConsoleApp() {
     applyButtonColors();
     loadTheme();
     renderButtonColors();
+    renderExplorerSizes();
     // The app-side default profile wins over whatever this browser remembered.
     await loadAppearanceProfiles({ applyDefault: true }).catch(() => renderAppearanceProfiles());
     await loadConnectionHistory();
