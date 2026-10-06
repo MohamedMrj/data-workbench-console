@@ -255,7 +255,19 @@ Startup details are written under `.data/logs/` so runtime logs do not clutter t
 
 ### App Settings
 
-The `Settings` button opens a guided editor for the local `.env` file. It groups runtime, database, query safety, audit, desktop lifecycle, side-panel auto-hide, appearance, request guardrail, and Fabric authentication settings.
+The `Settings` button opens every setting in one place, most-used first:
+
+1. **Appearance**: theme, object list size, button colours and appearance profiles (applies straight away)
+2. **Interface and comfort**: tooltips, SQL suggestions, side-panel auto-hide, background motion
+3. **Query safety**: write-preview rows, the typed-confirmation threshold, row and export limits
+4. **Fabric sign-in**: the service principal for Fabric sources
+5. **Database connections**: default port and timeouts
+6. **Advanced** (folded away): desktop app, audit log and storage, request guardrails, server
+
+`Find a setting` searches names, descriptions and `.env` keys, and opens Advanced when the match
+is in there; the section buttons under it jump to a group. Each setting shows its plain name,
+what it does, a recommended value, and its `.env` key in small print. A group whose settings all
+need a restart says so once.
 
 Important behavior:
 
@@ -497,6 +509,9 @@ Connection behavior:
   remembered; without one, the form starts folded once you have saved profiles and open while you
   have none. Picking a profile that needs a password opens the form at the password field
 - the saved profile in use is highlighted in the list
+- each profile remembers where you were: switching back to a profile brings back its last object
+  or procedure, its editor tabs and builder settings (filters, sort, top rows). Results are never
+  kept, only what you typed and picked; the last 12 connections are remembered
 
 - current active connection is persisted across page switches in session storage
 - saved connection profiles can be loaded back into the form
@@ -539,6 +554,8 @@ The SQL page object explorer supports:
 - schema filtering
 - pinned-only and recent-only filters
 - loaded column-name search
+- typo-tolerant search: letters in order (`alrts` finds `Alerts`) and small typos (`aletrs`)
+  still match, listed after exact matches; searches shorter than four letters match exactly
 - pinned object ordering
 - active object highlighting
 - object type display
@@ -729,6 +746,14 @@ The editor supports:
 - autocomplete from the loaded catalog: tables and views after `FROM`/`JOIN`/`UPDATE`/`INTO`,
   columns after an alias or table name (`a.`), and SQL keywords; columns for an object you have
   not opened are fetched once on demand
+- joins from foreign keys: right after `JOIN ` the tables related to those already in the
+  statement come first, and accepting one writes the table, an alias and the `ON` clause
+  (`JOIN dbo.Orders AS o ON o.CustomerId = c.Id`). The Query Builder's `Join related table…`
+  list adds the same clause after the active object's `FROM`. Foreign keys are read once per
+  catalog load; Fabric sources expose none, so there are no join suggestions there
+- did-you-mean on failed queries: for `Invalid object name` and `Invalid column name` errors the
+  error card offers the closest loaded names; one click replaces the name in the editor (never
+  inside a string literal or comment, keeping brackets if you used them) and Run query glows
 - up to eight editor tabs, each with its own SQL, cursor and scroll position, restored with the
   workspace; double-click a tab to rename it
 - live line and character counts
@@ -799,6 +824,12 @@ The results area supports:
   right-clicking a selected row copies the whole selection (as JSON, CSV, INSERT or Markdown),
   right-clicking any other row copies just that row, and with nothing selected `Copy rows` copies
   every loaded row as before
+- `Query just these rows` (right-click a selected row) writes `SELECT * FROM <table> WHERE <key> IN
+  (…)` for the selected rows into a new editor tab; it never runs on its own. The key is the
+  table's primary key, or every comparable column when it has none; when the app cannot tell, it
+  asks which column identifies a row. NULL key values are matched with `IS NULL`
+- `Compare the 2 selected rows` lists every column with both rows' values side by side and marks
+  the ones that differ
 - JSON values are pretty-printed with keys, strings, numbers and booleans coloured; SQL `NULL`
   shows as a small dashed `NULL` marker
 - row selection: click a row to select it (it is highlighted, with a bar on the row number);
@@ -980,6 +1011,11 @@ The app stores recent SQL locally with:
 - timestamp display
 - one-click reload into the editor
 - clear history action
+- run counts: running the same SQL again moves it to the top and counts it ("run 3×")
+- `Most used` ordering: by run count, discounted by age, so this week's favourites rise above
+  last month's; `Most recent` is the default
+- `This connection only` shows only SQL run against the connection you are using now
+- up to 50 entries, kept for 14 days
 
 SQL history is shown only in `SQL Studio`.
 

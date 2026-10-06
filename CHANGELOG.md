@@ -7,11 +7,31 @@ together with the current git commit and build information.
 
 ## Unreleased
 
-A foldable connection form with Saved Profiles at the top, row selection that copy respects, a
-choice of object list size, and Liquid Glass on everything clickable.
+A smarter workbench (did-you-mean fixes, joins from foreign keys, per-profile memory, actions
+on selected rows, ranked history, typo-tolerant search), a clearer Settings dialog, a foldable
+connection form with Saved Profiles at the top, row selection that copy respects, a choice of
+object list size, and Liquid Glass on everything clickable.
 
 ### Added
 
+- **Did you mean…?** When a query fails with `Invalid object name` or `Invalid column name`,
+  the error card offers the closest names from the loaded catalog. One click replaces the name in
+  the editor, keeping brackets if they were used and never touching string literals or comments,
+  and Run query glows. The query is not re-run for you.
+- **Joins from foreign keys.** Right after `JOIN `, autocomplete lists the tables related to the
+  ones already in the statement and writes the alias and `ON` clause. The Query Builder gains a
+  `Join related table…` list for the active object. Foreign keys are read once per catalog load
+  through a new read-only `relationships` object-insight (audited as `object_relationships`);
+  Fabric sources expose none.
+- **Each profile remembers where you were**: switching back to a saved profile brings back its
+  last object or procedure, editor tabs and builder settings. Results are never kept.
+- **Act on selected rows**: `Query just these rows` writes a `SELECT` for exactly the selected
+  rows (matched on the key, `IS NULL` for NULL keys) into a new editor tab without running it, and
+  `Compare the 2 selected rows` lists both rows column by column with the differences marked.
+- **Smarter history**: repeat runs are counted, `Most used` ranks by run count discounted by age,
+  and `This connection only` hides other connections' SQL. History keeps 50 entries (was 20).
+- **Typo-tolerant explorer search** for objects and procedures: letters in order and small typos
+  still match, listed after exact matches.
 - **Fold the connection form.** `Show details ▾` / `Hide details ▴` beside the Connection
   heading folds the form away and leaves a one-line summary of what is connected, so the saved
   profiles sit right under it instead of below a long form. The choice is remembered; without one,
@@ -35,6 +55,14 @@ choice of object list size, and Liquid Glass on everything clickable.
 
 ### Changed
 
+- **Settings is easier to find your way around.** Groups are ordered by how often people need
+  them (Appearance, Interface and comfort, Query safety, Fabric sign-in, Database connections),
+  with plain titles, and the install and support groups (desktop app, audit log and storage,
+  request guardrails, server) are folded under **Advanced**. `Find a setting` searches names,
+  descriptions and `.env` keys and opens Advanced when the match is there; section buttons jump
+  to a group. Each card puts the plain name first, a `Recommended:` line, and the `.env` key in
+  small print; a group whose settings all need a restart says so once instead of on every card.
+  The dialog now opens at the top with the search box focused.
 - **Saved Profiles moved to the top of the connection panel**, right under the app name, with the
   Connection form below it and Safety Policy last. The Safety-first note, the session summary and
   the documentation link moved from the brand card into Safety Policy, so the profiles you switch
@@ -60,6 +88,12 @@ choice of object list size, and Liquid Glass on everything clickable.
 
 ### Verification
 
+- `ui-smoke.mjs` covers did-you-mean for object and column names (including leaving a string
+  literal alone), the Join related table list and the JOIN autocomplete suggestion, per-profile
+  memory across two profiles, Query just these rows and Compare the 2 selected rows, history run
+  counts with Most used and This connection only, typo-tolerant explorer search, and the Settings
+  order, Advanced folding and search. `server-unit.test.mjs` covers foreign-key grouping
+  (including composite keys in column order) and the settings group order.
 - `ui-smoke.mjs` covers the panel order, copying selected rows (Copy rows, the right-click menu
   on and off the selection), the object list size (choosing, remembering, saving in a profile,
   opening with a default profile's size), JSON cell highlighting with markup in a value staying

@@ -198,6 +198,9 @@ function SqlWorkspace({ hidden = false }) {
             <button id="insertWhereBtn" className="ghost-btn">Insert WHERE</button>
             <button id="insertOrderByBtn" className="ghost-btn">Insert ORDER BY</button>
             <button id="insertJoinCommentBtn" className="ghost-btn">Join note</button>
+            <select id="relatedJoinSelect" className="ghost-btn related-join-select" aria-label="Join a related table" defaultValue="" disabled>
+              <option value="">No related tables</option>
+            </select>
           </div>
           <div className="sql-helper-bar">
             <label className="field compact-field sql-helper-select">
@@ -718,6 +721,16 @@ export default function WorkbenchShell({ pageMode = 'sql' }) {
                   <span>Search history</span>
                   <input id="queryHistorySearch" type="text" placeholder={isProceduresPage ? 'Filter procedure runs…' : 'Filter recent queries…'} autoComplete="off" />
                 </label>
+                <div className="history-view-row">
+                  <label className="toggle-field history-profile-toggle">
+                    <input id="historyProfileOnlyToggle" type="checkbox" />
+                    <span>This connection only</span>
+                  </label>
+                  <select id="historySortSelect" className="history-sort-select" aria-label="Order history" defaultValue="recent">
+                    <option value="recent">Most recent</option>
+                    <option value="frequent">Most used</option>
+                  </select>
+                </div>
                 <div id="queryHistory" className="query-history" />
               </section>
             </aside>
@@ -785,6 +798,9 @@ export default function WorkbenchShell({ pageMode = 'sql' }) {
         <button id="contextCopyInsertBtn" className="context-menu-item" role="menuitem">Copy row as INSERT</button>
         <button id="contextCopyAllInsertBtn" className="context-menu-item" role="menuitem">Copy loaded rows as INSERT</button>
         <button id="contextCopyMarkdownBtn" className="context-menu-item" role="menuitem">Copy loaded rows as Markdown</button>
+        <div className="context-menu-separator" role="separator" />
+        <button id="contextFilterSelectedBtn" className="context-menu-item" role="menuitem">Query just this row</button>
+        <button id="contextCompareSelectedBtn" className="context-menu-item" role="menuitem">Compare the 2 selected rows</button>
       </div>
 
       <div id="auditFilterDialog" className="modal-backdrop hidden" aria-hidden="true">
@@ -918,11 +934,19 @@ export default function WorkbenchShell({ pageMode = 'sql' }) {
           <div className="modal-header">
             <div>
               <h2>App settings</h2>
-              <p className="modal-message compact-message">Every setting lives here. Appearance applies immediately; the local <code>.env</code> settings below are saved with Apply settings, and most of those need a restart.</p>
+              <p className="modal-message compact-message">Every setting lives here, most-used first. Appearance applies straight away; the others are saved with <strong>Apply settings</strong>, and the ones marked <em>Restart needed</em> take effect after a restart.</p>
             </div>
             <button id="closeEnvSettingsBtn" className="icon-btn" type="button" aria-label="Close app settings">×</button>
           </div>
           <div id="envSettingsStatus" className="connection-test-panel empty-note hidden" aria-live="polite" />
+          <div className="settings-toolbar">
+            <label className="field compact-field settings-search">
+              <span>Find a setting</span>
+              <input id="envSettingsSearch" type="search" placeholder="e.g. tooltip, row limit, port" autoComplete="off" />
+            </label>
+            <nav id="settingsNav" className="settings-nav" aria-label="Settings sections" />
+          </div>
+          <div id="envSettingsSearchEmpty" className="empty-note hidden">No setting matches that search.</div>
           <div className="env-settings-scroll">
             {/* Appearance applies instantly and is kept by the app (data/appearance.json); the .env
                 settings below are written by Apply settings and usually need a restart. */}

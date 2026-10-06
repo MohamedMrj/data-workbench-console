@@ -74,7 +74,7 @@ export default function SqlStudioDocsPage() {
         </DocsMiniSection>
         <DocsMiniSection title="App settings">
           <p><strong>Appearance</strong> sits at the top of Settings and applies immediately, without a restart: pick a theme, change button colours per section, and save the combination as a named profile. Mark a profile with <strong>Open with this profile</strong> and the app starts with it every time, so nothing has to be set up again after a restart or a cleared browser.</p>
-          <p>The rest of Settings writes to the local <code>.env</code> file. Runtime, database, safety, audit, lifecycle, side-panel auto-hide, appearance, request guardrail, and Fabric service-principal settings are grouped with short descriptions. Most values are read when the server starts, so restart Data Workbench from the desktop shortcut after applying changes.</p>
+          <p>The rest of Settings writes to the local <code>.env</code> file, most-used first: <strong>Interface and comfort</strong>, <strong>Query safety</strong>, <strong>Fabric sign-in</strong> and <strong>Database connections</strong>, then <strong>Advanced</strong> (desktop app, audit log and storage, request guardrails, server), which stays folded. Type in <strong>Find a setting</strong> to search by name, description or <code>.env</code> key, or use the section buttons to jump. Settings marked <em>Restart needed</em> take effect after you restart Data Workbench from the desktop shortcut.</p>
           <p>Use <code>APP_SIDE_PANEL_AUTO_HIDE_ENABLED</code>, <code>APP_SIDE_PANEL_IDLE_MS</code>, and <code>APP_SIDE_PANEL_FADE_MS</code> to decide whether side panels fade away, how long they wait, and how slowly they fade. Use <code>APP_AMBIENT_MOTION_ENABLED</code> and <code>APP_AMBIENT_MOTION_DURATION_MS</code> to keep or disable the slow background color movement. Use <code>APP_TOOLTIPS_ENABLED</code> and <code>APP_TOOLTIP_DELAY_MS</code> to keep helpful hints visible or make the interface quieter. Use <code>APP_EDITOR_AUTOCOMPLETE_ENABLED</code> to turn SQL editor suggestions off.</p>
         </DocsMiniSection>
         <DocsMiniSection title="Support reports">
@@ -123,6 +123,7 @@ export default function SqlStudioDocsPage() {
         </DocsMiniSection>
         <DocsMiniSection title="Searching and filtering">
           <p>Use search, type, schema, pinned-only, and recent-only filters to narrow long catalogs. After an object has loaded columns, the search can also match loaded column names. Filtering does not change the active object until you click a result.</p>
+          <p>Search forgives typos: <code>alrts</code> or <code>aletrs</code> still finds <code>Alerts</code>. Exact matches are listed first.</p>
         </DocsMiniSection>
         <DocsMiniSection title="Pins and recent objects">
           <p>Pin important objects from the explorer. Pinned and recent objects are scoped to the current connection, so production and test databases do not share pin state.</p>
@@ -223,6 +224,7 @@ ORDER BY [CreatedUtc] DESC;`}</pre>
         </DocsMiniSection>
         <DocsMiniSection title="Statements and autocomplete">
           <p>Statements are split only on <code>;</code>. A blank line is not a boundary on purpose: it keeps <code>UPDATE ... SET ...</code> and a <code>WHERE</code> on the next paragraph together, so a statement is never sent without its filter. End each statement with <code>;</code> if you want Ctrl+Enter to pick one of several.</p>
+          <p>After <code>JOIN</code>, tables related by a foreign key come first, and picking one writes the alias and the <code>ON</code> clause for you. The Query Builder's <strong>Join related table…</strong> list does the same for the active object.</p>
           <p>Autocomplete uses only metadata the app has already loaded. Table and view names come from the catalog; columns come from objects you have opened, and a table you have not opened yet has its columns fetched once when you type its alias. It stays quiet inside strings and comments, and can be turned off in Settings (<code>APP_EDITOR_AUTOCOMPLETE_ENABLED</code>).</p>
         </DocsMiniSection>
         <DocsMiniSection title="Sample rows in the preview">
@@ -292,6 +294,8 @@ WHERE <review scope before execution>;`}</pre>
           <li><strong>Long JSON/text</strong> is collapsed with Show more / Show less, while copy/export still uses the full value.</li>
           <li><strong>Cell context menu</strong> can copy the clicked cell value, column name, formatted JSON, or the whole row as JSON/CSV/INSERT, and all loaded rows as <code>INSERT</code> statements or a Markdown table. INSERT targets the table when the result is editable, otherwise a <code>[target_table]</code> placeholder you replace; SQL NULL stays <code>NULL</code>, and <code>timestamp</code>/<code>rowversion</code> columns are left out.</li>
           <li><strong>Select rows</strong>: click a row to select it, <span className="docs-kbd">Ctrl</span> + click to add or remove a row, and <span className="docs-kbd">Shift</span> + click to select every row between the last clicked row and this one. Selected rows are highlighted with a bar on the row number, the selection follows the rows through sorting, paging and the filter, and the line above the grid counts it.</li>
+          <li><strong>Query just these rows</strong>: right-click a selected row to write a <code>SELECT</code> for exactly the selected rows, matched on the table's key, into a new editor tab. Review it and run it yourself; it never runs on its own.</li>
+          <li><strong>Compare the 2 selected rows</strong>: shows both rows column by column and marks the columns that differ.</li>
           <li><strong>Copy the selection</strong>: with rows selected, <strong>Copy rows</strong> copies only those rows, and right-clicking a selected row offers <em>Copy N selected rows</em> as JSON, CSV, INSERT or Markdown. Right-clicking a row outside the selection copies just that row.</li>
           <li><strong>Copy rows</strong>, <strong>Export CSV</strong> and <strong>More ▾ → Export JSON</strong> use the rows already loaded in the grid. <strong>More ▾</strong> also holds Compare tabs, Audit log and the result text size.</li>
           <li><strong>More ▾ → Compare tabs</strong> compares the loaded rows of two result tabs. Name the key columns that identify a row (or leave it blank to compare by row order); the differences open as a new tab listing each changed cell and the rows found on only one side. A key that is not unique is refused rather than guessed.</li>
@@ -311,7 +315,8 @@ WHERE <review scope before execution>;`}</pre>
 
       <DocsSection id="history" title="History, State, And Appearance" intro="The app keeps useful context locally so switching tasks does not erase your work.">
         <div className="docs-table">
-          <div><strong>Recent SQL</strong><span>Stores recent SQL locally. Clicking an item restores the SQL and switches the active object when the object is found in the loaded catalog.</span></div>
+          <div><strong>Recent SQL</strong><span>Stores recent SQL locally. Clicking an item restores the SQL and switches the active object when the object is found in the loaded catalog. Repeat runs are counted; choose <strong>Most used</strong> to rank by how often and how recently you ran something, and <strong>This connection only</strong> to hide SQL from other connections.</span></div>
+          <div><strong>Per-profile memory</strong><span>Each saved profile remembers its last object, editor tabs and builder settings. Switch to another profile and back, and you are where you left off. Results are not kept.</span></div>
           <div><strong>Pinned objects</strong><span>Stores pinned objects and procedures locally, scoped to the current connection fingerprint.</span></div>
           <div><strong>Result tabs</strong><span>Restores active result-tab state for the same browser session when the result payload is small enough for session storage.</span></div>
           <div><strong>Mode switching</strong><span>Use the top workspace tabs to move between SQL Studio and Procedure Runner, even when the left connection rail is hidden.</span></div>
@@ -359,6 +364,9 @@ WHERE <review scope before execution>;`}</pre>
       </DocsSection>
 
       <DocsSection id="troubleshooting" title="Troubleshooting" intro="Most issues come from connection details, metadata permissions, or stale context after changing connections.">
+        <DocsMiniSection title="Did you mean…?">
+          <p>When a query fails with <em>Invalid object name</em> or <em>Invalid column name</em>, the error card suggests the closest names from the loaded catalog. Click one to fix the name everywhere it appears in the editor (string literals and comments are left alone), then run the query again.</p>
+        </DocsMiniSection>
         <div className="docs-table">
           <div><strong>Connection failed</strong><span>Check server host, database name, auth mode, credentials, and network access to TCP 1433.</span></div>
           <div><strong>Certificate error</strong><span>Make sure the server field is a single host name, not a full connection string or comma-separated list.</span></div>

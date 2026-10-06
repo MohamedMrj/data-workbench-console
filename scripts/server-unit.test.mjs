@@ -295,6 +295,28 @@ const savedQueryDirEntries = await fs.readdir(process.env.APP_DATA_DIR);
 assert.deepEqual(savedQueryDirEntries.filter((name) => name.endsWith('.tmp')), []);
 
 // Appearance profiles: validation, same-name updates, default handling, delete clears default.
+{
+  const { groupForeignKeyRows } = await import('../lib/server/sql-metadata.js');
+  const grouped = groupForeignKeyRows([
+    { constraint_name: 'FK_Lines_Orders', constraint_column_id: 2, parent_schema: 'sales', parent_table: 'OrderLines', parent_column: 'OrderYear', referenced_schema: 'sales', referenced_table: 'Orders', referenced_column: 'Year' },
+    { constraint_name: 'FK_Lines_Orders', constraint_column_id: 1, parent_schema: 'sales', parent_table: 'OrderLines', parent_column: 'OrderId', referenced_schema: 'sales', referenced_table: 'Orders', referenced_column: 'Id' },
+    { constraint_name: 'FK_Orders_Customers', constraint_column_id: 1, parent_schema: 'sales', parent_table: 'Orders', parent_column: 'CustomerId', referenced_schema: 'dbo', referenced_table: 'Customers', referenced_column: 'Id' }
+  ]);
+  assert.equal(grouped.length, 2);
+  assert.deepEqual(grouped[0], { name: 'FK_Lines_Orders', from: 'sales.OrderLines', to: 'sales.Orders', columns: [{ from: 'OrderId', to: 'Id' }, { from: 'OrderYear', to: 'Year' }] }, 'composite keys keep their column order');
+  assert.equal(grouped[1].to, 'dbo.Customers');
+  assert.deepEqual(groupForeignKeyRows(null), []);
+}
+
+{
+  const { ENV_SETTING_GROUPS, FIELD_DEFINITIONS } = await import('../lib/server/env-settings-store.js');
+  assert.equal(ENV_SETTING_GROUPS[0].id, 'appearance', 'Settings opens with the everyday interface settings');
+  assert.ok(ENV_SETTING_GROUPS.every((group) => ['essential', 'advanced'].includes(group.tier)), 'every settings group says whether it is everyday or advanced');
+  const firstAdvanced = ENV_SETTING_GROUPS.findIndex((group) => group.tier === 'advanced');
+  assert.ok(ENV_SETTING_GROUPS.slice(firstAdvanced).every((group) => group.tier === 'advanced'), 'advanced groups come after every everyday group');
+  assert.ok(FIELD_DEFINITIONS.every((field) => ENV_SETTING_GROUPS.some((group) => group.id === field.group)), 'every setting belongs to a listed group');
+}
+
 const appearanceStore = await import('../lib/server/appearance-store.js');
 assert.deepEqual(await appearanceStore.getAppearance(), { profiles: [], defaultProfileId: '' });
 await assert.rejects(appearanceStore.saveAppearanceProfile({ name: 'Bad theme', theme: 'neon' }), (error) => error.httpStatus === 400);

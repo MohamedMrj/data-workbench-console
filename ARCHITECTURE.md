@@ -232,7 +232,7 @@ caught centrally and mapped through `error.httpStatus` (default 500).
 | `/api/columns` | GET POST | `getColumns` | Columns for one object |
 | `/api/procedures` | GET POST | `getProcedures` / `postProcedures` | POST dispatches on presence of `procedure` or `confirmToken` |
 | `/api/procedure-parameters` | GET POST | `getProcedureParameters` | |
-| `/api/object-insights` | POST | `postObjectInsight` | `profile` \| `dependencies` \| `rowcount` \| `topvalues` \| `resultshape` |
+| `/api/object-insights` | POST | `postObjectInsight` | `profile` \| `dependencies` \| `rowcount` \| `topvalues` \| `resultshape` \| `editability` \| `relationships` (catalog-wide foreign keys, no object needed; empty with `supported: false` on Fabric) |
 | `/api/object-definition` | POST | `postObjectDefinition` | CREATE/ALTER scripting |
 | `/api/schema-compare` | POST | `postSchemaCompare` | Takes two full connection payloads; the client sends a saved profile as the right side; optional `includeRowCounts` |
 | `/api/query-plan` | POST | `postQueryPlan` | Read queries only; blocked for Lakehouse |
@@ -751,7 +751,9 @@ and nothing is lost on upgrade.
 | Scope | Key | Contents |
 | --- | --- | --- |
 | localStorage | `dataWorkbenchConnectionsV2` | saved-profile mirror (server is authoritative) |
-| localStorage | `dataWorkbenchQueryHistoryV3` | SQL history, 20 items, 14-day retention |
+| localStorage | `dataWorkbenchQueryHistoryV3` | SQL history, 50 items, 14-day retention, with an optional `runCount` per entry |
+| localStorage | `dataWorkbenchHistoryViewV1` | history panel view: `profileOnly`, `sort` (`recent`/`frequent`) |
+| localStorage | `dataWorkbenchProfileWorkspacesV1` | per-connection memory keyed by connection signature: active object/procedure, procedure values, builder snapshot (editor tabs, filters, sort). Never results. Last 12 connections |
 | localStorage | `dataWorkbenchProcedureHistoryV1` | procedure runs + parameter values |
 | localStorage | `dataWorkbenchThemeV2` | theme id |
 | localStorage | `dataWorkbenchButtonColorsV1` | per-section Liquid Glass tints, applied as `--tint-<section>` on `<html>` |

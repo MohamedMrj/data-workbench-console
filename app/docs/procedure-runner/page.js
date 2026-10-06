@@ -74,7 +74,7 @@ export default function ProcedureRunnerDocsPage() {
         </DocsMiniSection>
         <DocsMiniSection title="App settings">
           <p><strong>Appearance</strong> sits at the top of Settings and applies immediately, without a restart: pick a theme, change button colours per section, and save the combination as a named profile. Mark a profile with <strong>Open with this profile</strong> and the app starts with it every time, so nothing has to be set up again after a restart or a cleared browser.</p>
-          <p>The rest of Settings writes to the local <code>.env</code> file. Runtime, database, safety, audit, lifecycle, side-panel auto-hide, appearance, request guardrail, and Fabric service-principal settings are grouped with short descriptions. Most values are read when the server starts, so restart Data Workbench from the desktop shortcut after applying changes.</p>
+          <p>The rest of Settings writes to the local <code>.env</code> file, most-used first, with install and support settings folded under <strong>Advanced</strong>. Use <strong>Find a setting</strong> or the section buttons to get around. Settings marked <em>Restart needed</em> take effect after you restart Data Workbench from the desktop shortcut.</p>
           <p>Side-panel auto-hide can be disabled entirely or tuned with idle/fade timing values. Ambient background motion can also be disabled or slowed down for users who prefer a quieter interface. Helpful tooltips can be disabled or delayed with <code>APP_TOOLTIPS_ENABLED</code> and <code>APP_TOOLTIP_DELAY_MS</code>.</p>
         </DocsMiniSection>
         <DocsMiniSection title="Support reports">
@@ -128,7 +128,7 @@ export default function ProcedureRunnerDocsPage() {
 
       <DocsSection id="explorer" title="Procedure Explorer" intro="Procedure Explorer is the left-side list for stored procedures in the active catalog. Selecting one procedure makes it the active procedure for the workspace.">
         <DocsMiniSection title="Find a procedure">
-          <p>Use search, schema, pinned-only, and recent-only filters to narrow long catalogs by schema or procedure name. Filtering the list does not change the active procedure until you click a result.</p>
+          <p>Use search, schema, pinned-only, and recent-only filters to narrow long catalogs by schema or procedure name. Search forgives small typos, listing exact matches first. Filtering the list does not change the active procedure until you click a result.</p>
           <p>Each row is one line: a <strong>P</strong> badge, the name — hover it for the full name when it is cut off — a <strong>recent</strong> tag for procedures you opened lately, and the pin star, which is filled when the procedure is pinned.</p>
         </DocsMiniSection>
         <DocsMiniSection title="Pins and recent procedures">
@@ -220,6 +220,7 @@ export default function ProcedureRunnerDocsPage() {
         <div className="docs-table">
           <div><strong>Recent procedures</strong><span>Stores recent confirmed procedure runs with procedure name and parameter values.</span></div>
           <div><strong>Pinned procedures</strong><span>Stores pinned procedures locally, scoped to the current connection fingerprint.</span></div>
+          <div><strong>Per-profile memory</strong><span>Each saved profile remembers its last procedure and parameter values; switching back to the profile reopens it.</span></div>
           <div><strong>Restore from history</strong><span>Click a history item to restore the procedure, refill parameter values, and switch the active procedure when it exists in the loaded catalog.</span></div>
           <div><strong>Current catalog required</strong><span>If the procedure is not in the loaded catalog, the app can restore values but cannot select the active procedure until metadata is loaded.</span></div>
           <div><strong>Separate history</strong><span>Procedure Runner only shows procedure history. SQL Studio only shows SQL history.</span></div>

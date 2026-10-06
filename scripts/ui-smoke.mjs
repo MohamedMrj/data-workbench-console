@@ -234,9 +234,9 @@ function attachMocks(window) {
         envExists: true,
         envPath: '.env',
         groups: [
-          { id: 'runtime', title: 'Runtime', description: 'Runtime settings' },
-          { id: 'appearance', title: 'Appearance', description: 'Appearance settings' },
-          { id: 'fabric', title: 'Fabric Authentication', description: 'Fabric auth settings' }
+          { id: 'appearance', title: 'Interface and comfort', description: 'Appearance settings', tier: 'essential' },
+          { id: 'fabric', title: 'Fabric sign-in', description: 'Fabric auth settings', tier: 'essential' },
+          { id: 'runtime', title: 'Server', description: 'Runtime settings', tier: 'advanced' }
         ],
         settings: [
           {
@@ -377,6 +377,14 @@ function attachMocks(window) {
     }
 
     if (String(url).includes('/api/object-insights')) {
+      if (body.action === 'relationships') {
+        return new Response(JSON.stringify({
+          success: true,
+          action: 'relationships',
+          supported: true,
+          relationships: [{ name: 'FK_AlertView_Alerts', from: 'dbo.AlertView', to: 'dbo.Alerts', columns: [{ from: 'AlertId', to: 'AlertId' }] }]
+        }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
       if (body.action === 'editability') {
         const queryText = String(body.query || '');
         if (/\bJOIN\b/i.test(queryText)) {
@@ -722,6 +730,14 @@ function attachMocks(window) {
           warnings: [],
           message: 'UPDATE preview complete. Review it, then click Continue to execute.'
         }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
+      // SQL Server's own wording, so the did-you-mean parser is tested against the real text.
+      if (/dbo\.Alrts/i.test(queryText) || /\bStatsu\b/.test(queryText)) {
+        return new Response(JSON.stringify({
+          success: false,
+          error: /dbo\.Alrts/i.test(queryText) ? "Invalid object name 'dbo.Alrts'." : "Invalid column name 'Statsu'.",
+          code: 'EREQUEST'
+        }), { status: 400, headers: { 'Content-Type': 'application/json' } });
       }
       if (/\bLIMIT\s+\d+\s*;?\s*$/i.test(queryText)) {
         return new Response(JSON.stringify({
@@ -1145,6 +1161,52 @@ if (!legacyWindow.document.getElementById('tableList').textContent.includes('dbo
   throw new Error('Clicking a saved profile should automatically load the catalog.');
 }
 {
+  // Each profile remembers its own place: object and editor text come back when you return.
+  const doc = legacyWindow.document;
+  const profileButton = (database) => [...doc.querySelectorAll('#savedConnections [data-connection-index]')].find((button) => button.textContent.includes(database));
+  const editor = doc.getElementById('queryEditor');
+  const type = async (text) => {
+    editor.value = text;
+    editor.dispatchEvent(new legacyWindow.Event('input', { bubbles: true }));
+    await flush();
+  };
+  profileButton('fresh_meta_store').click();
+  await flush();
+  await flush();
+  doc.querySelector('[data-object="dbo.Alerts"]').click();
+  await flush();
+  await flush();
+  await type('SELECT 1 AS fresh_profile_work;');
+  profileButton('legacy_meta_store').click();
+  await flush();
+  await flush();
+  await type('SELECT 2 AS legacy_profile_work;');
+  profileButton('fresh_meta_store').click();
+  await flush();
+  await flush();
+  await flush();
+  if (editor.value !== 'SELECT 1 AS fresh_profile_work;' || !doc.getElementById('activeTarget').textContent.includes('dbo.Alerts')) {
+    throw new Error(`Switching back to a profile should restore its object and editor text. Editor: ${editor.value}`);
+  }
+  if (!doc.getElementById('statusText').textContent.includes('Back where you left off')) {
+    throw new Error('Restoring a profile\'s place should say so.');
+  }
+  profileButton('legacy_meta_store').click();
+  await flush();
+  await flush();
+  await flush();
+  if (editor.value !== 'SELECT 2 AS legacy_profile_work;') {
+    throw new Error(`The other profile should keep its own editor text. Editor: ${editor.value}`);
+  }
+  if (/fresh_profile_work|legacy_profile_work/.test(JSON.stringify(Object.values(JSON.parse(legacyWindow.localStorage.getItem('dataWorkbenchProfileWorkspacesV1') || '{}')).map((entry) => Object.keys(entry))))) {
+    throw new Error('Profile memory keys should be field names only.');
+  }
+  profileButton('fresh_meta_store').click();
+  await flush();
+  await flush();
+  await flush();
+}
+{
   const clicked = legacyWindow.document.querySelector('[data-connection-index="0"]');
   const others = [...legacyWindow.document.querySelectorAll('#savedConnections [data-connection-index]')].filter((button) => button !== clicked);
   if (!clicked.classList.contains('active') || clicked.getAttribute('aria-current') !== 'true' || others.some((button) => button.classList.contains('active'))) {
@@ -1262,7 +1324,7 @@ if (sqlWindow.document.documentElement.style.getPropertyValue('--tooltip-delay-m
     throw new Error(`Safety Policy panel did not render the server safety limits. Got: ${policyText}`);
   }
 }
-['saveConnectionBtn', 'testConnectionBtn', 'loadTablesBtn', 'runQueryBtn', 'runAllQueryBtn', 'exportJsonBtn', 'exportAllCsvBtn', 'exportAllJsonBtn', 'contextCopyInsertBtn', 'contextCopyAllInsertBtn', 'contextCopyMarkdownBtn', 'compareTabsBtn', 'runCompareTabsBtn', 'runCompareBtn', 'saveQueryBtn', 'resultsMoreBtn', 'headerMenuBtn', 'clearHistoryBtn', 'toggleAdvancedOperationsBtn', 'toggleConnectionDetailsBtn', 'insertSelectTemplateBtn', 'updateJoinTemplateBtn', 'mergePreviewBtn', 'profileObjectBtn', 'dependencyViewBtn', 'insertSqlHelperBtn', 'wrapSqlHelperBtn', 'openWorkbenchToolsBtn', 'openEnvSettingsBtn', 'openSupportBtn', 'scrollResultsLeftBtn', 'scrollResultsRightBtn', 'scrollResultsDockLeftBtn', 'scrollResultsDockRightBtn'].forEach((id) => {
+['saveConnectionBtn', 'testConnectionBtn', 'loadTablesBtn', 'runQueryBtn', 'runAllQueryBtn', 'exportJsonBtn', 'exportAllCsvBtn', 'exportAllJsonBtn', 'contextCopyInsertBtn', 'contextCopyAllInsertBtn', 'contextCopyMarkdownBtn', 'compareTabsBtn', 'runCompareTabsBtn', 'runCompareBtn', 'saveQueryBtn', 'resultsMoreBtn', 'headerMenuBtn', 'clearHistoryBtn', 'toggleAdvancedOperationsBtn', 'toggleConnectionDetailsBtn', 'contextFilterSelectedBtn', 'contextCompareSelectedBtn', 'insertSelectTemplateBtn', 'updateJoinTemplateBtn', 'mergePreviewBtn', 'profileObjectBtn', 'dependencyViewBtn', 'insertSqlHelperBtn', 'wrapSqlHelperBtn', 'openWorkbenchToolsBtn', 'openEnvSettingsBtn', 'openSupportBtn', 'scrollResultsLeftBtn', 'scrollResultsRightBtn', 'scrollResultsDockLeftBtn', 'scrollResultsDockRightBtn'].forEach((id) => {
   const element = sqlWindow.document.getElementById(id);
   if (!element || typeof element.onclick !== 'function') {
     throw new Error(`Expected ${id} to be wired on the SQL page.`);
@@ -1325,6 +1387,44 @@ if (!sqlWindow.document.getElementById('envSettingsContent').textContent.include
 }
 if (!sqlWindow.document.querySelector('[data-env-key="APP_TOOLTIP_DELAY_MS"]')?.dataset.tooltip) {
   throw new Error('Tooltip settings should expose helpful controlled tooltip text.');
+}
+{
+  // Settings reads most-used first: Appearance, then the everyday groups, with the install and
+  // support settings folded under Advanced. Search finds a setting wherever it is.
+  const doc = sqlWindow.document;
+  const navLabels = [...doc.querySelectorAll('#settingsNav [data-settings-target]')].map((button) => button.textContent);
+  if (JSON.stringify(navLabels) !== JSON.stringify(['Appearance', 'Interface and comfort', 'Fabric sign-in', 'Advanced'])) {
+    throw new Error(`The settings section list should start with Appearance and end with Advanced. Got: ${navLabels}`);
+  }
+  const advanced = doc.getElementById('advancedSettings');
+  if (!advanced || advanced.open || !advanced.querySelector('[data-env-key="PORT"]')) {
+    throw new Error('Server settings such as the port should sit folded under Advanced.');
+  }
+  if (!doc.getElementById('settingsGroup-runtime').querySelector('.env-restart-note')) {
+    throw new Error('A group whose settings all need a restart should say so once.');
+  }
+  const search = doc.getElementById('envSettingsSearch');
+  search.value = 'app port';
+  search.dispatchEvent(new sqlWindow.Event('input', { bubbles: true }));
+  await new Promise((resolve) => setTimeout(resolve, 200));
+  if (!advanced.open || doc.querySelector('[data-env-key="PORT"]').closest('.env-setting-item').classList.contains('hidden')) {
+    throw new Error('Searching for a setting under Advanced should open Advanced and show it.');
+  }
+  if (!doc.querySelector('[data-env-key="APP_TOOLTIP_DELAY_MS"]').closest('.env-setting-item').classList.contains('hidden') || !doc.getElementById('appearanceSettings').classList.contains('hidden')) {
+    throw new Error('Searching should hide settings that do not match.');
+  }
+  search.value = 'nothing like this';
+  search.dispatchEvent(new sqlWindow.Event('input', { bubbles: true }));
+  await new Promise((resolve) => setTimeout(resolve, 200));
+  if (doc.getElementById('envSettingsSearchEmpty').classList.contains('hidden')) {
+    throw new Error('A search with no matches should say so.');
+  }
+  search.value = '';
+  search.dispatchEvent(new sqlWindow.Event('input', { bubbles: true }));
+  await new Promise((resolve) => setTimeout(resolve, 200));
+  if (advanced.open || doc.getElementById('appearanceSettings').classList.contains('hidden') || !doc.getElementById('envSettingsSearchEmpty').classList.contains('hidden')) {
+    throw new Error('Clearing the search should restore every section and fold Advanced again.');
+  }
 }
 if (sqlWindow.document.getElementById('syncEnvSettingsBtn').classList.contains('hidden')) {
   throw new Error('Settings should show Sync new settings when .env is missing schema keys.');
@@ -1711,6 +1811,123 @@ if (!sqlWindow.document.getElementById('queryEditor').value.includes('execution 
   throw new Error('MERGE preview template is missing the safety warning.');
 }
 
+{
+  // Typo-tolerant explorer search: letters in order and a swapped pair both find the object.
+  const search = sqlWindow.document.getElementById('tableSearchInput');
+  for (const typo of ['alrts', 'aletrs']) {
+    search.value = typo;
+    search.dispatchEvent(new sqlWindow.Event('input', { bubbles: true }));
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    if (!sqlWindow.document.getElementById('tableList').textContent.includes('dbo.Alerts')) {
+      throw new Error(`Explorer search for "${typo}" should still find dbo.Alerts.`);
+    }
+  }
+  search.value = 'zzzz';
+  search.dispatchEvent(new sqlWindow.Event('input', { bubbles: true }));
+  await new Promise((resolve) => setTimeout(resolve, 200));
+  if (sqlWindow.document.getElementById('tableList').textContent.includes('dbo.Alerts')) {
+    throw new Error('An unrelated search should not match by fuzziness.');
+  }
+  search.value = '';
+  search.dispatchEvent(new sqlWindow.Event('input', { bubbles: true }));
+  await new Promise((resolve) => setTimeout(resolve, 200));
+}
+{
+  // Foreign keys: the builder offers related tables and writes the JOIN with its ON clause.
+  const joinSelect = sqlWindow.document.getElementById('relatedJoinSelect');
+  const option = [...joinSelect.options].find((item) => item.textContent.includes('dbo.AlertView'));
+  if (joinSelect.disabled || !option) {
+    throw new Error('Join related table should list dbo.AlertView for dbo.Alerts.');
+  }
+  const editor = sqlWindow.document.getElementById('queryEditor');
+  const before = editor.value;
+  sqlWindow.document.getElementById('generateQueryBtn').click();
+  joinSelect.value = option.value;
+  joinSelect.dispatchEvent(new sqlWindow.Event('change', { bubbles: true }));
+  if (!/INNER JOIN dbo\.AlertView AS av\s+ON av\.AlertId = \[dbo\]\.\[Alerts\]\.AlertId/.test(editor.value)) {
+    throw new Error(`Joining a related table should add the JOIN and ON clause after FROM. Editor: ${editor.value}`);
+  }
+  editor.value = before;
+  editor.dispatchEvent(new sqlWindow.Event('input', { bubbles: true }));
+  // Typing JOIN offers the same join, alias and ON clause included.
+  editor.value = 'SELECT * FROM dbo.Alerts a JOIN ';
+  editor.setSelectionRange(editor.value.length, editor.value.length);
+  editor.dispatchEvent(new sqlWindow.Event('input', { bubbles: true }));
+  await flush();
+  const firstSuggestion = sqlWindow.document.querySelector('#editorSuggest .editor-suggest-item');
+  if (!firstSuggestion || !firstSuggestion.textContent.includes('dbo.AlertView') || !firstSuggestion.textContent.includes('foreign key')) {
+    throw new Error(`Typing JOIN should suggest the related table first. Got: ${firstSuggestion?.textContent || 'nothing'}`);
+  }
+  editor.dispatchEvent(new sqlWindow.KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+  if (!editor.value.includes('JOIN dbo.AlertView AS av\n    ON av.AlertId = a.AlertId')) {
+    throw new Error(`Accepting the join suggestion should insert the aliased ON clause. Editor: ${editor.value}`);
+  }
+  editor.value = before;
+  editor.dispatchEvent(new sqlWindow.Event('input', { bubbles: true }));
+}
+{
+  // A failed query offers the closest names and fixes the editor in one click.
+  const editor = sqlWindow.document.getElementById('queryEditor');
+  const before = editor.value;
+  for (const [query, bad, good, fixed] of [
+    ["SELECT * FROM dbo.Alrts WHERE Status = 'dbo.Alrts';", 'dbo.Alrts', 'dbo.Alerts', "SELECT * FROM dbo.Alerts WHERE Status = 'dbo.Alrts';"],
+    ['SELECT Statsu FROM dbo.Alerts;', 'Statsu', 'Status', 'SELECT Status FROM dbo.Alerts;']
+  ]) {
+    editor.value = query;
+    editor.dispatchEvent(new sqlWindow.Event('input', { bubbles: true }));
+    sqlWindow.document.getElementById('runAllQueryBtn').click();
+    await flush();
+    await flush();
+    const fix = sqlWindow.document.querySelector(`.result-error-suggestions [data-fix-to="${good}"]`);
+    if (!fix || fix.dataset.fixFrom !== bad) {
+      throw new Error(`A failed query naming ${bad} should suggest ${good}. Card: ${sqlWindow.document.querySelector('.result-error-card')?.textContent}`);
+    }
+    fix.click();
+    if (editor.value !== fixed) {
+      throw new Error(`The fix should replace the name outside string literals only. Editor: ${editor.value}`);
+    }
+    if (!sqlWindow.document.getElementById('runQueryBtn').classList.contains('glow-next')) {
+      throw new Error('After a fix, Run query should glow.');
+    }
+  }
+  editor.value = before;
+  editor.dispatchEvent(new sqlWindow.Event('input', { bubbles: true }));
+}
+
+{
+  // History counts repeat runs; Most used puts the query run twice above the one run last,
+  // and This connection only is remembered.
+  const editor = sqlWindow.document.getElementById('queryEditor');
+  const before = editor.value;
+  for (const query of ['SELECT 7 AS history_twice;', 'SELECT 7 AS history_twice;', 'SELECT 8 AS history_once;']) {
+    editor.value = query;
+    editor.dispatchEvent(new sqlWindow.Event('input', { bubbles: true }));
+    sqlWindow.document.getElementById('runAllQueryBtn').click();
+    await flush();
+  }
+  const firstHistory = () => sqlWindow.document.querySelector('#queryHistory .history-item')?.textContent || '';
+  if (!firstHistory().includes('history_once')) {
+    throw new Error(`Most recent should list the last query first. Got: ${firstHistory()}`);
+  }
+  const sort = sqlWindow.document.getElementById('historySortSelect');
+  sort.value = 'frequent';
+  sort.dispatchEvent(new sqlWindow.Event('change', { bubbles: true }));
+  if (!firstHistory().includes('history_twice') || !firstHistory().includes('run 2×')) {
+    throw new Error(`Most used should list the query run twice first, with its count. Got: ${firstHistory()}`);
+  }
+  const profileOnly = sqlWindow.document.getElementById('historyProfileOnlyToggle');
+  profileOnly.checked = true;
+  profileOnly.dispatchEvent(new sqlWindow.Event('change', { bubbles: true }));
+  if (!firstHistory().includes('history_twice') || JSON.parse(sqlWindow.localStorage.getItem('dataWorkbenchHistoryViewV1')).profileOnly !== true) {
+    throw new Error('This connection only should keep this connection\'s queries and remember the choice.');
+  }
+  profileOnly.checked = false;
+  profileOnly.dispatchEvent(new sqlWindow.Event('change', { bubbles: true }));
+  sort.value = 'recent';
+  sort.dispatchEvent(new sqlWindow.Event('change', { bubbles: true }));
+  editor.value = before;
+  editor.dispatchEvent(new sqlWindow.Event('input', { bubbles: true }));
+}
 sqlWindow.document.getElementById('profileObjectBtn').click();
 await flush();
 if (!sqlWindow.document.getElementById('statusText').textContent.includes('Profiled dbo.Alerts')) {
@@ -1803,6 +2020,38 @@ if (!sqlWindow.document.querySelector('.visual-helper-card')?.textContent.includ
   const selectedIds = rows().filter((tr) => tr.classList.contains('result-row-selected')).map((tr) => tr.querySelector('td:last-child').previousElementSibling.textContent.trim());
   if (JSON.stringify(selectedIds) !== '["3"]') {
     throw new Error(`Selection should follow the row through a re-sort. Selected AlertIds: ${selectedIds}`);
+  }
+  {
+    // Selected rows: write a query for just these rows, and compare two side by side.
+    clickRow(1);
+    clickRow(3, { ctrlKey: true });
+    const rightClickRow = (index) => rows()[index].querySelector('td:last-child').dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
+    rightClickRow(1);
+    const filterButton = sqlWindow.document.getElementById('contextFilterSelectedBtn');
+    if (filterButton.textContent !== 'Query just these 2 rows' || sqlWindow.document.getElementById('contextCompareSelectedBtn').disabled) {
+      throw new Error(`The menu should offer to query and compare the two selected rows. Got: ${filterButton.textContent}`);
+    }
+    const alertIds = rows().filter((tr) => tr.classList.contains('result-row-selected')).map((tr) => tr.querySelector('td:last-child').previousElementSibling.textContent.trim());
+    filterButton.click();
+    await flush();
+    const written = sqlWindow.document.getElementById('queryEditor').value;
+    if (!written.includes('FROM [dbo].[Alerts]') || !written.includes(`WHERE [AlertId] IN (${alertIds.join(', ')})`)) {
+      throw new Error(`Query just these rows should write a SELECT matched on the key. Wrote: ${written}`);
+    }
+    if (!sqlWindow.document.querySelector('.editor-tab.active')?.textContent.includes('Selected rows') || !sqlWindow.document.getElementById('runQueryBtn').classList.contains('glow-next')) {
+      throw new Error('The rows query should open in its own tab with Run query glowing, and not run by itself.');
+    }
+    const originalConfirm = sqlWindow.confirm;
+    sqlWindow.confirm = () => true;
+    sqlWindow.document.querySelector('.editor-tab.active .editor-tab-close')?.click();
+    sqlWindow.confirm = originalConfirm;
+    rightClickRow(1);
+    sqlWindow.document.getElementById('contextCompareSelectedBtn').click();
+    await flush();
+    const headers = [...sqlWindow.document.querySelectorAll('.results-table thead .table-header-btn')].map((button) => button.dataset.sort);
+    if (JSON.stringify(headers) !== JSON.stringify(['column', `row ${2}`, `row ${4}`, 'same']) || !sqlWindow.document.getElementById('statusText').textContent.includes('differ')) {
+      throw new Error(`Comparing two rows should list each column side by side. Headers: ${headers}`);
+    }
   }
   queryEditor.value = 'SELECT Payload FROM dbo.Alerts /* JSON_CELL_TEST */';
   queryEditor.dispatchEvent(new sqlWindow.Event('input', { bubbles: true }));

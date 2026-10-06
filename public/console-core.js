@@ -13,6 +13,19 @@ window.createConsoleApp = function createConsoleApp() {
   const SIDE_PANEL_VISIBILITY_KEY = 'dataWorkbenchSidePanelVisibilityV1';
   const ADVANCED_OPERATIONS_VISIBILITY_KEY = 'dataWorkbenchAdvancedOperationsVisibleV1';
   const CONNECTION_DETAILS_OPEN_KEY = 'dataWorkbenchConnectionDetailsOpenV1';
+  const PROFILE_WORKSPACES_KEY = 'dataWorkbenchProfileWorkspacesV1';
+  const PROFILE_WORKSPACES_MAX = 12;
+  const HISTORY_VIEW_KEY = 'dataWorkbenchHistoryViewV1';
+  const FILTER_SELECTED_ROWS_MAX = 500;
+  // Within a settings group, the ones people actually change come first; the rest keep the
+  // server's order.
+  const FEATURED_SETTING_KEYS = [
+    'APP_TOOLTIPS_ENABLED', 'APP_EDITOR_AUTOCOMPLETE_ENABLED', 'APP_TOOLTIP_DELAY_MS',
+    'APP_SIDE_PANEL_AUTO_HIDE_ENABLED', 'APP_SIDE_PANEL_IDLE_MS',
+    'HEIGHTENED_CONFIRM_LIMIT', 'RESPONSE_ROW_LIMIT', 'WRITE_PREVIEW_LIMIT', 'EXPORT_ROW_LIMIT',
+    'AZURE_TENANT_ID', 'AZURE_CLIENT_ID', 'AZURE_CLIENT_SECRET',
+    'DB_CONNECTION_TIMEOUT_MS', 'DB_REQUEST_TIMEOUT_MS', 'DB_PORT'
+  ];
   const LIFECYCLE_SESSION_KEY = 'dataWorkbenchLifecycleSessionV1';
   const PINNED_OBJECTS_KEY = 'dataWorkbenchPinnedObjectsV1';
   const RECENT_OBJECTS_KEY = 'dataWorkbenchRecentObjectsV1';
@@ -98,6 +111,12 @@ window.createConsoleApp = function createConsoleApp() {
     countRowsBtn: 'Build a row count query for the active table or view.',
     resetBuilderBtn: 'Reset builder choices such as columns, filters, sorting, top rows, and distinct.',
     generateQueryBtn: 'Rebuild the SQL editor text from the current builder selections.',
+    envSettingsSearch: 'Find a setting by its name, what it does, or its .env key.',
+    relatedJoinSelect: 'Add a JOIN to a table related to the active object by a foreign key, with the ON clause filled in.',
+    historyProfileOnlyToggle: 'Show only history from the connection you are using now.',
+    historySortSelect: 'Order history by most recent, or by how often and how recently you ran it.',
+    contextFilterSelectedBtn: 'Write a query that returns just these rows, in a new editor tab. It is not run until you run it.',
+    contextCompareSelectedBtn: 'Show the two selected rows side by side, column by column.',
     scriptCreateBtn: 'Load a CREATE script for the selected table, view, or procedure into the SQL editor.',
     scriptAlterBtn: 'Load an editable ALTER script for the selected view or procedure when the source supports it.',
     insertWhereBtn: 'Insert a WHERE clause from configured filters, or add a filter first.',
@@ -214,7 +233,7 @@ window.createConsoleApp = function createConsoleApp() {
   };
   const THEMES = ['midnight', 'harbor', 'forge', 'field', 'ink', 'paper'];
   const CONNECTION_HISTORY_MAX = 12;
-  const QUERY_HISTORY_MAX = 20;
+  const QUERY_HISTORY_MAX = 50;
   const QUERY_HISTORY_RETENTION_MS = 14 * 24 * 60 * 60 * 1000;
   const DEFAULT_PANEL_LAYOUT = {
     controlRail: 340,
@@ -312,6 +331,10 @@ window.createConsoleApp = function createConsoleApp() {
     advancedOperationsVisible: false,
     connectionDetailsOpen: null,
     resultSelection: { rows: null, selected: new Set(), anchor: null },
+    relationships: [],
+    catalogSignature: '',
+    historyView: { profileOnly: false, sort: 'recent' },
+    settingsAdvancedOpen: false,
     sidePanels: {
       controlRailCollapsed: false,
       activityPanelCollapsed: false
@@ -2429,6 +2452,7 @@ window.createConsoleApp = function createConsoleApp() {
       activeColumns: state.activeColumns,
       selectedColumns: [...state.selectedColumns],
       objectColumnIndex: state.objectColumnIndex,
+      relationships: state.relationships,
       activeProcedure: state.activeProcedure,
       procedureParameters: state.procedureParameters,
       procedureValues: state.procedureValues
@@ -2535,6 +2559,57 @@ window.createConsoleApp = function createConsoleApp() {
     }
     allState[key] = snapshot;
     writeWorkspaceState(allState);
+    rememberProfileWorkspace();
+  }
+
+  function readProfileWorkspaces() {
+    try {
+      const parsed = JSON.parse(safeGet(PROFILE_WORKSPACES_KEY) || '{}');
+      return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+    } catch {
+      return {};
+    }
+  }
+
+  // Where you were on each connection: object or procedure, editor tabs, builder settings.
+  // Results are never kept, only what you typed and picked. Saved only while the catalog on
+  // screen belongs to the connection in the form; mid-switch the form already shows the next
+  // profile while the editor still holds the last one's work.
+  function rememberProfileWorkspace(signature = connectionSignature()) {
+    if (!signature || state.catalogSignature !== signature || !$('queryEditor')) return;
+    const all = readProfileWorkspaces();
+    all[signature] = {
+      activeObject: state.activeObject || '',
+      activeObjectType: state.activeObjectType || '',
+      activeProcedure: state.activeProcedure || '',
+      procedureValues: { ...(state.procedureValues || {}) },
+      builder: currentBuilderSnapshot(),
+      savedAt: new Date().toISOString()
+    };
+    const kept = Object.entries(all)
+      .sort((left, right) => String(right[1]?.savedAt || '').localeCompare(String(left[1]?.savedAt || '')))
+      .slice(0, PROFILE_WORKSPACES_MAX);
+    safeSet(PROFILE_WORKSPACES_KEY, JSON.stringify(Object.fromEntries(kept)));
+  }
+
+  async function restoreProfileWorkspace(profileName) {
+    const entry = readProfileWorkspaces()[connectionSignature()];
+    if (!entry || typeof entry !== 'object') return false;
+    if (currentPageMode() === 'procedures') {
+      if (entry.activeProcedure && state.procedures.some((item) => item.fullName === entry.activeProcedure)) {
+        await selectProcedure(entry.activeProcedure, entry.procedureValues);
+      }
+    } else {
+      if (entry.activeObject && state.objects.some((item) => item.fullName === entry.activeObject)) {
+        await selectObject(entry.activeObject, entry.activeObjectType);
+      }
+      if (entry.builder && typeof entry.builder === 'object') {
+        applyBuilderSnapshot(entry.builder);
+        persistWorkspaceState('sql');
+      }
+    }
+    setStatus('success', `Back where you left off on ${profileName}.`);
+    return true;
   }
 
   function restoreFilterRows(filters = []) {
@@ -2558,28 +2633,7 @@ window.createConsoleApp = function createConsoleApp() {
     }
 
     if (key === 'sql') {
-      const builder = snapshot.builder || {};
-      setMode(builder.queryMode || state.queryMode || 'select');
-      if ($('sortColumnSelect')) $('sortColumnSelect').value = builder.sortColumn || '';
-      if ($('sortDirectionSelect')) $('sortDirectionSelect').value = builder.sortDirection || 'ASC';
-      if ($('topRowsInput')) $('topRowsInput').value = builder.topRows || '100';
-      if ($('distinctSelect')) $('distinctSelect').value = builder.distinct || 'false';
-      if ($('advancedSourceObjectSelect')) $('advancedSourceObjectSelect').value = builder.advancedSourceObject || '';
-      if ($('targetJoinColumnSelect')) $('targetJoinColumnSelect').value = builder.targetJoinColumn || '';
-      if ($('sourceJoinColumnInput')) $('sourceJoinColumnInput').value = builder.sourceJoinColumn || '';
-      if ($('profileSampleRowsInput')) $('profileSampleRowsInput').value = builder.profileSampleRows || '200';
-      restoreFilterRows(Array.isArray(builder.filters) ? builder.filters : []);
-      restoreEditorTabs(builder);
-      setQuery(typeof builder.query === 'string' ? builder.query : getQuery());
-      const adapter = editorAdapter();
-      const queryLength = getQuery().length;
-      const start = Math.max(0, Math.min(Number(builder.selectionStart || 0), queryLength));
-      const end = Math.max(start, Math.min(Number(builder.selectionEnd || start), queryLength));
-      adapter.setSelection(start, end);
-      adapter.setScroll(Number(builder.editorScrollTop || 0), Number(builder.editorScrollLeft || 0));
-      syncEditorBackdrop();
-      renderEditorTabs();
-      updateAdvancedOperationsSummary();
+      applyBuilderSnapshot(snapshot.builder || {});
     } else {
       if (snapshot.activeProcedure && snapshot.activeProcedure === state.activeProcedure) {
         state.procedureValues = snapshot.procedureValues && typeof snapshot.procedureValues === 'object' ? { ...snapshot.procedureValues } : state.procedureValues;
@@ -2587,7 +2641,34 @@ window.createConsoleApp = function createConsoleApp() {
         persistCatalogState();
       }
     }
+    return finishWorkspaceRestore(snapshot);
+  }
 
+  function applyBuilderSnapshot(builder) {
+    setMode(builder.queryMode || state.queryMode || 'select');
+    if ($('sortColumnSelect')) $('sortColumnSelect').value = builder.sortColumn || '';
+    if ($('sortDirectionSelect')) $('sortDirectionSelect').value = builder.sortDirection || 'ASC';
+    if ($('topRowsInput')) $('topRowsInput').value = builder.topRows || '100';
+    if ($('distinctSelect')) $('distinctSelect').value = builder.distinct || 'false';
+    if ($('advancedSourceObjectSelect')) $('advancedSourceObjectSelect').value = builder.advancedSourceObject || '';
+    if ($('targetJoinColumnSelect')) $('targetJoinColumnSelect').value = builder.targetJoinColumn || '';
+    if ($('sourceJoinColumnInput')) $('sourceJoinColumnInput').value = builder.sourceJoinColumn || '';
+    if ($('profileSampleRowsInput')) $('profileSampleRowsInput').value = builder.profileSampleRows || '200';
+    restoreFilterRows(Array.isArray(builder.filters) ? builder.filters : []);
+    restoreEditorTabs(builder);
+    setQuery(typeof builder.query === 'string' ? builder.query : getQuery());
+    const adapter = editorAdapter();
+    const queryLength = getQuery().length;
+    const start = Math.max(0, Math.min(Number(builder.selectionStart || 0), queryLength));
+    const end = Math.max(start, Math.min(Number(builder.selectionEnd || start), queryLength));
+    adapter.setSelection(start, end);
+    adapter.setScroll(Number(builder.editorScrollTop || 0), Number(builder.editorScrollLeft || 0));
+    syncEditorBackdrop();
+    renderEditorTabs();
+    updateAdvancedOperationsSummary();
+  }
+
+  function finishWorkspaceRestore(snapshot) {
     state.historyFilter = String(snapshot.historyFilter || '');
     if ($('queryHistorySearch')) {
       $('queryHistorySearch').value = state.historyFilter;
@@ -2656,6 +2737,8 @@ window.createConsoleApp = function createConsoleApp() {
     state.procedureParameters = Array.isArray(saved.procedureParameters) ? saved.procedureParameters : [];
     state.procedureValues = saved.procedureValues && typeof saved.procedureValues === 'object' ? saved.procedureValues : {};
     state.objectColumnIndex = saved.objectColumnIndex && typeof saved.objectColumnIndex === 'object' ? saved.objectColumnIndex : {};
+    state.relationships = Array.isArray(saved.relationships) ? saved.relationships : [];
+    state.catalogSignature = saved.connectionSignature;
     loadPinnedAndRecentItems();
     populateExplorerFilters();
 
@@ -2670,6 +2753,7 @@ window.createConsoleApp = function createConsoleApp() {
     renderProcedureWorkspace();
     populateAdvancedObjectOptions();
     populateJoinColumnOptions();
+    renderRelatedJoinOptions();
     renderExplorerSummary();
     refreshActiveSummary();
     return state.objects.length > 0 || state.procedures.length > 0;
@@ -2792,7 +2876,8 @@ window.createConsoleApp = function createConsoleApp() {
           connectionSignature: String(item.connectionSignature || ''),
           database: String(item.database || ''),
           server: String(item.server || ''),
-          timestamp: String(item.timestamp || new Date().toISOString())
+          timestamp: String(item.timestamp || new Date().toISOString()),
+          runCount: Math.max(1, Math.floor(Number(item.runCount || 1)) || 1)
         };
       })
       .filter((item) => item.query.trim())
@@ -3185,6 +3270,7 @@ window.createConsoleApp = function createConsoleApp() {
 
   function applySavedConnection(item) {
     const previousSignature = connectionSignature();
+    rememberProfileWorkspace(previousSignature);
     const previousSessionPassword = window.__dataWorkbenchSessionPassword || $('passwordInput')?.value || '';
     const sourceType = sourceOptions().some((source) => source.id === item.sourceType) ? item.sourceType : 'fabric-sql';
     $('sourceTypeSelect').value = sourceType;
@@ -3227,6 +3313,7 @@ window.createConsoleApp = function createConsoleApp() {
 
     try {
       await loadCatalog();
+      await restoreProfileWorkspace(profileName);
     } catch (error) {
       renderResultError(error, {
         title: 'Catalog load failed',
@@ -3327,6 +3414,7 @@ window.createConsoleApp = function createConsoleApp() {
     const clean = String(query || '').trim();
     if (!clean) return;
     const currentConnection = storageConnection();
+    const previous = state.queryHistory.find((item) => item.query === clean);
     state.queryHistory = [{
       id: `${Date.now()}-${Math.random().toString(16).slice(2, 7)}`,
       query: clean.slice(0, 20000),
@@ -3336,7 +3424,8 @@ window.createConsoleApp = function createConsoleApp() {
       connectionSignature: connectionSignature(currentConnection),
       database: currentConnection.database || '',
       server: currentConnection.server || '',
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
+      runCount: (previous?.runCount || 0) + 1
     }, ...state.queryHistory.filter((item) => item.query !== clean)].slice(0, QUERY_HISTORY_MAX);
     saveQueryHistory();
     renderHistoryPanel();
@@ -3429,18 +3518,48 @@ window.createConsoleApp = function createConsoleApp() {
     );
   }
 
+  // "Most used": run count, discounted by age, so last month's favourite gives way to this
+  // week's.
+  function historyRank(item) {
+    const ageDays = Math.max(0, (Date.now() - new Date(item.timestamp).getTime()) / 86400000);
+    return Number(item.runCount || 1) / (1 + ageDays / 3);
+  }
+
+  function viewHistory(items) {
+    const signature = connectionSignature();
+    const visible = state.historyView.profileOnly ? items.filter((item) => item.connectionSignature === signature) : [...items];
+    return state.historyView.sort === 'frequent' ? visible.sort((left, right) => historyRank(right) - historyRank(left)) : visible;
+  }
+
+  function loadHistoryView() {
+    try {
+      const parsed = JSON.parse(safeGet(HISTORY_VIEW_KEY) || '{}');
+      state.historyView = { profileOnly: Boolean(parsed.profileOnly), sort: parsed.sort === 'frequent' ? 'frequent' : 'recent' };
+    } catch {
+      state.historyView = { profileOnly: false, sort: 'recent' };
+    }
+    if ($('historyProfileOnlyToggle')) $('historyProfileOnlyToggle').checked = state.historyView.profileOnly;
+    if ($('historySortSelect')) $('historySortSelect').value = state.historyView.sort;
+  }
+
+  function saveHistoryView() {
+    safeSet(HISTORY_VIEW_KEY, JSON.stringify(state.historyView));
+  }
+
   function renderQueryHistory() {
     const container = $('queryHistory');
-    const filtered = state.historyFilter
+    const filtered = viewHistory(state.historyFilter
       ? state.queryHistory.filter((item) => queryHistorySearchText(item).includes(state.historyFilter))
-      : state.queryHistory;
+      : state.queryHistory);
     if (!filtered.length) {
       container.innerHTML = state.historyFilter
         ? '<div class="empty-note">No history matches the search.</div>'
-        : '<div class="empty-note">Recent SQL will appear here.</div>';
+        : state.historyView.profileOnly && state.queryHistory.length
+          ? '<div class="empty-note">No SQL run on this connection yet.</div>'
+          : '<div class="empty-note">Recent SQL will appear here.</div>';
       return;
     }
-    container.innerHTML = filtered.map((item) => `<button class="history-item" data-history-id="${esc(item.id)}" type="button" title="${esc(item.query)}"><strong>${esc((item.query.split('\n')[0] || 'Query').slice(0, 54))}</strong><span>${esc(formatTimestamp(item.timestamp))}</span></button>`).join('');
+    container.innerHTML = filtered.map((item) => `<button class="history-item" data-history-id="${esc(item.id)}" type="button" title="${esc(item.query)}"><strong>${esc((item.query.split('\n')[0] || 'Query').slice(0, 54))}</strong><span>${esc(formatTimestamp(item.timestamp))}${item.runCount > 1 ? ` • run ${esc(item.runCount)}×` : ''}</span></button>`).join('');
     container.querySelectorAll('[data-history-id]').forEach((button) => {
       button.onclick = () => {
         const item = state.queryHistory.find((candidate) => candidate.id === button.dataset.historyId);
@@ -3453,9 +3572,9 @@ window.createConsoleApp = function createConsoleApp() {
 
   function renderProcedureHistory() {
     const container = $('queryHistory');
-    const filtered = state.historyFilter
+    const filtered = viewHistory(state.historyFilter
       ? state.procedureHistory.filter((item) => procedureHistorySearchText(item).includes(state.historyFilter))
-      : state.procedureHistory;
+      : state.procedureHistory);
     if (!filtered.length) {
       container.innerHTML = state.historyFilter
         ? '<div class="empty-note">No procedure runs match the search.</div>'
@@ -3591,11 +3710,12 @@ window.createConsoleApp = function createConsoleApp() {
     }
   }
 
-  function objectMatchesColumnSearch(item, search) {
-    if (!search) return true;
-    if (item.fullName.toLowerCase().includes(search)) return true;
+  function objectSearchScore(item, search) {
+    if (!search) return 3;
+    if (item.fullName.toLowerCase().includes(search)) return 3;
     const columns = state.objectColumnIndex[String(item.fullName || '').toLowerCase()] || [];
-    return columns.some((column) => String(column).toLowerCase().includes(search));
+    if (columns.some((column) => String(column).toLowerCase().includes(search))) return 2;
+    return fuzzyNameScore(search, item.name);
   }
 
   function applyExplorerFilters() {
@@ -3604,16 +3724,19 @@ window.createConsoleApp = function createConsoleApp() {
     const objectSchema = $('objectSchemaFilter')?.value || '';
     const objectsPinnedOnly = Boolean($('pinnedOnlyObjectsToggle')?.checked);
     const objectsRecentOnly = Boolean($('recentOnlyObjectsToggle')?.checked);
+    const objectScores = new Map(state.objects.map((item) => [item, objectSearchScore(item, objectSearch)]));
     state.filteredObjects = state.objects
       .filter((item) => !objectType || item.objectType === objectType)
       .filter((item) => !objectSchema || item.schema === objectSchema)
       .filter((item) => !objectsPinnedOnly || isPinned('object', item.fullName))
       .filter((item) => !objectsRecentOnly || isRecent('object', item.fullName))
-      .filter((item) => objectMatchesColumnSearch(item, objectSearch))
+      .filter((item) => objectScores.get(item) > 0)
       .sort((left, right) => {
         const leftPinned = isPinned('object', left.fullName) ? 1 : 0;
         const rightPinned = isPinned('object', right.fullName) ? 1 : 0;
         if (leftPinned !== rightPinned) return rightPinned - leftPinned;
+        // Real matches before typo-tolerant ones.
+        if (objectScores.get(left) !== objectScores.get(right)) return objectScores.get(right) - objectScores.get(left);
         const leftRecent = state.recentItems[itemStorageId('object', left.fullName)] || '';
         const rightRecent = state.recentItems[itemStorageId('object', right.fullName)] || '';
         if (leftRecent !== rightRecent) return String(rightRecent).localeCompare(String(leftRecent));
@@ -3624,15 +3747,18 @@ window.createConsoleApp = function createConsoleApp() {
     const procedureSchema = $('procedureSchemaFilter')?.value || '';
     const proceduresPinnedOnly = Boolean($('pinnedOnlyProceduresToggle')?.checked);
     const proceduresRecentOnly = Boolean($('recentOnlyProceduresToggle')?.checked);
+    const procedureScore = (item) => (!procedureSearch || item.fullName.toLowerCase().includes(procedureSearch) ? 3 : fuzzyNameScore(procedureSearch, item.name || item.fullName));
+    const procedureScores = new Map(state.procedures.map((item) => [item, procedureScore(item)]));
     state.filteredProcedures = state.procedures
       .filter((item) => !procedureSchema || item.schema === procedureSchema)
       .filter((item) => !proceduresPinnedOnly || isPinned('procedure', item.fullName))
       .filter((item) => !proceduresRecentOnly || isRecent('procedure', item.fullName))
-      .filter((item) => !procedureSearch || item.fullName.toLowerCase().includes(procedureSearch))
+      .filter((item) => procedureScores.get(item) > 0)
       .sort((left, right) => {
         const leftPinned = isPinned('procedure', left.fullName) ? 1 : 0;
         const rightPinned = isPinned('procedure', right.fullName) ? 1 : 0;
         if (leftPinned !== rightPinned) return rightPinned - leftPinned;
+        if (procedureScores.get(left) !== procedureScores.get(right)) return procedureScores.get(right) - procedureScores.get(left);
         const leftRecent = state.recentItems[itemStorageId('procedure', left.fullName)] || '';
         const rightRecent = state.recentItems[itemStorageId('procedure', right.fullName)] || '';
         if (leftRecent !== rightRecent) return String(rightRecent).localeCompare(String(leftRecent));
@@ -4279,6 +4405,100 @@ window.createConsoleApp = function createConsoleApp() {
     return byName.length === 1 ? byName[0] : null;
   }
 
+  // Optimal string alignment distance: Levenshtein plus adjacent transpositions, so "Aletrs" is
+  // one edit from "Alerts", the way a typo feels, not two.
+  function editDistance(left, right) {
+    const a = String(left || '').toLowerCase();
+    const b = String(right || '').toLowerCase();
+    if (a === b) return 0;
+    if (!a.length) return b.length;
+    if (!b.length) return a.length;
+    let previousRow = null;
+    let row = Array.from({ length: b.length + 1 }, (_, index) => index);
+    for (let i = 1; i <= a.length; i += 1) {
+      const next = [i];
+      for (let j = 1; j <= b.length; j += 1) {
+        const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+        let value = Math.min(row[j] + 1, next[j - 1] + 1, row[j - 1] + cost);
+        if (previousRow && i > 1 && j > 1 && a[i - 1] === b[j - 2] && a[i - 2] === b[j - 1]) {
+          value = Math.min(value, previousRow[j - 2] + 1);
+        }
+        next.push(value);
+      }
+      previousRow = row;
+      row = next;
+    }
+    return row[b.length];
+  }
+
+  function isSubsequence(needle, haystack) {
+    let position = 0;
+    for (const char of haystack) {
+      if (char === needle[position]) position += 1;
+      if (position === needle.length) return true;
+    }
+    return false;
+  }
+
+  // 0 means no match; higher is better. A plain substring beats letters in order ("alrts" in
+  // "alerts"), which beats a close typo ("aletrs"). Short searches only match as substrings,
+  // or two letters would match half the catalog.
+  function fuzzyNameScore(search, name) {
+    const query = String(search || '').toLowerCase();
+    const target = String(name || '').toLowerCase();
+    if (!query) return 3;
+    if (target.includes(query)) return 3;
+    if (query.length < 4) return 0;
+    if (isSubsequence(query, target)) return 2;
+    const allowed = query.length >= 8 ? 2 : 1;
+    return editDistance(query, target) <= allowed || editDistance(query, target.slice(0, query.length)) <= allowed ? 1 : 0;
+  }
+
+  function closestNames(bad, candidates, limit = 3) {
+    const target = String(bad || '').toLowerCase();
+    const allowed = Math.max(2, Math.floor(target.length / 3));
+    const seen = new Set();
+    return candidates
+      .map((name) => ({ name: String(name || ''), distance: editDistance(target, name) }))
+      .filter((item) => item.name && item.distance > 0 && item.distance <= allowed)
+      .sort((left, right) => left.distance - right.distance || left.name.localeCompare(right.name))
+      .filter((item) => {
+        const key = item.name.toLowerCase();
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      })
+      .slice(0, limit)
+      .map((item) => item.name);
+  }
+
+  // Each catalog object written in the statement's FROM/JOIN/UPDATE/INTO list, with the text a
+  // column reference should use for it (its alias, or the name as written) and where it ends.
+  function statementObjectAliases(statement) {
+    const list = [];
+    const identifier = '(?:\\[[^\\]]*(?:\\]\\][^\\]]*)*\\]|[A-Za-z_@#$][A-Za-z0-9_@#$]*)';
+    const pattern = new RegExp(`\\b(?:FROM|JOIN|UPDATE|INTO|APPLY)\\s+(${identifier}(?:\\s*\\.\\s*${identifier})*)(?:\\s+(?:AS\\s+)?(${identifier}))?`, 'gi');
+    let match;
+    while ((match = pattern.exec(statement))) {
+      const object = findCatalogObject(match[1].replace(/\s+/g, ''));
+      if (!object) continue;
+      const alias = unquoteIdentifierChain(match[2] || '');
+      const hasAlias = Boolean(alias) && !ALIAS_STOP_WORDS.has(alias.toUpperCase());
+      const nameEnd = match.index + match[0].indexOf(match[1]) + match[1].length;
+      list.push({
+        object,
+        ref: hasAlias ? sqlIdentifier(alias) : match[1].replace(/\s+/g, ''),
+        alias: hasAlias ? alias.toLowerCase() : '',
+        end: hasAlias ? match.index + match[0].length : nameEnd
+      });
+      if (!hasAlias && match[2]) {
+        // The "alias" was really the next keyword; let the scan see it again.
+        pattern.lastIndex = nameEnd;
+      }
+    }
+    return list;
+  }
+
   // Maps every alias and bare name in the statement's FROM/JOIN/UPDATE/INTO list to the
   // catalog object it refers to.
   function statementObjectReferences(statement) {
@@ -4334,11 +4554,13 @@ window.createConsoleApp = function createConsoleApp() {
     const match = before.match(new RegExp(`((?:${identifier}\\.)*)([A-Za-z_@#$][A-Za-z0-9_@#$]*)?$`));
     const qualifier = match?.[1] || '';
     const word = match?.[2] || '';
-    if (!manual && !qualifier && word.length < 2) {
-      return null;
-    }
     const tokenStart = cursor - (match?.[0]?.length || 0);
     const previousWord = (before.slice(0, tokenStart).match(/([A-Za-z_]+)\s*$/)?.[1] || '').toUpperCase();
+    // Right after "JOIN " the related tables are worth showing before anything is typed.
+    const joinReady = previousWord === 'JOIN' && /\s$/.test(before) && state.relationships.length > 0;
+    if (!manual && !qualifier && word.length < 2 && !joinReady) {
+      return null;
+    }
     const ranges = sqlStatementRanges(text);
     const range = ranges.find((item) => cursor >= item.start && cursor <= item.end + 1);
     const statement = range ? text.slice(range.start, range.end) : text;
@@ -4352,16 +4574,17 @@ window.createConsoleApp = function createConsoleApp() {
 
     if (OBJECT_CONTEXT_KEYWORDS.has(context.previousWord) || (context.qualifier && !statementObjectReferences(context.statement).has(unquoteIdentifierChain(context.qualifier).toLowerCase()) && !findCatalogObject(context.qualifier.replace(/\.$/, '')))) {
       const schema = unquoteIdentifierChain(context.qualifier).toLowerCase();
+      const joinItems = context.previousWord === 'JOIN' && !context.qualifier ? relatedJoinSuggestions(context.statement, prefix) : [];
       return {
         replaceStart: context.tokenStart,
-        items: objects
+        items: [...joinItems, ...objects
           .filter((item) => (schema ? String(item.schema || '').toLowerCase() === schema && matches(item.name) : matches(item.name) || matches(item.fullName)))
           .slice(0, SUGGEST_LIMIT)
           .map((item) => ({
             label: item.fullName,
             insert: `${sqlIdentifier(item.schema)}.${sqlIdentifier(item.name)}`,
             kind: item.objectType === 'view' ? 'view' : 'table'
-          }))
+          }))].slice(0, SUGGEST_LIMIT)
       };
     }
 
@@ -4399,6 +4622,116 @@ window.createConsoleApp = function createConsoleApp() {
     });
     const keywordItems = SUGGEST_KEYWORDS.filter(matches).map((keyword) => ({ label: keyword, insert: keyword, kind: 'keyword' }));
     return { replaceStart: context.wordStart, items: [...columnItems, ...keywordItems].slice(0, SUGGEST_LIMIT) };
+  }
+
+  async function loadRelationships() {
+    const signature = connectionSignature();
+    let relationships = [];
+    try {
+      const payload = await api('/api/object-insights', { method: 'POST', data: requestConnection({ action: 'relationships' }) });
+      relationships = Array.isArray(payload.relationships) ? payload.relationships : [];
+    } catch {
+      // Join suggestions are a convenience; without foreign keys there are just none.
+    }
+    if (signature !== connectionSignature()) return;
+    state.relationships = relationships;
+    persistCatalogState();
+    renderRelatedJoinOptions();
+  }
+
+  // Both directions: Orders -> Customers through Orders.CustomerId, and Customers -> Orders.
+  function relationshipsFor(fullName) {
+    const key = String(fullName || '').toLowerCase();
+    return (Array.isArray(state.relationships) ? state.relationships : []).flatMap((relationship) => {
+      const columns = Array.isArray(relationship.columns) ? relationship.columns : [];
+      const found = [];
+      if (String(relationship.from || '').toLowerCase() === key) {
+        found.push({ name: relationship.name, other: relationship.to, pairs: columns.map((pair) => ({ local: pair.from, other: pair.to })) });
+      }
+      if (String(relationship.to || '').toLowerCase() === key) {
+        found.push({ name: relationship.name, other: relationship.from, pairs: columns.map((pair) => ({ local: pair.to, other: pair.from })) });
+      }
+      return found;
+    });
+  }
+
+  // Initials of the table name (OrderLines -> ol), made unique within the statement.
+  function joinAliasFor(name, taken) {
+    const words = String(name || 't').replace(/([a-z0-9])([A-Z])/g, '$1 $2').split(/[^A-Za-z0-9]+/).filter(Boolean);
+    const base = (words.map((word) => word[0]).join('') || 't').toLowerCase().replace(/^[^a-z_]/, 't');
+    let alias = ALIAS_STOP_WORDS.has(base.toUpperCase()) ? `${base}1` : base;
+    let counter = 2;
+    while (taken.has(alias)) {
+      alias = `${base}${counter}`;
+      counter += 1;
+    }
+    taken.add(alias);
+    return alias;
+  }
+
+  function joinClauseFor(relationship, baseRef, alias) {
+    const target = findCatalogObject(relationship.other);
+    const objectSql = target ? `${sqlIdentifier(target.schema)}.${sqlIdentifier(target.name)}` : quoteFullObjectName(relationship.other);
+    const conditions = relationship.pairs.map((pair) => `${alias}.${sqlIdentifier(pair.other)} = ${baseRef}.${sqlIdentifier(pair.local)}`);
+    return `${objectSql} AS ${alias}\n    ON ${conditions.join('\n   AND ')}`;
+  }
+
+  function relatedJoinSuggestions(statement, prefix) {
+    const aliases = statementObjectAliases(statement);
+    const taken = new Set(aliases.map((item) => item.alias || String(item.object.name).toLowerCase()));
+    const inStatement = new Set(aliases.map((item) => String(item.object.fullName).toLowerCase()));
+    const items = [];
+    const seen = new Set();
+    aliases.forEach((base) => {
+      relationshipsFor(base.object.fullName).forEach((relationship) => {
+        const other = findCatalogObject(relationship.other);
+        const otherName = String(other?.name || relationship.other);
+        if (inStatement.has(String(relationship.other).toLowerCase())) return;
+        if (prefix && !otherName.toLowerCase().startsWith(prefix) && !String(relationship.other).toLowerCase().startsWith(prefix)) return;
+        const key = `${relationship.name}|${relationship.other}|${base.ref}`;
+        if (seen.has(key)) return;
+        seen.add(key);
+        const alias = joinAliasFor(otherName, new Set(taken));
+        const clause = joinClauseFor(relationship, base.ref, alias);
+        items.push({
+          label: `${relationship.other} ${alias} ON ${relationship.pairs.map((pair) => `${alias}.${pair.other} = ${base.ref}.${pair.local}`).join(' AND ')}`,
+          insert: clause,
+          kind: 'join',
+          detail: 'foreign key'
+        });
+      });
+    });
+    return items;
+  }
+
+  function renderRelatedJoinOptions() {
+    const select = $('relatedJoinSelect');
+    if (!select) return;
+    const related = state.activeObject ? relationshipsFor(state.activeObject) : [];
+    select.innerHTML = [
+      `<option value="">${related.length ? 'Join related table…' : 'No related tables'}</option>`,
+      ...related.map((relationship, index) => `<option value="${index}">${esc(relationship.other)} (${esc(relationship.pairs.map((pair) => pair.local).join(', '))})</option>`)
+    ].join('');
+    select.disabled = !related.length;
+    select.value = '';
+  }
+
+  function insertRelatedJoin(index) {
+    const relationship = relationshipsFor(state.activeObject)[Number(index)];
+    if (!relationship) return;
+    const text = getQuery();
+    const aliases = statementObjectAliases(text);
+    const base = aliases.find((item) => String(item.object.fullName).toLowerCase() === String(state.activeObject || '').toLowerCase());
+    if (!base) {
+      setStatus('error', `Add FROM ${state.activeObject} to the query first, then pick the table to join.`);
+      return;
+    }
+    const taken = new Set(aliases.map((item) => item.alias || String(item.object.name).toLowerCase()));
+    const otherName = findCatalogObject(relationship.other)?.name || relationship.other;
+    const clause = `\nINNER JOIN ${joinClauseFor(relationship, base.ref, joinAliasFor(otherName, taken))}`;
+    setQuery(`${text.slice(0, base.end)}${clause}${text.slice(base.end)}`);
+    setStatus('success', `Joined ${relationship.other} on its foreign key. Columns with the same name in both tables may need a table prefix.`);
+    glowNextStep('runQueryBtn');
   }
 
   function caretOffset(editor, position) {
@@ -5376,24 +5709,47 @@ window.createConsoleApp = function createConsoleApp() {
       return acc;
     }, {});
 
-    container.innerHTML = groups.map((group) => {
-      const settings = settingsByGroup[group.id] || [];
+    const featuredRank = (field) => {
+      const index = FEATURED_SETTING_KEYS.indexOf(field.key);
+      return index < 0 ? FEATURED_SETTING_KEYS.length : index;
+    };
+    const groupHtml = (group) => {
+      const settings = [...(settingsByGroup[group.id] || [])].sort((left, right) => featuredRank(left) - featuredRank(right));
       if (!settings.length) return '';
-      return `<section class="env-settings-group" data-tooltip="${esc(group.description || '')}">
+      // Said once for the group when it applies to all of it, rather than on every card.
+      const allRestart = settings.every((field) => field.restartRequired);
+      return `<section class="env-settings-group" id="settingsGroup-${esc(group.id)}" data-settings-group="${esc(group.id)}">
         <h3>${esc(group.title)}</h3>
-        <p>${esc(group.description || '')}</p>
+        <p>${esc(group.description || '')}${allRestart ? ' <span class="env-restart-note">Changes here take effect after a restart.</span>' : ''}</p>
         <div class="env-setting-list">
-          ${settings.map((field) => `<div class="env-setting-item${field.missing ? ' env-setting-missing' : ''}" data-tooltip="${esc(envFieldTooltip(field))}">
-            <div class="env-setting-label-row"><strong>${esc(field.label)}</strong><code class="env-key">${esc(field.key)}</code></div>
+          ${settings.map((field) => `<div class="env-setting-item${field.missing ? ' env-setting-missing' : ''}" data-tooltip="${esc(envFieldTooltip(field))}" data-settings-search="${esc([field.label, field.description, field.key, group.title].join(' ').toLowerCase())}">
+            <div class="env-setting-label-row"><strong>${esc(field.label)}</strong>${field.restartRequired && !allRestart ? '<span class="env-restart-badge">Restart needed</span>' : ''}</div>
             ${envSettingControl(field)}
             <p class="env-setting-description">${esc(field.description || '')}</p>
-            <p class="env-setting-appropriate">${esc(field.appropriate || '')}${field.restartRequired ? ' Restart required.' : ''}</p>
+            ${field.appropriate ? `<p class="env-setting-appropriate"><strong>Recommended:</strong> ${esc(field.appropriate)}</p>` : ''}
+            <code class="env-key" aria-label="Setting name in .env">${esc(field.key)}</code>
             ${field.missing ? '<span class="env-secret-note">Missing from .env. Sync new settings can add this default without changing existing values.</span>' : ''}
             ${field.secret ? '<span class="env-secret-note">Secret values are never shown after saving.</span>' : ''}
           </div>`).join('')}
         </div>
       </section>`;
-    }).join('');
+    };
+    const essential = groups.filter((group) => group.tier !== 'advanced');
+    const advanced = groups.filter((group) => group.tier === 'advanced' && (settingsByGroup[group.id] || []).length);
+    container.innerHTML = essential.map(groupHtml).join('') + (advanced.length
+      ? `<details id="advancedSettings" class="settings-advanced"${state.settingsAdvancedOpen ? ' open' : ''}>
+          <summary><strong>Advanced settings</strong><span>${esc(advanced.map((group) => group.title).join(', '))}. Usually left alone; for whoever installs or supports the app.</span></summary>
+          <div class="settings-advanced-body">${advanced.map(groupHtml).join('')}</div>
+        </details>`
+      : '');
+    $('advancedSettings')?.addEventListener('toggle', () => {
+      // A search opens Advanced to show a match; only a person's own click is remembered.
+      if (!String($('envSettingsSearch')?.value || '').trim()) {
+        state.settingsAdvancedOpen = $('advancedSettings').open;
+      }
+    });
+    renderSettingsNav(essential.filter((group) => (settingsByGroup[group.id] || []).length), advanced);
+    filterEnvSettings();
 
     // When the ambient color follows the theme, show the current theme accent in
     // the (disabled) swatch so the picker reflects what is actually rendered.
@@ -5404,6 +5760,58 @@ window.createConsoleApp = function createConsoleApp() {
         ambientColorInput.value = themeAccent;
       }
     }
+  }
+
+  function renderSettingsNav(essential, advanced) {
+    const nav = $('settingsNav');
+    if (!nav) return;
+    const links = [
+      { id: 'appearanceSettings', label: 'Appearance' },
+      ...essential.map((group) => ({ id: `settingsGroup-${group.id}`, label: group.title })),
+      ...(advanced.length ? [{ id: 'advancedSettings', label: 'Advanced' }] : [])
+    ];
+    nav.innerHTML = links.map((link) => `<button class="segment-btn" type="button" data-settings-target="${esc(link.id)}">${esc(link.label)}</button>`).join('');
+    nav.querySelectorAll('[data-settings-target]').forEach((button) => {
+      button.onclick = () => {
+        const target = $(button.dataset.settingsTarget);
+        if (!target) return;
+        if (target.tagName === 'DETAILS') {
+          target.open = true;
+          state.settingsAdvancedOpen = true;
+        }
+        target.scrollIntoView?.({ block: 'start', behavior: 'smooth' });
+      };
+    });
+  }
+
+  // Hides settings (and whole sections) that do not match, and opens Advanced when the match
+  // is in there, so a search never comes back empty because the answer was folded away.
+  function filterEnvSettings() {
+    const query = String($('envSettingsSearch')?.value || '').trim().toLowerCase();
+    const dialog = $('envSettingsDialog');
+    if (!dialog) return;
+    let matches = 0;
+    dialog.querySelectorAll('[data-settings-search]').forEach((item) => {
+      const visible = !query || item.dataset.settingsSearch.includes(query);
+      item.classList.toggle('hidden', !visible);
+      if (visible) matches += 1;
+    });
+    dialog.querySelectorAll('[data-settings-group]').forEach((group) => {
+      group.classList.toggle('hidden', Boolean(query) && !group.querySelector('[data-settings-search]:not(.hidden)'));
+    });
+    const appearance = $('appearanceSettings');
+    const appearanceMatch = !query || 'appearance theme colour color button profile object list size text dark light paper'.includes(query) || query.split(/\s+/).every((word) => 'appearance theme colour color button profile object list size text dark light paper'.includes(word));
+    appearance?.classList.toggle('hidden', !appearanceMatch);
+    if (appearanceMatch && query) matches += 1;
+    const advanced = $('advancedSettings');
+    if (advanced) {
+      const advancedMatch = Boolean(advanced.querySelector('[data-settings-search]:not(.hidden)'));
+      advanced.classList.toggle('hidden', Boolean(query) && !advancedMatch);
+      if (query && advancedMatch) advanced.open = true;
+      if (!query) advanced.open = Boolean(state.settingsAdvancedOpen);
+    }
+    $('settingsNav')?.classList.toggle('hidden', Boolean(query));
+    $('envSettingsSearchEmpty')?.classList.toggle('hidden', !query || matches > 0);
   }
 
   async function loadEnvSettings() {
@@ -5428,7 +5836,7 @@ window.createConsoleApp = function createConsoleApp() {
     dialog.classList.remove('hidden');
     dialog.setAttribute('aria-hidden', 'false');
     loadEnvSettings()
-      .then(() => dialog.querySelector('[data-env-key]')?.focus())
+      .then(() => ($('envSettingsSearch') || dialog.querySelector('[data-env-key]'))?.focus())
       .catch((error) => {
         envSettingsStatus('error', error.message || 'Could not load settings.');
         setStatus('error', `Could not load app settings: ${error.message}`);
@@ -6246,8 +6654,11 @@ window.createConsoleApp = function createConsoleApp() {
     }
 
     renderExplorerSummary();
+    state.catalogSignature = connectionSignature();
+    state.relationships = [];
     persistActiveConnection();
     persistCatalogState();
+    loadRelationships();
     if (errors.length) {
       throw new Error(errors.join(' | '));
     }
@@ -6377,6 +6788,7 @@ window.createConsoleApp = function createConsoleApp() {
       markRecentItem('object', state.activeObject);
       populateColumnInputs();
       renderColumns();
+      renderRelatedJoinOptions();
       persistCatalogState();
       generateQuery();
     } catch (error) {
@@ -6636,7 +7048,10 @@ window.createConsoleApp = function createConsoleApp() {
     const panel = $('resultsPanel');
     const resultsCard = panel?.closest('.results-card');
     if (panel) {
-      panel.innerHTML = `<div class="result-error-card"><strong>${esc(title)}</strong><p>${esc(message)}</p>${code ? `<code>${esc(code)}</code>` : ''}<span>${esc(hint)}</span></div>`;
+      panel.innerHTML = `<div class="result-error-card"><strong>${esc(title)}</strong><p>${esc(message)}</p>${code ? `<code>${esc(code)}</code>` : ''}<span>${esc(hint)}</span>${context.operation === 'query' ? '<div class="result-error-suggestions hidden"></div>' : ''}</div>`;
+      if (context.operation === 'query') {
+        renderErrorSuggestions(message, context.query).catch(() => {});
+      }
     }
     if (resultsCard) {
       resultsCard.dataset.resultsState = 'error';
@@ -6644,6 +7059,81 @@ window.createConsoleApp = function createConsoleApp() {
     updateResultScrollControls();
     applyPanelLayout();
     setStatus('error', message);
+  }
+
+  // "Invalid object name 'dbo.Alrts'" / "Invalid column name 'Statsu'": offer the closest names
+  // from what the app has already loaded, and fix the editor in one click.
+  async function renderErrorSuggestions(message, query) {
+    const container = $('resultsPanel')?.querySelector('.result-error-suggestions');
+    if (!container) return;
+    const misses = [];
+    const seen = new Set();
+    [['object', /Invalid object name '([^']+)'/gi], ['column', /Invalid column name '([^']+)'/gi]].forEach(([kind, pattern]) => {
+      let match;
+      while ((match = pattern.exec(String(message || '')))) {
+        const key = `${kind}:${match[1].toLowerCase()}`;
+        if (!seen.has(key)) {
+          seen.add(key);
+          misses.push({ kind, name: match[1] });
+        }
+      }
+    });
+    if (!misses.length) return;
+    const objects = Array.isArray(state.objects) ? state.objects : [];
+    const referenced = [...new Set(statementObjectReferences(String(query || getQuery())).values())];
+    await Promise.all(referenced.map((object) => ensureObjectColumns(object)));
+    if (!container.isConnected) return;
+    const groups = misses.map((miss) => {
+      if (miss.kind === 'object') {
+        const qualified = unquoteIdentifierChain(miss.name).includes('.');
+        return { ...miss, options: closestNames(unquoteIdentifierChain(miss.name), objects.map((item) => (qualified ? item.fullName : item.name))) };
+      }
+      const columns = referenced.flatMap((object) => cachedObjectColumns(object) || []);
+      const candidates = columns.length ? columns : state.activeColumns.map((column) => column.name);
+      return { ...miss, options: closestNames(miss.name, candidates) };
+    }).filter((group) => group.options.length);
+    if (!groups.length) return;
+    container.innerHTML = groups.map((group) => `<div class="error-suggestion-row"><span>Did you mean</span>${group.options.map((option) => `<button class="ghost-btn small" type="button" data-fix-kind="${esc(group.kind)}" data-fix-from="${esc(group.name)}" data-fix-to="${esc(option)}">${esc(option)}</button>`).join('')}<span class="tiny-note">instead of ${esc(group.name)}?</span></div>`).join('');
+    container.classList.remove('hidden');
+    container.querySelectorAll('[data-fix-from]').forEach((button) => {
+      button.onclick = () => applyNameFix(button.dataset.fixFrom, button.dataset.fixTo);
+    });
+  }
+
+  // Replaces the name everywhere it is used as an identifier in the editor, keeping the way it
+  // was written (bracketed or not), and never inside a string literal or a comment.
+  function applyNameFix(from, to) {
+    const parts = unquoteIdentifierChain(from).split('.').filter(Boolean);
+    if (!parts.length) return;
+    const escapeRegExp = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\  function renderQueryError(error, query) {');
+    const partPattern = (part) => `(?:\\[${escapeRegExp(part.replace(/]/g, ']]'))}\\]|${escapeRegExp(part)})`;
+    const pattern = new RegExp(`${parts.map(partPattern).join('\\s*\\.\\s*')}`, 'gi');
+    const text = getQuery();
+    const regions = sqlRegions(text);
+    const insideText = (index) => regions.some((region) => index >= region.start && index < region.end && (region.type === 'comment' || (region.type === 'quoted' && text[region.start] === "'")));
+    const identifierChar = /[A-Za-z0-9_@#$]/;
+    const replacement = (found) => unquoteIdentifierChain(to).split('.').map((part) => (found.includes('[') ? bid(part) : sqlIdentifier(part))).join('.');
+    let count = 0;
+    let next = '';
+    let last = 0;
+    let match;
+    while ((match = pattern.exec(text))) {
+      const start = match.index;
+      const end = start + match[0].length;
+      const before = text[start - 1] || '';
+      const after = text[end] || '';
+      if (insideText(start) || identifierChar.test(before) || before === '.' || identifierChar.test(after)) continue;
+      next += text.slice(last, start) + replacement(match[0]);
+      last = end;
+      count += 1;
+    }
+    if (!count) {
+      setStatus('error', `Could not find ${from} in the editor.`);
+      return;
+    }
+    setQuery(next + text.slice(last));
+    setStatus('success', `Replaced ${from} with ${to}${count > 1 ? ` in ${count} places` : ''}. Run the query again when ready.`);
+    glowNextStep('runQueryBtn');
   }
 
   function renderQueryError(error, query) {
@@ -7274,11 +7764,92 @@ window.createConsoleApp = function createConsoleApp() {
       contextCopyCsvBtn: `Copy ${many} as CSV`,
       contextCopyInsertBtn: `Copy ${many} as INSERT`,
       contextCopyAllInsertBtn: `Copy ${bulk} as INSERT`,
-      contextCopyMarkdownBtn: `Copy ${bulk} as Markdown`
+      contextCopyMarkdownBtn: `Copy ${bulk} as Markdown`,
+      contextFilterSelectedBtn: rows.length > 1 ? `Query just these ${rows.length} rows` : 'Query just this row'
     };
     Object.entries(labels).forEach(([id, text]) => {
       if ($(id)) $(id).textContent = text;
     });
+    if ($('contextFilterSelectedBtn')) $('contextFilterSelectedBtn').disabled = !rows.length;
+    if ($('contextCompareSelectedBtn')) $('contextCompareSelectedBtn').disabled = selectedCount !== 2;
+  }
+
+  function singleSourceObject(query) {
+    const objects = [...new Set(statementObjectReferences(String(query || '')).values())];
+    return objects.length === 1 ? objects[0].fullName : '';
+  }
+
+  // Writes (never runs) a SELECT for exactly these rows, matched on the row key. With no key
+  // known it asks which column identifies a row rather than guessing.
+  function queryRowsInEditor(rows) {
+    if (!rows.length) {
+      setStatus('error', 'Select one or more rows first.');
+      return;
+    }
+    const info = state.results.editableInfo;
+    const target = info?.object || singleSourceObject(state.results.sourceQuery);
+    if (!target) {
+      setStatus('error', 'This needs rows from a single table or view. Run a query against one object first.');
+      return;
+    }
+    let keys = (info?.matchColumns?.length ? info.matchColumns : info?.keyColumns) || [];
+    if (!keys.length) {
+      const answer = window.prompt('Which column identifies a row? Separate several with commas.', state.results.columns[0] || '');
+      if (answer === null) return;
+      keys = String(answer).split(',').map((column) => column.trim()).filter(Boolean);
+    }
+    const resolved = keys.map((key) => state.results.columns.find((column) => column.toLowerCase() === key.toLowerCase()));
+    if (!keys.length || resolved.some((column) => !column)) {
+      setStatus('error', `Not a column in these results: ${keys.filter((key, index) => !resolved[index]).join(', ') || '(none given)'}.`);
+      return;
+    }
+    const types = copyColumnTypes();
+    const limited = rows.slice(0, FILTER_SELECTED_ROWS_MAX);
+    const literal = (row, column) => sqlLiteralForCopy(row[column], types.get(column.toLowerCase()));
+    // NULL never equals anything, so a NULL key value has to be matched with IS NULL.
+    const condition = (row, column) => (row[column] === null || row[column] === undefined ? `${bid(column)} IS NULL` : `${bid(column)} = ${literal(row, column)}`);
+    const where = resolved.length === 1 && limited.every((row) => row[resolved[0]] !== null && row[resolved[0]] !== undefined)
+      ? `${bid(resolved[0])} IN (${[...new Set(limited.map((row) => literal(row, resolved[0])))].join(', ')})`
+      : limited.map((row) => `(${resolved.map((column) => condition(row, column)).join(' AND ')})`).join('\n   OR ');
+    const query = `SELECT *\nFROM ${quoteFullObjectName(target)}\nWHERE ${where};`;
+    if (getQuery().trim() && state.editorTabs.length < EDITOR_TABS_MAX) {
+      newEditorTab(query);
+    } else {
+      setQuery(query);
+    }
+    const tab = activeEditorTab();
+    if (tab) {
+      tab.title = 'Selected rows';
+      renderEditorTabs();
+    }
+    persistWorkspaceState('sql');
+    const cut = rows.length > limited.length ? ` Only the first ${limited.length} were included.` : '';
+    setStatus('success', `Wrote a query for ${limited.length} row${limited.length === 1 ? '' : 's'}. Review it, then run it.${cut}`);
+    glowNextStep('runQueryBtn');
+  }
+
+  function compareSelectedRows() {
+    const rows = selectedResultRows();
+    if (rows.length !== 2) {
+      setStatus('error', 'Select exactly two rows to compare.');
+      return;
+    }
+    const order = sortedRows();
+    const [leftLabel, rightLabel] = rows.map((row) => `row ${order.indexOf(row) + 1}`);
+    const columns = state.results.columns.filter((column) => column !== 'result_set');
+    const compared = columns.map((column) => {
+      const left = serializeCellValueForCopy(rows[0][column]);
+      const right = serializeCellValueForCopy(rows[1][column]);
+      return { column, [leftLabel]: left, [rightLabel]: right, same: left === right ? 'yes' : 'NO' };
+    });
+    const different = compared.filter((row) => row.same === 'NO').length;
+    setResults(['column', leftLabel, rightLabel, 'same'], compared, {
+      output: { columns_compared: columns.length, columns_different: different },
+      visualKind: 'query',
+      tabTitle: `Compare ${leftLabel} and ${rightLabel}`,
+      tabKey: ''
+    });
+    setStatus('success', `${different} of ${columns.length} column${columns.length === 1 ? '' : 's'} differ between ${leftLabel} and ${rightLabel}.`);
   }
 
   function bindResultRowSelection(panel, visibleRows) {
@@ -9652,6 +10223,30 @@ window.createConsoleApp = function createConsoleApp() {
         renderHistoryPanel();
       }, 150);
     }
+    if ($('historyProfileOnlyToggle')) {
+      $('historyProfileOnlyToggle').onchange = () => {
+        state.historyView.profileOnly = $('historyProfileOnlyToggle').checked;
+        saveHistoryView();
+        renderHistoryPanel();
+      };
+    }
+    if ($('historySortSelect')) {
+      $('historySortSelect').onchange = () => {
+        state.historyView.sort = $('historySortSelect').value === 'frequent' ? 'frequent' : 'recent';
+        saveHistoryView();
+        renderHistoryPanel();
+      };
+    }
+    if ($('envSettingsSearch')) {
+      $('envSettingsSearch').oninput = debounce(filterEnvSettings, 120);
+    }
+    if ($('relatedJoinSelect')) {
+      $('relatedJoinSelect').onchange = () => {
+        const value = $('relatedJoinSelect').value;
+        if (value !== '') insertRelatedJoin(value);
+        $('relatedJoinSelect').value = '';
+      };
+    }
     if ($('localResultsFilter')) {
       $('localResultsFilter').oninput = debounce(() => {
         state.results.localFilter = ($('localResultsFilter').value || '').trim();
@@ -9747,7 +10342,9 @@ window.createConsoleApp = function createConsoleApp() {
     [
       ['contextCopyInsertBtn', () => (state.results.contextRows || []).length && copyRowsAs('insert', state.results.contextRows)],
       ['contextCopyAllInsertBtn', () => copyRowsAs('insert', selectedResultRows().length ? selectedResultRows() : sortedRows())],
-      ['contextCopyMarkdownBtn', () => copyRowsAs('markdown', selectedResultRows().length ? selectedResultRows() : sortedRows())]
+      ['contextCopyMarkdownBtn', () => copyRowsAs('markdown', selectedResultRows().length ? selectedResultRows() : sortedRows())],
+      ['contextFilterSelectedBtn', () => queryRowsInEditor(state.results.contextRows || [])],
+      ['contextCompareSelectedBtn', () => compareSelectedRows()]
     ].forEach(([id, action]) => {
       if ($(id)) {
         $(id).onclick = () => {
@@ -9881,6 +10478,7 @@ window.createConsoleApp = function createConsoleApp() {
   async function init() {
     loadAdvancedOperationsVisibility();
     loadConnectionDetailsOpen();
+    loadHistoryView();
     loadTextPreferences();
     loadSidePanelVisibility();
     loadPanelLayout();
