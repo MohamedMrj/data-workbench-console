@@ -1100,6 +1100,9 @@ const legacyWindow = await createWindow(
   }
 );
 
+if (legacyWindow.sessionStorage.getItem('dataWorkbenchDefaultAppearanceAppliedV1') !== '1') {
+  throw new Error('Opening the app should record that the default profile was applied for this session.');
+}
 if (legacyWindow.document.documentElement.getAttribute('data-theme') !== 'paper' || legacyWindow.document.documentElement.style.getPropertyValue('--tint-explorer') !== '#ff3366') {
   throw new Error('The app should open with its default appearance profile (theme and button colours).');
 }
@@ -2790,6 +2793,27 @@ if (sqlWindow.document.querySelector('.app-shell').style.getPropertyValue('--res
   throw new Error('Results height was not restored after switching to the procedure page.');
 }
 
+{
+  // Switching modes boots the app again in the same tab. The default profile must not come back
+  // over a theme picked since the app opened: it applies once per app session.
+  const switchedWindow = await createWindow(
+    'http://127.0.0.1:3100/procedures',
+    ['procedures'],
+    { width: 1680, height: 980 },
+    (window) => {
+      window.localStorage.setItem('dataWorkbenchThemeV2', 'ink');
+      window.sessionStorage.setItem('dataWorkbenchDefaultAppearanceAppliedV1', '1');
+      window.__appearanceStore = {
+        profiles: [{ id: 'look-1', name: 'Paper look', theme: 'paper', buttonColors: {} }],
+        defaultProfileId: 'look-1'
+      };
+    }
+  );
+  if (switchedWindow.document.documentElement.getAttribute('data-theme') !== 'ink') {
+    throw new Error(`Switching between SQL Studio and Procedure Runner should keep the chosen theme, not re-apply the default profile. Got: ${switchedWindow.document.documentElement.getAttribute('data-theme')}`);
+  }
+  switchedWindow.close();
+}
 const procedureWindow = await createWindow(
   'http://127.0.0.1:3100/procedures',
   ['procedures'],

@@ -772,6 +772,7 @@ and nothing is lost on upgrade.
 | sessionStorage | `dataWorkbenchCatalogStateV1` | catalog + active selections, fingerprint-gated |
 | sessionStorage | `dataWorkbenchWorkspaceStateV1` | per-mode snapshot: editor text, caret, scroll, editor tabs, filters, sort, result tabs, pagination |
 | sessionStorage | `dataWorkbenchLifecycleSessionV1` | heartbeat session id |
+| sessionStorage | `dataWorkbenchDefaultAppearanceAppliedV1` | `1` once the default appearance profile was applied in this app session, so switching modes does not apply it again |
 | memory only | `window.__dataWorkbenchSessionPassword` | password for the tab's lifetime |
 
 Every read goes through `safeGet`/`safeSessionGet`, which swallow storage exceptions (private

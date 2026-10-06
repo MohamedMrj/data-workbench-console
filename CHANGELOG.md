@@ -80,6 +80,10 @@ object list size, and Liquid Glass on everything clickable.
 
 ### Fixed
 
+- Fixed the theme resetting when switching between SQL Studio and Procedure Runner. Each mode
+  starts the app again, and every start applied the default appearance profile, replacing any
+  look picked since the app opened. The default profile now applies once per app session, when
+  the app opens.
 - Fixed JSON in result cells putting every value on its own line (`"a":`, then `1`, then `,`).
   The results panel keeps an `empty-state` class after a result renders, and that class made
   every span inside it a block. Also fixed JSON keys and strings never being coloured: the

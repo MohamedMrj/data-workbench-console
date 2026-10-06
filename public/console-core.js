@@ -33,6 +33,7 @@ window.createConsoleApp = function createConsoleApp() {
   const SCRATCHPADS_IMPORTED_KEY = 'dataWorkbenchScratchpadsImportedV1';
   const BUTTON_COLORS_KEY = 'dataWorkbenchButtonColorsV1';
   const EXPLORER_SIZE_KEY = 'dataWorkbenchExplorerSizeV1';
+  const DEFAULT_APPEARANCE_APPLIED_KEY = 'dataWorkbenchDefaultAppearanceAppliedV1';
   const EXPLORER_SIZES = [
     { id: 'compact', label: 'Compact', scale: 0.9 },
     { id: 'default', label: 'Default', scale: 1 },
@@ -6194,8 +6195,11 @@ window.createConsoleApp = function createConsoleApp() {
       profiles: Array.isArray(payload.profiles) ? payload.profiles : [],
       defaultProfileId: String(payload.defaultProfileId || '')
     };
-    if (applyDefault) {
+    // Once per app session, not per page: SQL Studio and Procedure Runner each boot the app, and
+    // re-applying the default on every boot undid any look picked since the app opened.
+    if (applyDefault && safeSessionGet(DEFAULT_APPEARANCE_APPLIED_KEY) !== '1') {
       applyAppearance(state.appearance.profiles.find((profile) => profile.id === state.appearance.defaultProfileId));
+      safeSessionSet(DEFAULT_APPEARANCE_APPLIED_KEY, '1');
     }
     renderAppearanceProfiles();
   }
