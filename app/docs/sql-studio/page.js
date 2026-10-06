@@ -59,7 +59,7 @@ export default function SqlStudioDocsPage() {
           <div><strong>Help &amp; settings ▾</strong><span>Opens a menu with Documentation, Tools, Settings and Support.</span></div>
           <div><strong>Documentation</strong><span>In the Help &amp; settings menu. Opens this guide in a new tab. Use it when you need button behavior, requirements, source support, or troubleshooting details.</span></div>
           <div><strong>Tools</strong><span>In the Help &amp; settings menu. Opens Workbench Tools. Use it for quick actions, SQL safety summary, capability checks, the saved query library, and diagnostics.</span></div>
-          <div><strong>Settings</strong><span>In the Help &amp; settings menu. Opens a guided editor for local <code>.env</code> settings. Each setting includes a description, appropriate values, and restart guidance. Secret values can be replaced but are never shown after saving.</span></div>
+          <div><strong>Settings</strong><span>In the Help &amp; settings menu. The one place for everything you can configure: <strong>Appearance</strong> (theme, button colours and appearance profiles) at the top, then a guided editor for local <code>.env</code> settings. Each <code>.env</code> setting includes a description, appropriate values, and restart guidance. Secret values can be replaced but are never shown after saving.</span></div>
           <div><strong>Support</strong><span>In the Help &amp; settings menu. Opens a bug-report form. Fill in title, area, severity, description, reproduction steps, and optional screenshot, then open an email draft to support.</span></div>
           <div><strong>Update</strong><span>Appears only when the local Git checkout is behind the configured remote. It pulls the latest app code, preserves local <code>.env</code> and <code>.data</code>, rebuilds, restarts the local server, and reloads the browser.</span></div>
           <div><strong>Hide / Show connections</strong><span>Collapses or restores the left connection rail. Use it when you need more space for query building or result inspection. The current data source stays visible in the top workspace header, above the active object name: the saved profile name when the connection matches a saved profile, otherwise the source type, server and database.</span></div>
@@ -73,7 +73,8 @@ export default function SqlStudioDocsPage() {
           <p><strong>Diagnostics</strong> shows safe app/session context and can copy a diagnostic payload for support. It does not include passwords or client secrets.</p>
         </DocsMiniSection>
         <DocsMiniSection title="App settings">
-          <p>Settings writes to the local <code>.env</code> file. Runtime, database, safety, audit, lifecycle, side-panel auto-hide, appearance, request guardrail, and Fabric service-principal settings are grouped with short descriptions. Most values are read when the server starts, so restart Data Workbench from the desktop shortcut after applying changes.</p>
+          <p><strong>Appearance</strong> sits at the top of Settings and applies immediately, without a restart: pick a theme, change button colours per section, and save the combination as a named profile. Mark a profile with <strong>Open with this profile</strong> and the app starts with it every time, so nothing has to be set up again after a restart or a cleared browser.</p>
+          <p>The rest of Settings writes to the local <code>.env</code> file. Runtime, database, safety, audit, lifecycle, side-panel auto-hide, appearance, request guardrail, and Fabric service-principal settings are grouped with short descriptions. Most values are read when the server starts, so restart Data Workbench from the desktop shortcut after applying changes.</p>
           <p>Use <code>APP_SIDE_PANEL_AUTO_HIDE_ENABLED</code>, <code>APP_SIDE_PANEL_IDLE_MS</code>, and <code>APP_SIDE_PANEL_FADE_MS</code> to decide whether side panels fade away, how long they wait, and how slowly they fade. Use <code>APP_AMBIENT_MOTION_ENABLED</code> and <code>APP_AMBIENT_MOTION_DURATION_MS</code> to keep or disable the slow background color movement. Use <code>APP_TOOLTIPS_ENABLED</code> and <code>APP_TOOLTIP_DELAY_MS</code> to keep helpful hints visible or make the interface quieter. Use <code>APP_EDITOR_AUTOCOMPLETE_ENABLED</code> to turn SQL editor suggestions off.</p>
         </DocsMiniSection>
         <DocsMiniSection title="Support reports">
@@ -117,6 +118,7 @@ export default function SqlStudioDocsPage() {
       <DocsSection id="explorer" title="Object Explorer" intro="The explorer shows the current catalog. Selecting an object makes it the active object for the builder, editor helpers, active summary, and SQL history context.">
         <DocsMiniSection title="Selecting an object">
           <p>Click a table or view to load its columns. The active object appears in the top workspace header and is highlighted in the explorer.</p>
+          <p>Each row is one line: a type badge (<strong>T</strong> table, <strong>V</strong> view, <strong>P</strong> procedure), the name — hover it for the full name when it is cut off — a <strong>recent</strong> tag for objects you opened lately, and the pin star, which is filled when the object is pinned.</p>
         </DocsMiniSection>
         <DocsMiniSection title="Searching and filtering">
           <p>Use search, type, schema, pinned-only, and recent-only filters to narrow long catalogs. After an object has loaded columns, the search can also match loaded column names. Filtering does not change the active object until you click a result.</p>
@@ -304,7 +306,7 @@ WHERE <review scope before execution>;`}</pre>
         </div>
       </DocsSection>
 
-      <DocsSection id="history" title="History, State, And Themes" intro="The app keeps useful context locally so switching tasks does not erase your work.">
+      <DocsSection id="history" title="History, State, And Appearance" intro="The app keeps useful context locally so switching tasks does not erase your work.">
         <div className="docs-table">
           <div><strong>Recent SQL</strong><span>Stores recent SQL locally. Clicking an item restores the SQL and switches the active object when the object is found in the loaded catalog.</span></div>
           <div><strong>Pinned objects</strong><span>Stores pinned objects and procedures locally, scoped to the current connection fingerprint.</span></div>

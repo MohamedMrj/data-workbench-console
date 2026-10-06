@@ -45,7 +45,7 @@ Explorer.
   highlight along the top edge, a soft inner shade and a tinted shadow — and primary buttons are
   a solid tinted gradient under the same glass highlight. Each section has its own tint
   (connection panel, workspace header, Object Explorer, Query Builder, SQL Editor and procedures,
-  Results, Themes and history, dialogs), tuned separately for the light `paper` theme. Sizes,
+  Results, history, dialogs), tuned separately for the light `paper` theme. Sizes,
   padding and borders are unchanged, so nothing shifts on hover.
 - **Button colours** in Settings → Appearance: one colour picker per section plus `Reset`.
 - **Appearance profiles** in Settings → Appearance: save the current theme and button colours
