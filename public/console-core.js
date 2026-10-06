@@ -12,6 +12,7 @@ window.createConsoleApp = function createConsoleApp() {
   const PANEL_LAYOUT_KEY = 'dataWorkbenchPanelLayoutV1';
   const SIDE_PANEL_VISIBILITY_KEY = 'dataWorkbenchSidePanelVisibilityV1';
   const ADVANCED_OPERATIONS_VISIBILITY_KEY = 'dataWorkbenchAdvancedOperationsVisibleV1';
+  const CONNECTION_DETAILS_OPEN_KEY = 'dataWorkbenchConnectionDetailsOpenV1';
   const LIFECYCLE_SESSION_KEY = 'dataWorkbenchLifecycleSessionV1';
   const PINNED_OBJECTS_KEY = 'dataWorkbenchPinnedObjectsV1';
   const RECENT_OBJECTS_KEY = 'dataWorkbenchRecentObjectsV1';
@@ -119,6 +120,7 @@ window.createConsoleApp = function createConsoleApp() {
     sourceJoinColumnInput: 'Enter or confirm the source key column used in generated cross-object templates.',
     profileSampleRowsInput: 'Choose how many rows object profiling should sample when supported.',
     toggleAdvancedOperationsBtn: 'Show or hide read-only analysis tools and cross-object SQL templates.',
+    toggleConnectionDetailsBtn: 'Show or hide the connection form. Saved profiles stay visible either way.',
     insertSelectTemplateBtn: 'Create an INSERT...SELECT template from the active target and source context.',
     updateJoinTemplateBtn: 'Create an UPDATE JOIN template from the selected target/source keys.',
     mergePreviewBtn: 'Create a MERGE preview template for manual review before running.',
@@ -301,6 +303,8 @@ window.createConsoleApp = function createConsoleApp() {
     lastFocusedElement: null,
     connectionTest: null,
     advancedOperationsVisible: false,
+    connectionDetailsOpen: null,
+    resultSelection: { rows: null, selected: new Set(), anchor: null },
     sidePanels: {
       controlRailCollapsed: false,
       activityPanelCollapsed: false
@@ -1754,6 +1758,7 @@ window.createConsoleApp = function createConsoleApp() {
     line.dataset.tooltip = !ready
       ? 'Enter a server and database, or pick a saved profile, to set the data source.'
       : profile ? `Saved profile ${profile.profileName || current.database}: ${details}` : details;
+    renderConnectionDetailsSummary(current, { ready, profile, sourceLabel, details });
     if (!ready) {
       line.textContent = 'No data source configured';
     } else if (profile) {
@@ -1761,6 +1766,24 @@ window.createConsoleApp = function createConsoleApp() {
     } else {
       line.innerHTML = `<span class="active-source-type">${esc(sourceLabel)}</span><span class="active-source-server">${esc(current.server)}</span><span class="active-source-database">${esc(current.database)}</span>`;
     }
+  }
+
+  function renderConnectionDetailsSummary(current, { ready, profile, sourceLabel, details }) {
+    const summary = $('connectionDetailsSummary');
+    if (summary) {
+      summary.dataset.tooltip = ready ? details : 'Pick a saved profile below, or show details to enter a server and database.';
+      summary.innerHTML = !ready
+        ? '<span class="connection-details-empty">No data source yet. Pick a saved profile or show details.</span>'
+        : profile
+          ? `${environmentBadge(profile.environment)}<strong>${esc(profile.profileName || current.database)}</strong><span>${esc(current.server)} • ${esc(current.database)}</span>`
+          : `<strong>${esc(current.database)}</strong><span>${esc(sourceLabel)} • ${esc(current.server)}</span>`;
+    }
+    const activeIndex = profile ? state.connectionHistory.indexOf(profile) : -1;
+    document.querySelectorAll('#savedConnections [data-connection-index]').forEach((button) => {
+      const active = Number(button.dataset.connectionIndex) === activeIndex;
+      button.classList.toggle('active', active);
+      button.setAttribute('aria-current', active ? 'true' : 'false');
+    });
   }
 
   function savedProfileSignature(item) {
@@ -2259,6 +2282,39 @@ window.createConsoleApp = function createConsoleApp() {
   function clearConnectionTestResult() {
     state.connectionTest = null;
     renderConnectionTestResult();
+  }
+
+  // Before the saved list has loaded (and with no stored choice), open while there is no profile
+  // to pick, so a first run starts at the form; once profiles exist, folded, so switching is one click.
+  function connectionDetailsOpen() {
+    return state.connectionDetailsOpen ?? !state.connectionHistory.length;
+  }
+
+  function renderConnectionDetails() {
+    const button = $('toggleConnectionDetailsBtn');
+    const content = $('connectionDetails');
+    const summary = $('connectionDetailsSummary');
+    if (!button || !content) {
+      return;
+    }
+    const open = connectionDetailsOpen();
+    content.classList.toggle('hidden', !open);
+    summary?.classList.toggle('hidden', open);
+    button.setAttribute('aria-expanded', open ? 'true' : 'false');
+    button.textContent = open ? 'Hide details ▴' : 'Show details ▾';
+  }
+
+  function setConnectionDetailsOpen(open, { remember = true } = {}) {
+    state.connectionDetailsOpen = Boolean(open);
+    if (remember) {
+      safeSet(CONNECTION_DETAILS_OPEN_KEY, open ? 'true' : 'false');
+    }
+    renderConnectionDetails();
+  }
+
+  function loadConnectionDetailsOpen() {
+    const stored = safeGet(CONNECTION_DETAILS_OPEN_KEY);
+    state.connectionDetailsOpen = stored === 'true' ? true : stored === 'false' ? false : null;
   }
 
   function renderAdvancedOperationsVisibility() {
@@ -3054,6 +3110,11 @@ window.createConsoleApp = function createConsoleApp() {
     try {
       state.connectionHistory = await fetchSavedConnections();
       saveStoredConnectionHistory(state.connectionHistory);
+      // Settled once here, not on every render, so saving a first profile never folds the
+      // form away while it is still being used.
+      if (state.connectionDetailsOpen === null) {
+        state.connectionDetailsOpen = !state.connectionHistory.length;
+      }
       renderConnectionHistory();
     } catch (error) {
       state.connectionHistory = [];
@@ -3080,6 +3141,7 @@ window.createConsoleApp = function createConsoleApp() {
     const container = $('savedConnections');
     if (!state.connectionHistory.length) {
       container.innerHTML = '<div class="empty-note">Saved connections will appear here. They are stored in the app database and survive restarts.</div>';
+      renderConnectionDetails();
       return;
     }
     container.innerHTML = state.connectionHistory.map((item, index) => {
@@ -3090,6 +3152,8 @@ window.createConsoleApp = function createConsoleApp() {
     container.querySelectorAll('[data-connection-index]').forEach((button) => {
       button.onclick = () => applySavedConnectionAndLoadCatalog(state.connectionHistory[Number(button.dataset.connectionIndex)]);
     });
+    renderActiveSource();
+    renderConnectionDetails();
     container.querySelectorAll('[data-delete-index]').forEach((button) => {
       button.onclick = async (event) => {
         event.stopPropagation();
@@ -3148,6 +3212,8 @@ window.createConsoleApp = function createConsoleApp() {
     const profileName = item.profileName || item.database || 'saved profile';
     const authMode = selectedAuthMode();
     if (authModeNeedsPassword(authMode) && !$('passwordInput')?.value) {
+      setConnectionDetailsOpen(true, { remember: false });
+      $('passwordInput')?.focus();
       setStatus('neutral', `Loaded ${profileName}. Enter the ${authMode === 'windowsNtlm' ? 'Windows' : 'SQL'} password, then load the catalog.`);
       return;
     }
@@ -7116,6 +7182,81 @@ window.createConsoleApp = function createConsoleApp() {
         }
       });
     });
+    bindResultRowSelection(panel, visibleRows);
+  }
+
+  // Selection holds the loaded row objects themselves, not positions, so it survives sorting,
+  // paging and the local filter, and is dropped as soon as a different result is loaded.
+  function currentResultSelection() {
+    const selection = state.resultSelection;
+    if (selection.rows !== state.results.rows) {
+      selection.rows = state.results.rows;
+      selection.selected = new Set();
+      selection.anchor = null;
+    }
+    return selection;
+  }
+
+  function bindResultRowSelection(panel, visibleRows) {
+    const selection = currentResultSelection();
+    const meta = $('resultsMeta');
+    const baseMeta = meta?.textContent || '';
+    const rowsInBody = Array.from(panel.querySelectorAll('tbody tr'));
+    const paint = () => {
+      rowsInBody.forEach((tr, index) => {
+        const selected = selection.selected.has(visibleRows[index]);
+        tr.classList.toggle('result-row-selected', selected);
+        tr.setAttribute('aria-selected', selected ? 'true' : 'false');
+      });
+      const count = selection.selected.size;
+      if (meta) {
+        meta.textContent = count ? `${baseMeta} ${count} row${count === 1 ? '' : 's'} selected.` : baseMeta;
+      }
+    };
+    rowsInBody.forEach((tr, index) => {
+      tr.addEventListener('mousedown', (event) => {
+        // Shift would otherwise start a text selection across the range being picked.
+        if (event.shiftKey) {
+          event.preventDefault();
+        }
+      });
+      tr.addEventListener('click', (event) => {
+        if (event.target?.closest?.('button, a, input, textarea, select, [contenteditable="true"]')) {
+          return;
+        }
+        const additive = event.ctrlKey || event.metaKey;
+        // A plain click that ends a drag across cell text is copying text, not picking a row.
+        if (!additive && !event.shiftKey && String(window.getSelection?.() || '')) {
+          return;
+        }
+        const row = visibleRows[index];
+        if (!row) {
+          return;
+        }
+        const order = event.shiftKey && selection.anchor ? sortedRows() : [];
+        const from = order.indexOf(selection.anchor);
+        const to = order.indexOf(row);
+        if (from >= 0 && to >= 0) {
+          const range = order.slice(Math.min(from, to), Math.max(from, to) + 1);
+          if (!additive) {
+            selection.selected = new Set();
+          }
+          range.forEach((item) => selection.selected.add(item));
+        } else if (additive) {
+          if (selection.selected.has(row)) {
+            selection.selected.delete(row);
+          } else {
+            selection.selected.add(row);
+          }
+          selection.anchor = row;
+        } else {
+          selection.selected = new Set([row]);
+          selection.anchor = row;
+        }
+        paint();
+      });
+    });
+    paint();
   }
 
   function serializeCellValueForCopy(value) {
@@ -9188,6 +9329,9 @@ window.createConsoleApp = function createConsoleApp() {
     if ($('wrapSqlHelperBtn')) {
       $('wrapSqlHelperBtn').onclick = () => insertSqlHelper({ wrapSelection: true });
     }
+    if ($('toggleConnectionDetailsBtn')) {
+      $('toggleConnectionDetailsBtn').onclick = () => setConnectionDetailsOpen(!connectionDetailsOpen());
+    }
         $('toggleAdvancedOperationsBtn').onclick = () => {
       state.advancedOperationsVisible = !state.advancedOperationsVisible;
       saveAdvancedOperationsVisibility();
@@ -9646,6 +9790,7 @@ window.createConsoleApp = function createConsoleApp() {
 
   async function init() {
     loadAdvancedOperationsVisibility();
+    loadConnectionDetailsOpen();
     loadTextPreferences();
     loadSidePanelVisibility();
     loadPanelLayout();
@@ -9677,6 +9822,7 @@ window.createConsoleApp = function createConsoleApp() {
     renderProcedureWorkspace();
     renderFilters();
     renderAdvancedOperationsVisibility();
+    renderConnectionDetails();
     populateAdvancedObjectOptions();
     populateJoinColumnOptions();
     updateAdvancedOperationsSummary();

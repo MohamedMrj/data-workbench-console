@@ -241,6 +241,10 @@ async function attachApiMocks(page) {
   }));
 
   await page.route('**/api/audit', (route) => route.fulfill({ json: { success: true, entries: [], limit: 25 } }));
+  // Mocked rather than read from this checkout's data/ folder, so the machine's own saved
+  // profiles and default appearance profile cannot change what the audit sees.
+  await page.route('**/api/saved-connections', (route) => route.fulfill({ json: { success: true, items: [] } }));
+  await page.route('**/api/appearance', (route) => route.fulfill({ json: { success: true, profiles: [], defaultProfileId: '' } }));
 }
 
 async function populateSqlPage(page) {
@@ -255,6 +259,7 @@ async function populateSqlPage(page) {
   await page.click('#addFilterBtn');
   await page.click('#runQueryBtn');
   await page.waitForTimeout(300);
+  await page.locator('.results-table tbody tr td.row-index').first().click().catch(() => {});
 }
 
 async function populateProcedurePage(page) {
@@ -702,6 +707,11 @@ async function runCase(browser, routePath, width, options = {}) {
     }
   }
 
+  if (options.collapseConnectionDetails) {
+    await page.locator('#toggleConnectionDetailsBtn').click().catch(() => {});
+    await page.waitForTimeout(100);
+  }
+
   if (options.hidePanels) {
     await page.locator('#toggleControlRailBtn').click().catch(() => {});
     await page.locator('#toggleActivityPanelBtn').click().catch(() => {});
@@ -724,6 +734,7 @@ async function runCase(browser, routePath, width, options = {}) {
       routeName,
       options.theme || '',
       options.hidePanels ? 'panels-hidden' : '',
+      options.collapseConnectionDetails ? 'connection-folded' : '',
       width
     ].filter(Boolean).join('-');
     await page.screenshot({ path: path.join(outDir, `${suffix}.png`), fullPage: false });
@@ -755,6 +766,10 @@ try {
 
   for (const routePath of ['/', '/procedures']) {
     results.push(await runCase(browser, routePath, 1200, { hidePanels: true, screenshot: true }));
+  }
+
+  for (const width of [390, 1400]) {
+    results.push(await runCase(browser, '/', width, { collapseConnectionDetails: true, screenshot: true }));
   }
 
   for (const routePath of ['/docs/sql-studio', '/docs/procedure-runner']) {

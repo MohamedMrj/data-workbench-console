@@ -85,7 +85,7 @@ export default function SqlStudioDocsPage() {
         </DocsMiniSection>
       </DocsSection>
 
-      <DocsSection id="connection" title="Connect To A Source" intro="The connection rail defines where catalog loads and queries run. Saved profiles fill in fields, but they do not automatically connect or execute anything.">
+      <DocsSection id="connection" title="Connect To A Source" intro="The connection rail defines where catalog loads and queries run. Clicking a saved profile fills in the fields and loads its catalog; it never runs a query.">
         <DocsMiniSection title="Fill in the connection">
           <div className="docs-table">
             <div><strong>Source type</strong><span>Choose Fabric SQL endpoint, Fabric Lakehouse SQL endpoint, or SQL Server.</span></div>
@@ -101,7 +101,8 @@ export default function SqlStudioDocsPage() {
           <div className="docs-table">
             <div><strong>Test connection</strong><span>Verifies server, database, authentication mode, and credentials before you load metadata.</span></div>
             <div><strong>Load catalog</strong><span>Loads tables, views, and procedures when the selected source supports them. Required before object selection, scripting, profiling, dependency view, pins/recent filtering, and most advanced operations.</span></div>
-            <div><strong>Saved profiles</strong><span>Save reusable source, auth mode, server, port, database, domain where relevant, username, and trust settings. Secrets are not stored. Clicking a saved profile loads its catalog automatically when the profile has enough connection information.</span></div>
+            <div><strong>Saved profiles</strong><span>Save reusable source, auth mode, server, port, database, domain where relevant, username, and trust settings. Secrets are not stored. Clicking a saved profile loads its catalog automatically when the profile has enough connection information. The profile in use is highlighted.</span></div>
+            <div><strong>Show / Hide details</strong><span>Folds the connection form away so the saved profiles sit right under the Connection heading, with a one-line summary of what is connected. The choice is remembered. With saved profiles and no choice yet, the form starts folded; picking a profile that needs a password opens it at the password field.</span></div>
             <div><strong>Environment</strong><span>Tag a profile Dev, Test or Prod before saving. The tag shows as a badge in the workspace header and the saved list. On a <strong>Prod</strong> profile every write, batch, result-edit save and procedure needs a typed phrase that names the profile, such as <code>EXECUTE UPDATE ON PROD GOLD</code>, and the confirm dialog shows a red PRODUCTION banner. The server enforces this, and any saved prod profile for the same server and database counts, whichever login you use. It guards against mistakes; it is not a security boundary.</span></div>
           </div>
         </DocsMiniSection>
@@ -290,6 +291,7 @@ WHERE <review scope before execution>;`}</pre>
           <li><strong>NULL values</strong> appear as a visible pill so blanks are easier to distinguish from missing data.</li>
           <li><strong>Long JSON/text</strong> is collapsed with Show more / Show less, while copy/export still uses the full value.</li>
           <li><strong>Cell context menu</strong> can copy the clicked cell value, column name, formatted JSON, or the whole row as JSON/CSV/INSERT, and all loaded rows as <code>INSERT</code> statements or a Markdown table. INSERT targets the table when the result is editable, otherwise a <code>[target_table]</code> placeholder you replace; SQL NULL stays <code>NULL</code>, and <code>timestamp</code>/<code>rowversion</code> columns are left out.</li>
+          <li><strong>Select rows</strong>: click a row to select it, <span className="docs-kbd">Ctrl</span> + click to add or remove a row, and <span className="docs-kbd">Shift</span> + click to select every row between the last clicked row and this one. Selected rows are highlighted with a bar on the row number, the selection follows the rows through sorting, paging and the filter, and the line above the grid counts it.</li>
           <li><strong>Copy rows</strong>, <strong>Export CSV</strong> and <strong>More ▾ → Export JSON</strong> use the rows already loaded in the grid. <strong>More ▾</strong> also holds Compare tabs, Audit log and the result text size.</li>
           <li><strong>More ▾ → Compare tabs</strong> compares the loaded rows of two result tabs. Name the key columns that identify a row (or leave it blank to compare by row order); the differences open as a new tab listing each changed cell and the rows found on only one side. A key that is not unique is refused rather than guessed.</li>
           <li><strong>Row limit</strong>: a read returns at most the response row limit (250 by default). When there are more rows, a banner says the grid shows only the first rows — it never shows the loaded count as the total — and offers <strong>Export all as CSV</strong> / <strong>Export all as JSON</strong>.</li>

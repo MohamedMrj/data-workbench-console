@@ -650,6 +650,17 @@ function attachMocks(window) {
       window.__postedQueries = [...(window.__postedQueries || []), queryText];
       window.__postedRunIds = [...(window.__postedRunIds || []), body.runId];
       // A read that hit the row limit: the server fetched limit + 1 rows and reports truncated.
+      if (queryText.includes('ROW_SELECTION_TEST')) {
+        return new Response(JSON.stringify({
+          success: true,
+          mode: 'read',
+          columns: ['AlertId', 'Status'],
+          rows: [1, 2, 3, 4, 5].map((id) => ({ AlertId: id, Status: 'OK' })),
+          totalRows: 5,
+          rowsAffected: 0,
+          elapsedMs: 3
+        }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
       if (queryText.includes('TRUNCATED_TEST')) {
         return new Response(JSON.stringify({
           success: true,
@@ -1072,6 +1083,25 @@ if (!legacyWindow.document.getElementById('appearanceProfileStatus').textContent
 if (!legacyWindow.document.getElementById('savedConnections').textContent.includes('legacy_meta_store')) {
   throw new Error('Legacy saved connections were not migrated into the visible saved connections list.');
 }
+{
+  // With saved profiles and no stored choice, the connection form starts folded so the saved
+  // list sits near the top; the summary line shows what is connected instead.
+  const doc = legacyWindow.document;
+  if (!doc.getElementById('connectionDetails').classList.contains('hidden') || doc.getElementById('toggleConnectionDetailsBtn').getAttribute('aria-expanded') !== 'false') {
+    throw new Error('The connection details should start folded when saved profiles exist.');
+  }
+  if (doc.getElementById('connectionDetailsSummary').classList.contains('hidden')) {
+    throw new Error('A folded connection form should show the one-line connection summary.');
+  }
+  doc.getElementById('toggleConnectionDetailsBtn').click();
+  if (doc.getElementById('connectionDetails').classList.contains('hidden') || legacyWindow.localStorage.getItem('dataWorkbenchConnectionDetailsOpenV1') !== 'true') {
+    throw new Error('Show details should open the connection form and remember the choice.');
+  }
+  doc.getElementById('toggleConnectionDetailsBtn').click();
+  if (!doc.getElementById('connectionDetails').classList.contains('hidden') || legacyWindow.localStorage.getItem('dataWorkbenchConnectionDetailsOpenV1') !== 'false') {
+    throw new Error('Hide details should fold the connection form and remember the choice.');
+  }
+}
 await flush();
 {
   // Old local scratchpads are imported into the server library once, into a Scratchpads
@@ -1099,6 +1129,17 @@ await flush();
 await flush();
 if (!legacyWindow.document.getElementById('tableList').textContent.includes('dbo.Alerts')) {
   throw new Error('Clicking a saved profile should automatically load the catalog.');
+}
+{
+  const clicked = legacyWindow.document.querySelector('[data-connection-index="0"]');
+  const others = [...legacyWindow.document.querySelectorAll('#savedConnections [data-connection-index]')].filter((button) => button !== clicked);
+  if (!clicked.classList.contains('active') || clicked.getAttribute('aria-current') !== 'true' || others.some((button) => button.classList.contains('active'))) {
+    throw new Error('The saved profile in use should be marked active in the list, and only that one.');
+  }
+  const summary = legacyWindow.document.getElementById('connectionDetailsSummary').textContent;
+  if (!summary.includes(clicked.querySelector('strong').textContent.trim())) {
+    throw new Error(`The folded connection summary should name the active profile. Got: ${summary}`);
+  }
 }
 
 const sqlWindow = await createWindow('http://127.0.0.1:3100/');
@@ -1201,7 +1242,7 @@ if (sqlWindow.document.documentElement.style.getPropertyValue('--tooltip-delay-m
     throw new Error(`Safety Policy panel did not render the server safety limits. Got: ${policyText}`);
   }
 }
-['saveConnectionBtn', 'testConnectionBtn', 'loadTablesBtn', 'runQueryBtn', 'runAllQueryBtn', 'exportJsonBtn', 'exportAllCsvBtn', 'exportAllJsonBtn', 'contextCopyInsertBtn', 'contextCopyAllInsertBtn', 'contextCopyMarkdownBtn', 'compareTabsBtn', 'runCompareTabsBtn', 'runCompareBtn', 'saveQueryBtn', 'resultsMoreBtn', 'headerMenuBtn', 'clearHistoryBtn', 'toggleAdvancedOperationsBtn', 'insertSelectTemplateBtn', 'updateJoinTemplateBtn', 'mergePreviewBtn', 'profileObjectBtn', 'dependencyViewBtn', 'insertSqlHelperBtn', 'wrapSqlHelperBtn', 'openWorkbenchToolsBtn', 'openEnvSettingsBtn', 'openSupportBtn', 'scrollResultsLeftBtn', 'scrollResultsRightBtn', 'scrollResultsDockLeftBtn', 'scrollResultsDockRightBtn'].forEach((id) => {
+['saveConnectionBtn', 'testConnectionBtn', 'loadTablesBtn', 'runQueryBtn', 'runAllQueryBtn', 'exportJsonBtn', 'exportAllCsvBtn', 'exportAllJsonBtn', 'contextCopyInsertBtn', 'contextCopyAllInsertBtn', 'contextCopyMarkdownBtn', 'compareTabsBtn', 'runCompareTabsBtn', 'runCompareBtn', 'saveQueryBtn', 'resultsMoreBtn', 'headerMenuBtn', 'clearHistoryBtn', 'toggleAdvancedOperationsBtn', 'toggleConnectionDetailsBtn', 'insertSelectTemplateBtn', 'updateJoinTemplateBtn', 'mergePreviewBtn', 'profileObjectBtn', 'dependencyViewBtn', 'insertSqlHelperBtn', 'wrapSqlHelperBtn', 'openWorkbenchToolsBtn', 'openEnvSettingsBtn', 'openSupportBtn', 'scrollResultsLeftBtn', 'scrollResultsRightBtn', 'scrollResultsDockLeftBtn', 'scrollResultsDockRightBtn'].forEach((id) => {
   const element = sqlWindow.document.getElementById(id);
   if (!element || typeof element.onclick !== 'function') {
     throw new Error(`Expected ${id} to be wired on the SQL page.`);
@@ -1634,6 +1675,61 @@ if (!sqlWindow.document.querySelector('.results-table')?.textContent.includes('A
 }
 if (!sqlWindow.document.querySelector('.visual-helper-card')?.textContent.includes('Profile insights')) {
   throw new Error('Object profile action did not render visual helper cards.');
+}
+{
+  // Row selection: click picks one row, Ctrl+click adds or removes one, Shift+click picks the
+  // range from the last clicked row, and the meta line counts the selection.
+  const queryEditor = sqlWindow.document.getElementById('queryEditor');
+  const previousQuery = queryEditor.value;
+  queryEditor.value = 'SELECT AlertId, Status FROM dbo.Alerts /* ROW_SELECTION_TEST */';
+  queryEditor.dispatchEvent(new sqlWindow.Event('input', { bubbles: true }));
+  sqlWindow.document.getElementById('runAllQueryBtn').click();
+  await flush();
+  const MouseEvent = sqlWindow.MouseEvent;
+  const rows = () => [...sqlWindow.document.querySelectorAll('.results-table tbody tr')];
+  const selected = () => rows().map((tr, index) => (tr.classList.contains('result-row-selected') ? index : -1)).filter((index) => index >= 0);
+  const clickRow = (index, keys = {}) => rows()[index].querySelector('td:last-child').dispatchEvent(new MouseEvent('click', { bubbles: true, ...keys }));
+  if (rows().length < 4) {
+    throw new Error(`Row selection test needs at least four result rows, got ${rows().length}.`);
+  }
+  clickRow(1);
+  if (JSON.stringify(selected()) !== '[1]' || rows()[1].getAttribute('aria-selected') !== 'true') {
+    throw new Error(`A click should select that row only. Selected: ${selected()}`);
+  }
+  clickRow(3, { ctrlKey: true });
+  if (JSON.stringify(selected()) !== '[1,3]') {
+    throw new Error(`Ctrl+click should add a row to the selection. Selected: ${selected()}`);
+  }
+  clickRow(1, { ctrlKey: true });
+  if (JSON.stringify(selected()) !== '[3]') {
+    throw new Error(`Ctrl+click on a selected row should remove it. Selected: ${selected()}`);
+  }
+  // Ctrl+click also moves the Shift anchor, even when it removes the row (as in Explorer).
+  clickRow(0, { shiftKey: true });
+  if (JSON.stringify(selected()) !== '[0,1]') {
+    throw new Error(`Shift+click should select from the last Ctrl+clicked row. Selected: ${selected()}`);
+  }
+  clickRow(3);
+  clickRow(0, { shiftKey: true });
+  if (JSON.stringify(selected()) !== '[0,1,2,3]') {
+    throw new Error(`Shift+click should select every row between the last click and this one. Selected: ${selected()}`);
+  }
+  if (!sqlWindow.document.getElementById('resultsMeta').textContent.includes('4 rows selected')) {
+    throw new Error('The results meta line should count the selected rows.');
+  }
+  clickRow(2);
+  if (JSON.stringify(selected()) !== '[2]') {
+    throw new Error(`A plain click should replace the selection. Selected: ${selected()}`);
+  }
+  // Sorting keeps the same rows selected (by row, not by position).
+  sqlWindow.document.querySelector('.results-table [data-sort="AlertId"]').click();
+  sqlWindow.document.querySelector('.results-table [data-sort="AlertId"]').click();
+  const selectedIds = rows().filter((tr) => tr.classList.contains('result-row-selected')).map((tr) => tr.querySelector('td:last-child').previousElementSibling.textContent.trim());
+  if (JSON.stringify(selectedIds) !== '["3"]') {
+    throw new Error(`Selection should follow the row through a re-sort. Selected AlertIds: ${selectedIds}`);
+  }
+  queryEditor.value = previousQuery;
+  queryEditor.dispatchEvent(new sqlWindow.Event('input', { bubbles: true }));
 }
 
 function assertVisibleAffordance(window, selector, label) {

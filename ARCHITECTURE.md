@@ -760,6 +760,7 @@ and nothing is lost on upgrade.
 | localStorage | `dataWorkbenchPanelLayoutV1` | six panel dimensions |
 | localStorage | `dataWorkbenchSidePanelVisibilityV1` | manual collapse state only |
 | localStorage | `dataWorkbenchAdvancedOperationsVisibleV1` | disclosure state |
+| localStorage | `dataWorkbenchConnectionDetailsOpenV1` | connection form folded or open; absent means "folded once saved profiles exist" |
 | localStorage | `dataWorkbenchPinnedObjectsV1:<fingerprint>` | pins, scoped per connection |
 | localStorage | `dataWorkbenchRecentObjectsV1:<fingerprint>` | recents, capped at 40 |
 | localStorage | `dataWorkbenchScratchpadsV1` | legacy SQL drafts, imported once into the server query library and then left in place |

@@ -101,7 +101,8 @@ export default function ProcedureRunnerDocsPage() {
           <div className="docs-table">
             <div><strong>Test connection</strong><span>Confirms the app can authenticate before metadata or execution calls are made.</span></div>
             <div><strong>Load catalog</strong><span>Loads procedure names and related metadata where the source supports it. Required before selecting procedures, refreshing parameters, scripting definitions, pins/recent filtering, and execution.</span></div>
-            <div><strong>Saved profiles</strong><span>Profiles restore source, auth mode, server, port, database, domain where relevant, username, and trust settings without storing secrets.</span></div>
+            <div><strong>Saved profiles</strong><span>Profiles restore source, auth mode, server, port, database, domain where relevant, username, and trust settings without storing secrets. The profile in use is highlighted.</span></div>
+            <div><strong>Show / Hide details</strong><span>Folds the connection form away so the saved profiles sit right under the Connection heading, with a one-line summary of what is connected. The choice is remembered; picking a profile that needs a password opens the form at the password field.</span></div>
             <div><strong>Refresh params</strong><span>Reloads the selected procedure parameter list after database changes or permission updates.</span></div>
           </div>
         </DocsMiniSection>
@@ -201,6 +202,7 @@ export default function ProcedureRunnerDocsPage() {
         <ul className="docs-check-list">
           <li><strong>Result tabs</strong> keep up to five procedure, query, and metadata results available for comparison.</li>
           <li><strong>More ▾ → A- / A+</strong> changes result text size for dense procedure output or screen sharing.</li>
+          <li><strong>Select rows</strong>: click a row to select it, <span className="docs-kbd">Ctrl</span> + click to add or remove a row, and <span className="docs-kbd">Shift</span> + click to select a range. Selected rows are highlighted and counted above the grid.</li>
           <li><strong>Recordsets</strong> appear in the results grid when the procedure returns tabular data.</li>
           <li><strong>Rows affected</strong> shows the count reported by the database driver when available.</li>
           <li><strong>Output parameters</strong> are displayed after the confirmed execution finishes.</li>

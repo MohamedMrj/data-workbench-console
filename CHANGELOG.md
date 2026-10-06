@@ -5,6 +5,42 @@ All notable Data Workbench Console changes are tracked here.
 The in-app version is read from `package.json` and exposed through `/api/version`
 together with the current git commit and build information.
 
+## Unreleased
+
+A foldable connection form, row selection in the results grid, and Liquid Glass on everything
+clickable.
+
+### Added
+
+- **Fold the connection form.** `Show details ▾` / `Hide details ▴` beside the Connection
+  heading folds the form away and leaves a one-line summary of what is connected, so the saved
+  profiles sit right under it instead of below a long form. The choice is remembered; without one,
+  the form starts folded once saved profiles exist and open while there are none. Picking a profile
+  that needs a password opens the form at the password field.
+- The saved profile in use is highlighted in the Saved Profiles list.
+- **Row selection in the results grid**: click selects a row, `Ctrl`+click adds or removes one,
+  `Shift`+click selects the range from the last clicked row (`Ctrl`+`Shift`+click adds it).
+  Selected rows are highlighted with a bar on the row number and counted above the grid; the
+  selection follows the rows through sorting, paging and the filter, and clears when a new result
+  loads.
+
+### Changed
+
+- **Liquid Glass everywhere you click**: explorer object and procedure rows, saved profiles,
+  history items, editor and result tabs, column pills, theme chips, Tools commands, menu items,
+  small text buttons (`All`, `Clear`, `Reset`) and the results grid's header cells now use the
+  same tinted glass as the buttons, with a stronger tint on whatever is selected or active. Rows
+  skip the background blur the buttons use, so a long catalog still scrolls smoothly.
+
+### Verification
+
+- `ui-smoke.mjs` covers the folded form at start-up with saved profiles, Show/Hide details and
+  its remembered choice, the active-profile highlight and summary, and row selection (click,
+  Ctrl+click add and remove, Shift+click range, the count, selection surviving a re-sort).
+- `responsive-audit.mjs` mocks saved profiles and appearance profiles instead of reading this
+  checkout's `data/` folder, selects a result row in its populated pages, and adds a folded
+  connection form case at 390px and 1400px.
+
 ## 1.6.0 - 2026-10-06
 
 Liquid Glass buttons with per-section colours, appearance profiles the app opens with, a glow on

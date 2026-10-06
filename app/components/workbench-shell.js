@@ -408,13 +408,25 @@ export default function WorkbenchShell({ pageMode = 'sql' }) {
           </section>
 
           <section className="panel-section connection-section">
-            <div className="section-title-row">
+            <div className="section-title-row tight">
               <div>
                 <div className="eyebrow">Data Source</div>
                 <h2>Connection</h2>
               </div>
+              <button
+                id="toggleConnectionDetailsBtn"
+                className="ghost-btn small connection-details-toggle"
+                type="button"
+                aria-expanded="true"
+                aria-controls="connectionDetails"
+              >
+                Hide details ▴
+              </button>
             </div>
 
+            <div id="connectionDetailsSummary" className="connection-details-summary hidden" />
+
+            <div id="connectionDetails" className="connection-details">
             <div className="conn-field-group">
               <label className="field compact-field">
                 <span>Source type</span>
@@ -494,6 +506,7 @@ export default function WorkbenchShell({ pageMode = 'sql' }) {
 
             <div id="testConnectionResult" className="connection-test-panel empty-note">
               Run a connection test to verify the current server, database, and authentication settings.
+            </div>
             </div>
           </section>
 

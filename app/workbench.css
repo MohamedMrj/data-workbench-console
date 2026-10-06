@@ -5041,3 +5041,228 @@ body {
   border-color: transparent;
   color: var(--muted);
 }
+
+/* ─── Liquid Glass for rows, tabs, chips and small buttons ─────────────────────────────────
+   The same tinted glass as the buttons in theme.css, for everything else you click: explorer
+   rows, saved profiles, history, tabs, column pills, menu items, grid headers. No
+   backdrop-filter here: a catalog can render hundreds of rows, and a blur per row makes
+   scrolling stutter, while the gradient and edge highlight carry the look on their own.
+   Only border colours are set, never widths, so tabs keep their open bottom edge. */
+.context-menu { --btn-tint: var(--tint-results); }
+
+.text-btn,
+.theme-chip,
+.saved-item-main,
+.saved-item-delete,
+.history-item,
+.table-item,
+.procedure-item,
+.column-pill,
+.result-tab,
+.editor-tab-main,
+.editor-tab-close,
+.editor-tab-new,
+.tools-command,
+.context-menu-item,
+.table-header-btn,
+.result-cell-toggle,
+.result-scroll-dock-btn {
+  --glass-tint: var(--btn-tint, var(--accent));
+  border-color: color-mix(in srgb, var(--glass-tint) 30%, var(--glass-edge));
+  background:
+    radial-gradient(120% 75% at 50% -25%, var(--glass-highlight), transparent 60%),
+    linear-gradient(180deg, color-mix(in srgb, var(--glass-tint) 14%, transparent), color-mix(in srgb, var(--glass-tint) 4%, transparent));
+  background-color: var(--glass-body);
+  box-shadow:
+    inset 0 1px 0 var(--glass-highlight),
+    inset 0 -1px 0 var(--glass-shade);
+}
+
+.text-btn {
+  min-height: 30px;
+  padding: 4px 10px;
+  border: 1px solid color-mix(in srgb, var(--glass-tint) 30%, var(--glass-edge));
+  border-radius: 10px;
+  color: color-mix(in srgb, var(--glass-tint) 26%, var(--text));
+}
+
+.result-scroll-dock-btn {
+  color: color-mix(in srgb, var(--glass-tint) 40%, var(--text));
+}
+
+.text-btn:hover:not(:disabled),
+.theme-chip:hover:not(:disabled),
+.saved-item-main:hover:not(:disabled),
+.saved-item-delete:hover:not(:disabled),
+.history-item:hover:not(:disabled),
+.table-item:hover:not(:disabled),
+.procedure-item:hover:not(:disabled),
+.column-pill:hover:not(:disabled),
+.result-tab:hover:not(:disabled),
+.editor-tab-main:hover:not(:disabled),
+.editor-tab-close:hover:not(:disabled),
+.editor-tab-new:hover:not(:disabled),
+.tools-command:hover:not(:disabled),
+.context-menu-item:hover:not(:disabled),
+.table-header-btn:hover:not(:disabled),
+.result-cell-toggle:hover:not(:disabled),
+.result-scroll-dock-btn:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--glass-tint) 60%, var(--glass-edge));
+  background:
+    radial-gradient(120% 75% at 50% -25%, var(--glass-highlight), transparent 62%),
+    linear-gradient(180deg, color-mix(in srgb, var(--glass-tint) 26%, transparent), color-mix(in srgb, var(--glass-tint) 10%, transparent));
+  background-color: var(--glass-body);
+  box-shadow:
+    inset 0 1px 0 var(--glass-highlight),
+    inset 0 -1px 0 var(--glass-shade),
+    0 8px 18px color-mix(in srgb, var(--glass-tint) 18%, transparent);
+}
+
+.theme-chip.active,
+.saved-item-main.active,
+.table-item.active,
+.procedure-item.active,
+.column-pill.active,
+.result-tab.active,
+.editor-tab.active > .editor-tab-main,
+.editor-tab.active > .editor-tab-close {
+  border-color: color-mix(in srgb, var(--glass-tint) 85%, var(--glass-edge));
+  background:
+    radial-gradient(120% 75% at 50% -25%, var(--glass-highlight), transparent 62%),
+    linear-gradient(180deg, color-mix(in srgb, var(--glass-tint) 36%, transparent), color-mix(in srgb, var(--glass-tint) 16%, transparent));
+  background-color: var(--glass-body);
+  color: var(--text);
+  box-shadow:
+    inset 0 1px 0 var(--glass-highlight),
+    inset 0 0 0 1px color-mix(in srgb, var(--glass-tint) 40%, transparent),
+    0 8px 20px color-mix(in srgb, var(--glass-tint) 20%, transparent);
+}
+
+.context-menu-item:disabled,
+.context-menu-item:disabled:hover {
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
+}
+
+/* Last, so keyboard focus still shows on an active (selected) row or tab. */
+.text-btn:focus-visible,
+.theme-chip:focus-visible,
+.saved-item-main:focus-visible,
+.saved-item-delete:focus-visible,
+.history-item:focus-visible,
+.table-item:focus-visible,
+.procedure-item:focus-visible,
+.column-pill:focus-visible,
+.result-tab:focus-visible,
+.editor-tab-main:focus-visible,
+.editor-tab-close:focus-visible,
+.editor-tab-new:focus-visible,
+.tools-command:focus-visible,
+.context-menu-item:focus-visible,
+.table-header-btn:focus-visible,
+.result-cell-toggle:focus-visible,
+.result-scroll-dock-btn:focus-visible {
+  outline: 0;
+  border-color: var(--accent);
+  box-shadow:
+    inset 0 1px 0 var(--glass-highlight),
+    0 0 0 3px var(--input-focus-ring);
+}
+
+/* ─── Liquid Glass results grid ─────────────────────────────────────────────────────────────
+   Header cells stay nearly opaque (they are sticky, and rows scroll underneath them) with the
+   results tint and a top highlight on top. Rows pick up a faint tinted glass on hover and a
+   strong one when selected, with a bar on the row number so the current row is easy to find
+   even when the row is wider than the screen. */
+.results-table th {
+  background:
+    radial-gradient(120% 90% at 50% -40%, var(--glass-highlight), transparent 62%),
+    linear-gradient(180deg, color-mix(in srgb, var(--btn-tint, var(--accent)) 16%, transparent), color-mix(in srgb, var(--btn-tint, var(--accent)) 6%, transparent));
+  background-color: color-mix(in srgb, var(--surface-raised) 96%, transparent);
+  box-shadow: inset 0 1px 0 var(--glass-highlight);
+}
+
+.results-table tbody tr:hover td {
+  background: color-mix(in srgb, var(--btn-tint, var(--accent)) 9%, var(--surface-soft));
+}
+
+.results-table tbody tr {
+  cursor: default;
+}
+
+.results-table tbody tr.result-row-selected td {
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--btn-tint, var(--accent)) 30%, transparent), color-mix(in srgb, var(--btn-tint, var(--accent)) 18%, transparent));
+  background-color: var(--surface-soft);
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, var(--btn-tint, var(--accent)) 55%, transparent),
+    inset 0 -1px 0 color-mix(in srgb, var(--btn-tint, var(--accent)) 55%, transparent);
+  color: var(--text);
+}
+
+.results-table tbody tr.result-row-selected td.row-index {
+  box-shadow:
+    inset 4px 0 0 var(--btn-tint, var(--accent)),
+    inset 0 1px 0 color-mix(in srgb, var(--btn-tint, var(--accent)) 55%, transparent),
+    inset 0 -1px 0 color-mix(in srgb, var(--btn-tint, var(--accent)) 55%, transparent);
+  color: var(--text);
+  font-weight: 700;
+}
+
+/* Connection form folds away behind "Show details"; the summary keeps what is connected in view. */
+.connection-details {
+  display: grid;
+  gap: inherit;
+  min-width: 0;
+}
+
+.connection-details.hidden {
+  display: none;
+}
+
+.connection-details-summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 8px;
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid color-mix(in srgb, var(--btn-tint, var(--accent)) 30%, var(--line));
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--btn-tint, var(--accent)) 7%, var(--surface-soft));
+}
+
+.connection-details-summary.hidden {
+  display: none;
+}
+
+.connection-details-summary strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.connection-details-summary span {
+  min-width: 0;
+  color: var(--muted);
+  font-size: 0.82rem;
+  overflow-wrap: anywhere;
+}
+
+.connection-details-summary .env-badge {
+  align-self: center;
+}
+
+.connection-details-toggle {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+.control-rail .connection-section > .section-title-row {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+}
+
+.control-rail .connection-section > .section-title-row > .connection-details-toggle {
+  width: auto;
+}

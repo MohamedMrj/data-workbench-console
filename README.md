@@ -489,6 +489,12 @@ The left panel contains:
 
 Connection behavior:
 
+- the connection form folds away behind `Show details ▾` / `Hide details ▴`, leaving a one-line
+  summary of the current connection, so the saved profiles sit right under it. The choice is
+  remembered; without one, the form starts folded once you have saved profiles and open while you
+  have none. Picking a profile that needs a password opens the form at the password field
+- the saved profile in use is highlighted in the list
+
 - current active connection is persisted across page switches in session storage
 - saved connection profiles can be loaded back into the form
 - passwords and secrets are not persisted in saved profiles
@@ -786,6 +792,10 @@ The results area supports:
 - double-click reset for resized result columns
 - horizontal scrolling for wide result sets
 - row index column
+- row selection: click a row to select it (it is highlighted, with a bar on the row number);
+  `Ctrl`+click adds or removes a row; `Shift`+click selects every row between the last clicked
+  row and this one (`Ctrl`+`Shift`+click adds that range). The selection follows the rows through
+  sorting, paging and the filter, the meta line counts it, and it clears when a new result loads
 - result metadata summary
 - output artifact cards
 - audit log loading into the results grid
@@ -932,6 +942,10 @@ Liquid Glass buttons:
 
 - buttons are tinted glass: a translucent tinted body, a highlight along the top edge and a
   tinted shadow; primary buttons are a solid tinted gradient under the same glass highlight
+- so is everything else you click: explorer object and procedure rows, saved profiles, history
+  items, editor and result tabs, column pills, theme chips, Tools commands, menu items, small text
+  buttons, and the results grid's header cells and selected rows. Selected rows and tabs use a
+  stronger tint so the current one stays obvious
 - each section has its own tint (connection panel, workspace header, Object Explorer, Query
   Builder, SQL Editor and procedures, Results, history, dialogs); change any of them under
   `Button colours` in Settings → Appearance, or `Reset` to the defaults
