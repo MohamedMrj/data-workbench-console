@@ -6,6 +6,11 @@ Use this checklist before a major production release.
 
 - Run `npm run verify:release`.
 - Confirm `npm audit --omit=dev` reports zero vulnerabilities.
+  - Accepted exception since 1.6.0: `sprintf-js` (GHSA-hp3w-g68c-fv3c, moderate) through
+    `mssql` → `tedious`. No fixed release exists, and tedious only formats fixed strings with it.
+    It is the only finding allowed; `verify:release` stops at `npm audit` because of it, so run
+    `node scripts/release-diagnostics.mjs` by hand afterwards. Once `sprintf-js` or `tedious`
+    publishes a fix, apply it and delete this note.
 - Confirm responsive audit screenshots in `responsive-audit/` do not show clipped controls, unreadable text, or unclear clickable/editable areas.
 - Confirm no local runtime files are committed: `.env`, audit logs, `.data/`, `data/`, saved connection stores, or pending confirmation stores.
 
