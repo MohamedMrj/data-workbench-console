@@ -294,6 +294,25 @@ assert.equal((await queryStore.listSavedQueries()).length, 1);
 const savedQueryDirEntries = await fs.readdir(process.env.APP_DATA_DIR);
 assert.deepEqual(savedQueryDirEntries.filter((name) => name.endsWith('.tmp')), []);
 
+// Appearance profiles: validation, same-name updates, default handling, delete clears default.
+const appearanceStore = await import('../lib/server/appearance-store.js');
+assert.deepEqual(await appearanceStore.getAppearance(), { profiles: [], defaultProfileId: '' });
+await assert.rejects(appearanceStore.saveAppearanceProfile({ name: 'Bad theme', theme: 'neon' }), (error) => error.httpStatus === 400);
+await assert.rejects(appearanceStore.saveAppearanceProfile({ name: 'Bad colour', theme: 'paper', buttonColors: { explorer: 'red' } }), (error) => error.httpStatus === 400);
+await assert.rejects(appearanceStore.saveAppearanceProfile({ name: 'Bad section', theme: 'paper', buttonColors: { sidebar: '#112233' } }), (error) => error.httpStatus === 400);
+const look = await appearanceStore.saveAppearanceProfile({ name: 'Work', theme: 'paper', buttonColors: { explorer: '#FF3366' } }, { makeDefault: true });
+assert.equal(look.profile.buttonColors.explorer, '#ff3366');
+assert.equal(look.defaultProfileId, look.profile.id);
+const lookAgain = await appearanceStore.saveAppearanceProfile({ name: 'work', theme: 'ink' });
+assert.equal(lookAgain.profile.id, look.profile.id, 'saving the same name again updates the profile');
+assert.equal((await appearanceStore.getAppearance()).profiles.length, 1);
+await assert.rejects(appearanceStore.setDefaultAppearanceProfile('missing'), (error) => error.httpStatus === 404);
+assert.deepEqual(await appearanceStore.setDefaultAppearanceProfile(''), { defaultProfileId: '' });
+await appearanceStore.setDefaultAppearanceProfile(look.profile.id);
+assert.equal(await appearanceStore.deleteAppearanceProfile(look.profile.id), true);
+assert.deepEqual(await appearanceStore.getAppearance(), { profiles: [], defaultProfileId: '' }, 'deleting the default profile clears the default');
+assert.deepEqual((await fs.readdir(process.env.APP_DATA_DIR)).filter((name) => name.endsWith('.tmp')), []);
+
 // Typed acknowledgement: statement-implied phrases, plus the row-count escalation.
 const writeAck = await import('../lib/server/write-acknowledgement.js');
 const previewedUpdate = { kind: 'write', action: 'UPDATE', requiresAcknowledgement: false };

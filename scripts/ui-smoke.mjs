@@ -584,6 +584,29 @@ function attachMocks(window) {
       });
     }
 
+    if (String(url).includes('/api/appearance')) {
+      // In-memory stand-in for data/appearance.json; a test can pre-seed __appearanceStore.
+      window.__appearanceStore = window.__appearanceStore || { profiles: [], defaultProfileId: '' };
+      const store = window.__appearanceStore;
+      const method = String(options.method || 'GET').toUpperCase();
+      const reply = (payload) => new Response(JSON.stringify({ success: true, ...payload }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      if (method === 'POST' && body.profile) {
+        const existing = store.profiles.find((profile) => profile.name.toLowerCase() === String(body.profile.name).toLowerCase());
+        const profile = { ...body.profile, id: existing?.id || `look-${store.profiles.length + 1}` };
+        store.profiles = [...store.profiles.filter((entry) => entry.id !== profile.id), profile];
+        return reply({ profile, defaultProfileId: store.defaultProfileId });
+      }
+      if (method === 'POST') {
+        store.defaultProfileId = body.defaultProfileId || '';
+        return reply({ defaultProfileId: store.defaultProfileId });
+      }
+      if (method === 'DELETE') {
+        store.profiles = store.profiles.filter((profile) => profile.id !== body.id);
+        if (store.defaultProfileId === body.id) store.defaultProfileId = '';
+      }
+      return reply({ profiles: store.profiles, defaultProfileId: store.defaultProfileId });
+    }
+
     if (String(url).includes('/api/saved-queries')) {
       window.__savedQueries = window.__savedQueries || [];
       const method = String(options.method || 'GET').toUpperCase();
@@ -1031,8 +1054,20 @@ const legacyWindow = await createWindow(
     window.localStorage.setItem('dataWorkbenchScratchpadsV1', JSON.stringify([
       { id: 'old-1', name: 'Old draft', query: 'SELECT 42 AS legacy', database: 'legacy_meta_store', savedAt: '2026-01-01T00:00:00Z' }
     ]));
+    // The app has a default appearance profile saved; the browser itself remembers nothing.
+    window.__appearanceStore = {
+      profiles: [{ id: 'look-1', name: 'Paper look', theme: 'paper', buttonColors: { explorer: '#ff3366' } }],
+      defaultProfileId: 'look-1'
+    };
   }
 );
+
+if (legacyWindow.document.documentElement.getAttribute('data-theme') !== 'paper' || legacyWindow.document.documentElement.style.getPropertyValue('--tint-explorer') !== '#ff3366') {
+  throw new Error('The app should open with its default appearance profile (theme and button colours).');
+}
+if (!legacyWindow.document.getElementById('appearanceProfileStatus').textContent.includes('Paper look')) {
+  throw new Error('Settings should say which appearance profile the app opens with.');
+}
 
 if (!legacyWindow.document.getElementById('savedConnections').textContent.includes('legacy_meta_store')) {
   throw new Error('Legacy saved connections were not migrated into the visible saved connections list.');
@@ -1069,6 +1104,39 @@ if (!legacyWindow.document.getElementById('tableList').textContent.includes('dbo
 const sqlWindow = await createWindow('http://127.0.0.1:3100/');
 if (sqlWindow.document.querySelector('.glow-next')) {
   throw new Error('Nothing should glow while the app is still restoring the workspace at start-up.');
+}
+{
+  // Toolbar menus: the trigger opens the panel (lifted to <body> so cards that clip overflow
+  // cannot hide it), picking an item closes it and puts it back, text-size buttons keep it open,
+  // and Escape closes it.
+  const moreBtn = sqlWindow.document.getElementById('resultsMoreBtn');
+  const morePanel = sqlWindow.document.getElementById('resultsMoreMenu');
+  moreBtn.click();
+  if (morePanel.classList.contains('hidden') || moreBtn.getAttribute('aria-expanded') !== 'true' || morePanel.parentElement !== sqlWindow.document.body) {
+    throw new Error('The More menu should open, report aria-expanded, and float on <body>.');
+  }
+  sqlWindow.document.getElementById('increaseResultsTextBtn').click();
+  if (morePanel.classList.contains('hidden')) {
+    throw new Error('Text-size buttons should keep the More menu open for repeated clicks.');
+  }
+  sqlWindow.document.getElementById('decreaseResultsTextBtn').click();
+  sqlWindow.document.dispatchEvent(new sqlWindow.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+  if (!morePanel.classList.contains('hidden') || !morePanel.parentElement.classList.contains('toolbar-menu')) {
+    throw new Error('Escape should close the More menu and return it to its toolbar.');
+  }
+  const headerBtn = sqlWindow.document.getElementById('headerMenuBtn');
+  headerBtn.click();
+  if (sqlWindow.document.getElementById('headerMenu').classList.contains('hidden')) {
+    throw new Error('Help & settings should open its menu.');
+  }
+  sqlWindow.document.getElementById('openWorkbenchToolsBtn').click();
+  if (!sqlWindow.document.getElementById('headerMenu').classList.contains('hidden')) {
+    throw new Error('Picking a menu item should close the menu.');
+  }
+  if (sqlWindow.document.getElementById('workbenchToolsDialog').classList.contains('hidden')) {
+    throw new Error('Tools in the Help & settings menu should still open the tools dialog.');
+  }
+  sqlWindow.document.getElementById('closeWorkbenchToolsBtn').click();
 }
 if (sqlWindow.document.querySelectorAll('#themeList .theme-chip').length !== 6) {
   throw new Error('Theme chips did not render on the SQL page.');
@@ -1133,7 +1201,7 @@ if (sqlWindow.document.documentElement.style.getPropertyValue('--tooltip-delay-m
     throw new Error(`Safety Policy panel did not render the server safety limits. Got: ${policyText}`);
   }
 }
-['saveConnectionBtn', 'testConnectionBtn', 'loadTablesBtn', 'runQueryBtn', 'runAllQueryBtn', 'exportJsonBtn', 'exportAllCsvBtn', 'exportAllJsonBtn', 'contextCopyInsertBtn', 'contextCopyAllInsertBtn', 'contextCopyMarkdownBtn', 'compareTabsBtn', 'runCompareTabsBtn', 'runCompareBtn', 'saveQueryBtn', 'clearHistoryBtn', 'toggleAdvancedOperationsBtn', 'insertSelectTemplateBtn', 'updateJoinTemplateBtn', 'mergePreviewBtn', 'profileObjectBtn', 'dependencyViewBtn', 'insertSqlHelperBtn', 'wrapSqlHelperBtn', 'openWorkbenchToolsBtn', 'openEnvSettingsBtn', 'openSupportBtn', 'scrollResultsLeftBtn', 'scrollResultsRightBtn', 'scrollResultsDockLeftBtn', 'scrollResultsDockRightBtn'].forEach((id) => {
+['saveConnectionBtn', 'testConnectionBtn', 'loadTablesBtn', 'runQueryBtn', 'runAllQueryBtn', 'exportJsonBtn', 'exportAllCsvBtn', 'exportAllJsonBtn', 'contextCopyInsertBtn', 'contextCopyAllInsertBtn', 'contextCopyMarkdownBtn', 'compareTabsBtn', 'runCompareTabsBtn', 'runCompareBtn', 'saveQueryBtn', 'resultsMoreBtn', 'headerMenuBtn', 'clearHistoryBtn', 'toggleAdvancedOperationsBtn', 'insertSelectTemplateBtn', 'updateJoinTemplateBtn', 'mergePreviewBtn', 'profileObjectBtn', 'dependencyViewBtn', 'insertSqlHelperBtn', 'wrapSqlHelperBtn', 'openWorkbenchToolsBtn', 'openEnvSettingsBtn', 'openSupportBtn', 'scrollResultsLeftBtn', 'scrollResultsRightBtn', 'scrollResultsDockLeftBtn', 'scrollResultsDockRightBtn'].forEach((id) => {
   const element = sqlWindow.document.getElementById(id);
   if (!element || typeof element.onclick !== 'function') {
     throw new Error(`Expected ${id} to be wired on the SQL page.`);
@@ -1428,6 +1496,40 @@ if (!sqlWindow.document.getElementById('loadTablesBtn').classList.contains('glow
   }
 }
 {
+  // Everything configurable lives in Settings: the theme and button colour pickers are in the
+  // Settings dialog, not the side panel.
+  const settingsDialog = sqlWindow.document.getElementById('envSettingsDialog');
+  if (!settingsDialog.contains(sqlWindow.document.getElementById('themeList')) || !settingsDialog.contains(sqlWindow.document.getElementById('buttonColorList'))) {
+    throw new Error('Theme and button colour pickers should live in the Settings dialog.');
+  }
+  if (sqlWindow.document.querySelector('.activity-panel #themeList, .activity-panel #buttonColorList')) {
+    throw new Error('The side panel should no longer hold configuration.');
+  }
+  // Save the current look as a profile, make it the one the app opens with, then undo that.
+  const originalPrompt = sqlWindow.prompt;
+  sqlWindow.prompt = () => 'Smoke look';
+  sqlWindow.document.getElementById('saveAppearanceProfileBtn').click();
+  await flush();
+  sqlWindow.prompt = originalPrompt;
+  const savedLook = sqlWindow.__appearanceStore.profiles.find((profile) => profile.name === 'Smoke look');
+  if (!savedLook || savedLook.theme !== sqlWindow.document.documentElement.getAttribute('data-theme')) {
+    throw new Error(`Saving an appearance profile should store the current theme. Store: ${JSON.stringify(sqlWindow.__appearanceStore)}`);
+  }
+  if (sqlWindow.document.getElementById('appearanceProfileSelect').value !== savedLook.id) {
+    throw new Error('The saved appearance profile should be selected after saving.');
+  }
+  sqlWindow.document.getElementById('defaultAppearanceProfileBtn').click();
+  await flush();
+  if (sqlWindow.__appearanceStore.defaultProfileId !== savedLook.id || !sqlWindow.document.getElementById('appearanceProfileStatus').textContent.includes('Smoke look')) {
+    throw new Error('Open with this profile should make it the default the app starts with.');
+  }
+  sqlWindow.document.getElementById('defaultAppearanceProfileBtn').click();
+  await flush();
+  if (sqlWindow.__appearanceStore.defaultProfileId !== '') {
+    throw new Error('Clicking again should stop opening with that profile.');
+  }
+}
+{
   const activeSource = sqlWindow.document.getElementById('activeSource');
   if (activeSource.dataset.state !== 'profile' || !activeSource.querySelector('.active-source-profile')) {
     throw new Error('Hero active-source line should show the saved profile name when the connection matches a saved profile.');
@@ -1567,8 +1669,15 @@ if (sqlWindow.document.querySelectorAll('#resultTabs .result-tab').length < 2) {
 
 sqlWindow.document.querySelector('[data-pin-object="dbo.Alerts"]').click();
 await flush();
-if (!sqlWindow.document.querySelector('[data-object="dbo.Alerts"]')?.textContent.includes('★')) {
-  throw new Error('Pinned object did not render with a visible pin marker.');
+if (!sqlWindow.document.querySelector('[data-pin-object="dbo.Alerts"]')?.classList.contains('pinned')) {
+  throw new Error('Pinned object did not render with a filled pin marker.');
+}
+{
+  // One-line explorer rows: type badge, name, and the full name in the app tooltip.
+  const row = sqlWindow.document.querySelector('[data-object="dbo.Alerts"]');
+  if (row.querySelector('.item-type')?.textContent !== 'T' || !String(row.dataset.tooltip || '').includes('dbo.Alerts')) {
+    throw new Error('Explorer rows should show a type badge and carry the full name in their tooltip.');
+  }
 }
 sqlWindow.document.getElementById('pinnedOnlyObjectsToggle').checked = true;
 sqlWindow.document.getElementById('pinnedOnlyObjectsToggle').dispatchEvent(new sqlWindow.Event('change', { bubbles: true }));

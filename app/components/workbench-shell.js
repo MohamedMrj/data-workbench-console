@@ -290,22 +290,32 @@ function ResultsCard() {
           <h2>Results</h2>
           <div id="statusText" className="status-text">Ready.</div>
         </div>
-        <div className="button-row wrap right">
-          <button id="decreaseResultsTextBtn" className="ghost-btn small" type="button">A-</button>
-          <button id="increaseResultsTextBtn" className="ghost-btn small" type="button">A+</button>
+        <div className="button-row wrap right results-toolbar">
+          <div id="statusBadge" className="status-badge neutral">Idle</div>
           <input id="localResultsFilter" type="text" placeholder="Filter results..." className="ghost-btn small local-filter-input" autoComplete="off" />
-          <button id="loadAuditBtn" className="ghost-btn small">Audit log</button>
           <button id="toggleEditResultsBtn" className="ghost-btn small hidden" type="button" aria-pressed="false">Edit results</button>
           <button id="copyResultsBtn" className="ghost-btn small">Copy rows</button>
           <button id="exportCsvBtn" className="ghost-btn small">Export CSV</button>
-          <button id="exportJsonBtn" className="ghost-btn small" type="button">Export JSON</button>
-          <button id="compareTabsBtn" className="ghost-btn small" type="button">Compare tabs</button>
-          <button id="scrollResultsLeftBtn" className="ghost-btn small result-scroll-btn" type="button" data-tooltip="Scroll result columns left." aria-label="Scroll result columns left">← Columns</button>
-          <button id="scrollResultsRightBtn" className="ghost-btn small result-scroll-btn" type="button" data-tooltip="Scroll result columns right." aria-label="Scroll result columns right">Columns →</button>
-          <button id="prevPageBtn" className="ghost-btn small">Prev</button>
-          <div id="pageIndicator" className="page-indicator">Page 1/1</div>
-          <button id="nextPageBtn" className="ghost-btn small">Next</button>
-          <div id="statusBadge" className="status-badge neutral">Idle</div>
+          <div className="toolbar-group result-paging" role="group" aria-label="Result paging">
+            <button id="scrollResultsLeftBtn" className="ghost-btn small result-scroll-btn" type="button" data-tooltip="Scroll result columns left." aria-label="Scroll result columns left">←</button>
+            <button id="scrollResultsRightBtn" className="ghost-btn small result-scroll-btn" type="button" data-tooltip="Scroll result columns right." aria-label="Scroll result columns right">→</button>
+            <button id="prevPageBtn" className="ghost-btn small">Prev</button>
+            <div id="pageIndicator" className="page-indicator">Page 1/1</div>
+            <button id="nextPageBtn" className="ghost-btn small">Next</button>
+          </div>
+          <div className="toolbar-menu">
+            <button id="resultsMoreBtn" className="ghost-btn small toolbar-menu-trigger" type="button" aria-haspopup="menu" aria-expanded="false" aria-controls="resultsMoreMenu">More ▾</button>
+            <div id="resultsMoreMenu" className="toolbar-menu-panel hidden" role="menu" aria-label="More result actions">
+              <button id="exportJsonBtn" className="ghost-btn small" type="button" role="menuitem">Export JSON</button>
+              <button id="compareTabsBtn" className="ghost-btn small" type="button" role="menuitem">Compare tabs</button>
+              <button id="loadAuditBtn" className="ghost-btn small" type="button" role="menuitem">Audit log</button>
+              <div className="toolbar-menu-row" role="group" aria-label="Result text size">
+                <span>Text size</span>
+                <button id="decreaseResultsTextBtn" className="ghost-btn small" type="button" role="menuitem" data-menu-keep-open="true">A-</button>
+                <button id="increaseResultsTextBtn" className="ghost-btn small" type="button" role="menuitem" data-menu-keep-open="true">A+</button>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
       <div id="resultTabs" className="result-tabs" aria-label="Result tabs" />
@@ -525,38 +535,44 @@ export default function WorkbenchShell({ pageMode = 'sql' }) {
             </div>
               <div className="hero-actions" aria-label="Workbench actions">
                 <div className="hero-action-group">
-                  <Link
-                    href={isProceduresPage ? '/docs/procedure-runner' : '/docs/sql-studio'}
-                    className="ghost-btn small docs-link-button"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  >
-                    Documentation
-                  </Link>
-                  <button id="openWorkbenchToolsBtn" className="ghost-btn small" type="button" data-tooltip="Open quick actions, diagnostics, scratchpads, and safety summaries.">
-                    Tools
-                  </button>
-                  <button id="openEnvSettingsBtn" className="ghost-btn small" type="button" data-tooltip="Edit local app settings such as panels, tooltips, appearance, timeouts, and safety limits.">
-                    Settings
-                  </button>
-                  <button id="openSupportBtn" className="ghost-btn small" type="button" data-tooltip="Create a support email with optional safe diagnostics.">
-                    Support
-                  </button>
                   <button id="updateWorkbenchBtn" className="primary-btn small update-workbench-btn hidden" type="button" data-tooltip="Apply the newest version when this local install is behind the Git remote.">
                     Update
                   </button>
+                  <div className="toolbar-menu">
+                    <button id="headerMenuBtn" className="ghost-btn small toolbar-menu-trigger" type="button" aria-haspopup="menu" aria-expanded="false" aria-controls="headerMenu" data-tooltip="Documentation, tools, settings and support.">
+                      Help &amp; settings ▾
+                    </button>
+                    <div id="headerMenu" className="toolbar-menu-panel hidden" role="menu" aria-label="Help and settings">
+                      <Link
+                        href={isProceduresPage ? '/docs/procedure-runner' : '/docs/sql-studio'}
+                        className="ghost-btn small docs-link-button"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        role="menuitem"
+                      >
+                        Documentation
+                      </Link>
+                      <button id="openWorkbenchToolsBtn" className="ghost-btn small" type="button" role="menuitem" data-tooltip="Open quick actions, diagnostics, saved queries, and safety summaries.">
+                        Tools
+                      </button>
+                      <button id="openEnvSettingsBtn" className="ghost-btn small" type="button" role="menuitem" data-tooltip="Edit local app settings such as panels, tooltips, appearance, timeouts, and safety limits.">
+                        Settings
+                      </button>
+                      <button id="openSupportBtn" className="ghost-btn small" type="button" role="menuitem" data-tooltip="Create a support email with optional safe diagnostics.">
+                        Support
+                      </button>
+                    </div>
+                  </div>
                 </div>
                 <div className="hero-action-group panel-toggle-group" aria-label="Panel visibility">
                   <button id="toggleControlRailBtn" className="ghost-btn small" type="button" aria-pressed="false" data-tooltip="Hide or show the connection and saved profile panel.">
-                    Hide connection panel
+                    Hide connections
                   </button>
                   <button id="toggleActivityPanelBtn" className="ghost-btn small" type="button" aria-pressed="false" data-tooltip="Hide or show themes and recent history.">
-                    Hide themes & history
+                    Hide history
                   </button>
-                </div>
-                <div className="hero-action-group">
                   <button id="exitWorkbenchBtn" className="ghost-btn small exit-workbench-btn" type="button" data-tooltip="Close the local Data Workbench server when local shutdown is enabled.">
-                    Exit Data Workbench
+                    Exit
                   </button>
                 </div>
               </div>
@@ -676,22 +692,6 @@ export default function WorkbenchShell({ pageMode = 'sql' }) {
             />
 
             <aside className="activity-panel surface">
-              <section className="panel-section">
-                <div className="section-title-row">
-                  <div>
-                    <div className="eyebrow">Personalize</div>
-                    <h2>Themes</h2>
-                  </div>
-                  <span className="tiny-note">Saved locally</span>
-                </div>
-                <div id="themeList" className="theme-list" />
-                <div className="section-title-row tight button-colors-title">
-                  <h3>Button colours</h3>
-                  <button id="resetButtonColorsBtn" className="text-btn" type="button">Reset</button>
-                </div>
-                <div id="buttonColorList" className="button-color-list" />
-              </section>
-
               <section className="panel-section grow-section">
                 <div className="section-title-row">
                   <div>
@@ -902,13 +902,45 @@ export default function WorkbenchShell({ pageMode = 'sql' }) {
           <div className="modal-header">
             <div>
               <h2>App settings</h2>
-              <p className="modal-message compact-message">Edit the local <code>.env</code> settings through a guided form. Most changes require restarting Data Workbench.</p>
+              <p className="modal-message compact-message">Every setting lives here. Appearance applies immediately; the local <code>.env</code> settings below are saved with Apply settings, and most of those need a restart.</p>
             </div>
             <button id="closeEnvSettingsBtn" className="icon-btn" type="button" aria-label="Close app settings">×</button>
           </div>
           <div id="envSettingsStatus" className="connection-test-panel empty-note hidden" aria-live="polite" />
-          <div id="envSettingsContent" className="env-settings-layout">
-            <div className="empty-note">Loading settings...</div>
+          <div className="env-settings-scroll">
+            {/* Appearance applies instantly and is kept by the app (data/appearance.json); the .env
+                settings below are written by Apply settings and usually need a restart. */}
+            <section id="appearanceSettings" className="env-settings-group appearance-settings" aria-labelledby="appearanceSettingsTitle">
+              <h3 id="appearanceSettingsTitle">Appearance</h3>
+              <p>Changes apply immediately. Save the look as a profile and choose <strong>Open with this profile</strong> so the app starts with it every time.</p>
+              <div className="appearance-profile-row">
+                <label className="field compact-field">
+                  <span>Appearance profile</span>
+                  <select id="appearanceProfileSelect" />
+                </label>
+                <div className="button-row wrap">
+                  <button id="applyAppearanceProfileBtn" className="ghost-btn small" type="button">Apply</button>
+                  <button id="saveAppearanceProfileBtn" className="ghost-btn small" type="button">Save current as…</button>
+                  <button id="defaultAppearanceProfileBtn" className="ghost-btn small" type="button">Open with this profile</button>
+                  <button id="deleteAppearanceProfileBtn" className="ghost-btn small" type="button">Delete</button>
+                </div>
+              </div>
+              <p id="appearanceProfileStatus" className="tiny-note" aria-live="polite" />
+              <div className="appearance-subsection">
+                <h4>Theme</h4>
+                <div id="themeList" className="theme-list" />
+              </div>
+              <div className="appearance-subsection">
+                <div className="section-title-row tight button-colors-title">
+                  <h4>Button colours</h4>
+                  <button id="resetButtonColorsBtn" className="text-btn" type="button">Reset</button>
+                </div>
+                <div id="buttonColorList" className="button-color-list" />
+              </div>
+            </section>
+            <div id="envSettingsContent" className="env-settings-layout">
+              <div className="empty-note">Loading settings...</div>
+            </div>
           </div>
           <div className="button-row wrap right modal-actions">
             <button id="reloadEnvSettingsBtn" className="ghost-btn" type="button" data-tooltip="Reload values from the local .env file. Unsaved edits in this dialog are replaced.">Reload</button>

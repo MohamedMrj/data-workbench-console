@@ -13,6 +13,7 @@ out/
 responsive-audit/
 data/saved-connections.json
 data/saved-queries.json
+data/appearance.json
 audit-log*.ndjson
 audit-log*.ndjson.tmp
 *.tmp

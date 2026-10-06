@@ -666,9 +666,13 @@ async function runCase(browser, routePath, width, options = {}) {
   await page.goto(`${baseUrl}${routePath}`, { waitUntil: 'networkidle' });
 
   if (options.theme) {
-    await page.locator(`[data-theme="${options.theme}"]`).click().catch(async () => {
-      await page.evaluate((theme) => document.documentElement.setAttribute('data-theme', theme), options.theme);
-    });
+    // The theme list lives in the closed Settings dialog, so a real pointer click would wait out
+    // the timeout (long enough for the side panels to auto-hide); click it from script instead.
+    await page.evaluate((theme) => {
+      const button = document.querySelector(`#themeList [data-theme="${theme}"]`);
+      if (button) button.click();
+      else document.documentElement.setAttribute('data-theme', theme);
+    }, options.theme);
   }
 
   if (routePath === '/') {

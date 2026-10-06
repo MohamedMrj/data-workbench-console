@@ -141,6 +141,11 @@ window.createConsoleApp = function createConsoleApp() {
     exportCsvBtn: 'Export the currently loaded result rows as CSV.',
     exportJsonBtn: 'Export the currently loaded result rows as JSON.',
     compareTabsBtn: 'Compare the loaded rows of two result tabs, matched by key columns, and open the differences as a new tab.',
+    appearanceProfileSelect: 'Saved looks (theme and button colours), kept by the app so they survive the browser clearing its data.',
+    applyAppearanceProfileBtn: 'Switch to the selected look now.',
+    saveAppearanceProfileBtn: 'Save the current theme and button colours as a named profile.',
+    defaultAppearanceProfileBtn: 'Open the app with the selected profile every time.',
+    deleteAppearanceProfileBtn: 'Delete the selected appearance profile.',
     profileEnvironmentSelect: 'Tag this profile. On a Prod profile every write and procedure needs a typed phrase naming the profile, enforced by the server.',
     exportAllCsvBtn: 'Re-run this query on the server and download every row as CSV, not just the rows loaded in the grid.',
     exportAllJsonBtn: 'Re-run this query on the server and download every row as JSON, not just the rows loaded in the grid.',
@@ -291,6 +296,7 @@ window.createConsoleApp = function createConsoleApp() {
     savedQueriesError: '',
     booted: false,
     glowTimers: {},
+    appearance: { profiles: [], defaultProfileId: '' },
     pendingAction: null,
     lastFocusedElement: null,
     connectionTest: null,
@@ -862,17 +868,88 @@ window.createConsoleApp = function createConsoleApp() {
     renderSidePanelToggles();
   }
 
+  // ─── Toolbar menus (Help & settings, Results "More") ───────────────────────
+  // The menu items keep their original ids and handlers; the menu only decides visibility.
+  function closeToolbarMenus(except = null) {
+    document.querySelectorAll('.toolbar-menu-panel').forEach((panel) => {
+      if (panel === except || panel.classList.contains('hidden')) return;
+      panel.classList.add('hidden');
+      panel.classList.remove('toolbar-menu-floating');
+      // Put the panel back inside its .toolbar-menu so the markup stays where the shell put it.
+      if (panel.__menuHome && panel.parentElement !== panel.__menuHome) {
+        panel.__menuHome.appendChild(panel);
+      }
+      document.querySelector(`[aria-controls="${panel.id}"]`)?.setAttribute('aria-expanded', 'false');
+    });
+  }
+
+  // The header and Results cards clip overflow and use backdrop-filter, which traps even
+  // position: fixed children, so an open menu is lifted to <body> and placed under its trigger.
+  function openToolbarMenu(trigger, panel) {
+    panel.__menuHome = panel.__menuHome || panel.parentElement;
+    panel.style.setProperty('--btn-tint', window.getComputedStyle(trigger).getPropertyValue('--btn-tint'));
+    document.body.appendChild(panel);
+    panel.classList.add('toolbar-menu-floating');
+    panel.classList.remove('hidden');
+    const rect = trigger.getBoundingClientRect();
+    const width = panel.offsetWidth || 220;
+    panel.style.top = `${Math.round(rect.bottom + 6)}px`;
+    panel.style.left = `${Math.round(Math.max(8, Math.min(rect.right - width, window.innerWidth - width - 8)))}px`;
+    trigger.setAttribute('aria-expanded', 'true');
+  }
+
+  function setupToolbarMenus() {
+    document.querySelectorAll('.toolbar-menu-trigger').forEach((trigger) => {
+      const panel = $(trigger.getAttribute('aria-controls'));
+      if (!panel) return;
+      trigger.onclick = (event) => {
+        event.stopPropagation();
+        const opening = panel.classList.contains('hidden');
+        closeToolbarMenus();
+        if (opening) {
+          openToolbarMenu(trigger, panel);
+          panel.querySelector('button:not(:disabled), a')?.focus?.();
+        }
+      };
+      // Runs after the item's own onclick (it bubbles here), so the action happens first.
+      panel.onclick = (event) => {
+        const item = event.target.closest('button, a');
+        if (item && item.dataset.menuKeepOpen !== 'true') {
+          closeToolbarMenus();
+        }
+      };
+    });
+    if (window.__dataWorkbenchMenuCloser) {
+      document.removeEventListener('click', window.__dataWorkbenchMenuCloser);
+    }
+    window.__dataWorkbenchMenuCloser = (event) => {
+      if (!event.target.closest?.('.toolbar-menu, .toolbar-menu-panel')) closeToolbarMenus();
+    };
+    document.addEventListener('click', window.__dataWorkbenchMenuCloser);
+    // A floating menu is placed once on open, so close it rather than leave it adrift.
+    if (window.__dataWorkbenchMenuScrollCloser) {
+      window.removeEventListener('scroll', window.__dataWorkbenchMenuScrollCloser, true);
+      window.removeEventListener('resize', window.__dataWorkbenchMenuScrollCloser);
+    }
+    window.__dataWorkbenchMenuScrollCloser = (event) => {
+      if (event?.target?.closest?.('.toolbar-menu-panel')) return;
+      closeToolbarMenus();
+    };
+    window.addEventListener('scroll', window.__dataWorkbenchMenuScrollCloser, true);
+    window.addEventListener('resize', window.__dataWorkbenchMenuScrollCloser);
+  }
+
   function renderSidePanelToggles() {
     const leftButton = $('toggleControlRailBtn');
     const rightButton = $('toggleActivityPanelBtn');
 
     if (leftButton) {
-      leftButton.textContent = state.sidePanels.controlRailCollapsed ? 'Show connection panel' : 'Hide connection panel';
+      leftButton.textContent = state.sidePanels.controlRailCollapsed ? 'Show connections' : 'Hide connections';
       leftButton.setAttribute('aria-pressed', state.sidePanels.controlRailCollapsed ? 'true' : 'false');
     }
 
     if (rightButton) {
-      rightButton.textContent = state.sidePanels.activityPanelCollapsed ? 'Show themes & history' : 'Hide themes & history';
+      rightButton.textContent = state.sidePanels.activityPanelCollapsed ? 'Show history' : 'Hide history';
       rightButton.setAttribute('aria-pressed', state.sidePanels.activityPanelCollapsed ? 'true' : 'false');
     }
   }
@@ -3490,6 +3567,19 @@ window.createConsoleApp = function createConsoleApp() {
       });
   }
 
+  // One-line explorer row: type badge, name (full name in the tooltip when it is cut off),
+  // an optional "recent" tag, and the pin star, which is filled when the item is pinned.
+  function explorerRowHtml({ kind, name, typeLabel, active, pinned, recent }) {
+    const isProcedure = kind === 'procedure';
+    const type = String(typeLabel || (isProcedure ? 'procedure' : 'table')).toLowerCase();
+    const code = isProcedure ? 'P' : type === 'view' ? 'V' : 'T';
+    const rowClass = isProcedure ? 'procedure-item' : 'table-item';
+    const dataAttr = isProcedure ? `data-procedure="${esc(name)}"` : `data-object="${esc(name)}" data-object-type="${esc(type)}"`;
+    const pinAttr = isProcedure ? `data-pin-procedure="${esc(name)}"` : `data-pin-object="${esc(name)}"`;
+    const pinLabel = `${pinned ? 'Unpin' : 'Pin'} ${isProcedure ? 'procedure' : 'object'}`;
+    return `<button class="${rowClass} explorer-row${active ? ' active' : ''}" ${dataAttr} type="button" aria-label="${esc(`${type} ${name}`)}" data-tooltip="${esc(`${name} (${type}${recent ? ', recent' : ''})`)}"><span class="item-type item-type-${esc(type)}" aria-hidden="true">${code}</span><strong>${esc(name)}</strong>${recent ? '<span class="item-recent">recent</span>' : ''}<i class="pin-toggle${pinned ? ' pinned' : ''}" ${pinAttr} aria-label="${esc(pinLabel)}">★</i></button>`;
+  }
+
   function renderObjects() {
     const container = $('tableList');
     applyExplorerFilters();
@@ -3497,7 +3587,14 @@ window.createConsoleApp = function createConsoleApp() {
       container.innerHTML = '<div class="empty-note">No objects loaded.</div>';
       return;
     }
-    container.innerHTML = state.filteredObjects.map((item) => `<button class="table-item ${state.activeObject === item.fullName ? 'active' : ''}" data-object="${esc(item.fullName)}" data-object-type="${esc(item.objectType)}" type="button" aria-label="${esc(`${item.objectType} ${item.fullName}`)}"><strong>${isPinned('object', item.fullName) ? '★ ' : ''}${esc(item.fullName)}</strong><span>${esc(item.objectType)}${isRecent('object', item.fullName) ? ' • recent' : ''}</span><i class="pin-toggle" data-pin-object="${esc(item.fullName)}" aria-label="${esc(isPinned('object', item.fullName) ? 'Unpin object' : 'Pin object')}">★</i></button>`).join('');
+    container.innerHTML = state.filteredObjects.map((item) => explorerRowHtml({
+      kind: 'object',
+      name: item.fullName,
+      typeLabel: item.objectType,
+      active: state.activeObject === item.fullName,
+      pinned: isPinned('object', item.fullName),
+      recent: isRecent('object', item.fullName)
+    })).join('');
     container.querySelectorAll('[data-object]').forEach((button) => {
       button.onclick = () => selectObject(button.dataset.object, button.dataset.objectType).catch((error) => setStatus('error', error.message));
     });
@@ -3520,7 +3617,14 @@ window.createConsoleApp = function createConsoleApp() {
       container.innerHTML = '<div class="empty-note">No procedures loaded.</div>';
       return;
     }
-    container.innerHTML = state.filteredProcedures.map((item) => `<button class="procedure-item ${state.activeProcedure === item.fullName ? 'active' : ''}" data-procedure="${esc(item.fullName)}" type="button" aria-label="${esc(`procedure ${item.fullName}`)}"><strong>${isPinned('procedure', item.fullName) ? '★ ' : ''}${esc(item.fullName)}</strong><span>Stored procedure${isRecent('procedure', item.fullName) ? ' • recent' : ''}</span><i class="pin-toggle" data-pin-procedure="${esc(item.fullName)}" aria-label="${esc(isPinned('procedure', item.fullName) ? 'Unpin procedure' : 'Pin procedure')}">★</i></button>`).join('');
+    container.innerHTML = state.filteredProcedures.map((item) => explorerRowHtml({
+      kind: 'procedure',
+      name: item.fullName,
+      typeLabel: 'procedure',
+      active: state.activeProcedure === item.fullName,
+      pinned: isPinned('procedure', item.fullName),
+      recent: isRecent('procedure', item.fullName)
+    })).join('');
     container.querySelectorAll('[data-procedure]').forEach((button) => {
       button.onclick = () => selectProcedure(button.dataset.procedure).catch((error) => setStatus('error', error.message));
     });
@@ -5517,6 +5621,106 @@ window.createConsoleApp = function createConsoleApp() {
         input.closest('.button-color-item')?.classList.add('customized');
       };
     });
+  }
+
+  // ─── Appearance profiles ──────────────────────────────────────────────────
+  // Named looks (theme + button colours) kept by the app in data/appearance.json, not only in
+  // the browser: managed browsers often clear site data on close, which made people re-pick
+  // their look every launch. The default profile is applied each time the app opens.
+
+  function currentAppearance() {
+    return { theme: state.currentTheme, buttonColors: readButtonColors() };
+  }
+
+  function applyAppearance(profile) {
+    if (!profile) return;
+    applyTheme(profile.theme);
+    safeSet(BUTTON_COLORS_KEY, JSON.stringify(profile.buttonColors || {}));
+    applyButtonColors();
+    renderButtonColors();
+  }
+
+  function selectedAppearanceProfile() {
+    const id = $('appearanceProfileSelect')?.value || '';
+    return state.appearance.profiles.find((profile) => profile.id === id) || null;
+  }
+
+  function renderAppearanceProfiles(selectedId = $('appearanceProfileSelect')?.value || '') {
+    const select = $('appearanceProfileSelect');
+    if (!select) return;
+    const { profiles, defaultProfileId } = state.appearance;
+    select.innerHTML = [
+      `<option value="">${profiles.length ? 'Choose a profile' : 'No saved profiles yet'}</option>`,
+      ...profiles.map((profile) => `<option value="${esc(profile.id)}">${esc(profile.name)}${profile.id === defaultProfileId ? ' (opens with this)' : ''}</option>`)
+    ].join('');
+    select.value = profiles.some((profile) => profile.id === selectedId) ? selectedId : (defaultProfileId || '');
+    const defaultProfile = profiles.find((profile) => profile.id === defaultProfileId);
+    const status = $('appearanceProfileStatus');
+    if (status) {
+      status.textContent = defaultProfile
+        ? `The app opens with "${defaultProfile.name}".`
+        : 'No default profile: the app opens with the look this browser last used.';
+    }
+    const hasSelection = Boolean(select.value);
+    ['applyAppearanceProfileBtn', 'deleteAppearanceProfileBtn'].forEach((id) => {
+      if ($(id)) $(id).disabled = !hasSelection;
+    });
+    if ($('defaultAppearanceProfileBtn')) {
+      $('defaultAppearanceProfileBtn').textContent = hasSelection && select.value === defaultProfileId ? 'Stop opening with this' : 'Open with this profile';
+      $('defaultAppearanceProfileBtn').disabled = !hasSelection;
+    }
+  }
+
+  async function loadAppearanceProfiles({ applyDefault = false } = {}) {
+    const payload = await api('/api/appearance');
+    state.appearance = {
+      profiles: Array.isArray(payload.profiles) ? payload.profiles : [],
+      defaultProfileId: String(payload.defaultProfileId || '')
+    };
+    if (applyDefault) {
+      applyAppearance(state.appearance.profiles.find((profile) => profile.id === state.appearance.defaultProfileId));
+    }
+    renderAppearanceProfiles();
+  }
+
+  async function saveAppearanceProfile() {
+    const selected = selectedAppearanceProfile();
+    const name = window.prompt('Save the current theme and button colours as', selected?.name || 'My look');
+    if (!name || !String(name).trim()) return;
+    try {
+      const payload = await api('/api/appearance', { method: 'POST', data: { profile: { name: String(name).trim(), ...currentAppearance() } } });
+      await loadAppearanceProfiles();
+      renderAppearanceProfiles(payload.profile?.id);
+      setStatus('success', `Saved appearance profile "${payload.profile?.name || name}".`);
+    } catch (error) {
+      setStatus('error', `Could not save the appearance profile: ${error.message}`);
+    }
+  }
+
+  async function toggleDefaultAppearanceProfile() {
+    const selected = selectedAppearanceProfile();
+    if (!selected) return;
+    const makeDefault = selected.id !== state.appearance.defaultProfileId;
+    try {
+      await api('/api/appearance', { method: 'POST', data: { defaultProfileId: makeDefault ? selected.id : '' } });
+      await loadAppearanceProfiles();
+      renderAppearanceProfiles(selected.id);
+      setStatus('success', makeDefault ? `The app will open with "${selected.name}".` : 'The app will open with the look this browser last used.');
+    } catch (error) {
+      setStatus('error', `Could not change the default appearance: ${error.message}`);
+    }
+  }
+
+  async function deleteSelectedAppearanceProfile() {
+    const selected = selectedAppearanceProfile();
+    if (!selected || !window.confirm(`Delete appearance profile "${selected.name}"?`)) return;
+    try {
+      await api('/api/appearance', { method: 'DELETE', data: { id: selected.id } });
+      await loadAppearanceProfiles();
+      setStatus('success', `Deleted appearance profile "${selected.name}".`);
+    } catch (error) {
+      setStatus('error', `Could not delete the appearance profile: ${error.message}`);
+    }
   }
 
   function resetButtonColors() {
@@ -9107,6 +9311,19 @@ window.createConsoleApp = function createConsoleApp() {
     $('exportCsvBtn').onclick = exportCsv;
     $('exportJsonBtn').onclick = exportJson;
     if ($('resetButtonColorsBtn')) $('resetButtonColorsBtn').onclick = resetButtonColors;
+    if ($('appearanceProfileSelect')) $('appearanceProfileSelect').onchange = () => renderAppearanceProfiles();
+    if ($('applyAppearanceProfileBtn')) {
+      $('applyAppearanceProfileBtn').onclick = () => {
+        const selected = selectedAppearanceProfile();
+        if (!selected) return;
+        applyAppearance(selected);
+        setStatus('success', `Applied appearance profile "${selected.name}".`);
+      };
+    }
+    if ($('saveAppearanceProfileBtn')) $('saveAppearanceProfileBtn').onclick = () => saveAppearanceProfile();
+    if ($('defaultAppearanceProfileBtn')) $('defaultAppearanceProfileBtn').onclick = () => toggleDefaultAppearanceProfile();
+    if ($('deleteAppearanceProfileBtn')) $('deleteAppearanceProfileBtn').onclick = () => deleteSelectedAppearanceProfile();
+    setupToolbarMenus();
     $('compareTabsBtn').onclick = openCompareTabsDialog;
     $('runCompareTabsBtn').onclick = runCompareTabs;
     $('cancelCompareTabsBtn').onclick = closeCompareTabsDialog;
@@ -9309,6 +9526,10 @@ window.createConsoleApp = function createConsoleApp() {
       document.removeEventListener('keydown', window.__dataWorkbenchKeydownHandler);
     }
     window.__dataWorkbenchKeydownHandler = (event) => {
+      if (event.key === 'Escape' && document.querySelector('.toolbar-menu-panel:not(.hidden)')) {
+        closeToolbarMenus();
+        return;
+      }
       if (event.key === 'Escape' && !$('shortcutsDialog')?.classList.contains('hidden')) {
         closeShortcutsDialog();
         return;
@@ -9443,6 +9664,8 @@ window.createConsoleApp = function createConsoleApp() {
     applyButtonColors();
     loadTheme();
     renderButtonColors();
+    // The app-side default profile wins over whatever this browser remembered.
+    await loadAppearanceProfiles({ applyDefault: true }).catch(() => renderAppearanceProfiles());
     await loadConnectionHistory();
     loadSavedQueries().catch(() => {});
     loadQueryHistory();

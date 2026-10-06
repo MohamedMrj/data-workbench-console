@@ -115,6 +115,9 @@ API route files under `app/api/` are 7–20 line adapters. Keep them that way �
 - **Comments explain *why*, never *what*.** The existing non-obvious comments (atomic token
   claim, `git reset --hard` rationale, audit rewrite-vs-append, CSV formula escaping, BIGINT
   identity precision) are the model. Do not add narration.
+- **Everything customizable or configurable lives in the Settings dialog** (the maintainer's
+  rule). Appearance options go in its `Appearance` section, `.env` options in the groups below
+  it. Do not add settings pickers to side panels, toolbars or other dialogs.
 - Client storage keys are versioned (`…V1`, `…V2`, `…V3`). Bump the suffix when a shape
   changes incompatibly rather than writing migration code.
 - Audit `detail` fields use `compactQueryPreview` / `compactProcedurePreview`. Never log

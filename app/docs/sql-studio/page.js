@@ -56,14 +56,15 @@ export default function SqlStudioDocsPage() {
 
       <DocsSection id="workspace-controls" title="Workspace Controls And Support" intro="The top workspace buttons are shared across SQL Studio and Procedure Runner. They control documentation, support, tools, panels, and the local desktop server.">
         <div className="docs-table">
-          <div><strong>Documentation</strong><span>Opens this guide in a new tab. Use it when you need button behavior, requirements, source support, or troubleshooting details.</span></div>
-          <div><strong>Tools</strong><span>Opens Workbench Tools. Use it for quick actions, SQL safety summary, capability checks, the saved query library, and diagnostics.</span></div>
-          <div><strong>Settings</strong><span>Opens a guided editor for local <code>.env</code> settings. Each setting includes a description, appropriate values, and restart guidance. Secret values can be replaced but are never shown after saving.</span></div>
-          <div><strong>Support</strong><span>Opens a bug-report form. Fill in title, area, severity, description, reproduction steps, and optional screenshot, then open an email draft to support.</span></div>
+          <div><strong>Help &amp; settings ▾</strong><span>Opens a menu with Documentation, Tools, Settings and Support.</span></div>
+          <div><strong>Documentation</strong><span>In the Help &amp; settings menu. Opens this guide in a new tab. Use it when you need button behavior, requirements, source support, or troubleshooting details.</span></div>
+          <div><strong>Tools</strong><span>In the Help &amp; settings menu. Opens Workbench Tools. Use it for quick actions, SQL safety summary, capability checks, the saved query library, and diagnostics.</span></div>
+          <div><strong>Settings</strong><span>In the Help &amp; settings menu. Opens a guided editor for local <code>.env</code> settings. Each setting includes a description, appropriate values, and restart guidance. Secret values can be replaced but are never shown after saving.</span></div>
+          <div><strong>Support</strong><span>In the Help &amp; settings menu. Opens a bug-report form. Fill in title, area, severity, description, reproduction steps, and optional screenshot, then open an email draft to support.</span></div>
           <div><strong>Update</strong><span>Appears only when the local Git checkout is behind the configured remote. It pulls the latest app code, preserves local <code>.env</code> and <code>.data</code>, rebuilds, restarts the local server, and reloads the browser.</span></div>
-          <div><strong>Hide / Show connection panel</strong><span>Collapses or restores the left connection rail. Use it when you need more space for query building or result inspection. The current data source stays visible in the top workspace header, above the active object name: the saved profile name when the connection matches a saved profile, otherwise the source type, server and database.</span></div>
-          <div><strong>Hide / Show themes & history</strong><span>Collapses or restores the right activity panel. Use it when history and themes are not needed for the current task.</span></div>
-          <div><strong>Exit Data Workbench</strong><span>Requests shutdown of the local desktop server. Use it when you are done with the app, not just when you want to close a tab.</span></div>
+          <div><strong>Hide / Show connections</strong><span>Collapses or restores the left connection rail. Use it when you need more space for query building or result inspection. The current data source stays visible in the top workspace header, above the active object name: the saved profile name when the connection matches a saved profile, otherwise the source type, server and database.</span></div>
+          <div><strong>Hide / Show history</strong><span>Collapses or restores the right activity panel. Use it when history is not needed for the current task.</span></div>
+          <div><strong>Exit</strong><span>Requests shutdown of the local desktop server. Use it when you are done with the app, not just when you want to close a tab.</span></div>
         </div>
         <DocsMiniSection title="Workbench Tools">
           <p><strong>Quick actions</strong> can load catalog, run the current query, format SQL, save a query to the library, open audit filters, profile the active object, load dependencies, or script ALTER/Edit for the active object.</p>
@@ -277,21 +278,21 @@ WHERE <review scope before execution>;`}</pre>
       <DocsSection id="results" title="Results Panel" intro="Results are designed for inspection first: read the shape, filter locally, inspect long values, then copy or export what you need.">
         <ul className="docs-check-list">
           <li><strong>Result tabs</strong> keep up to five query, procedure, and metadata results available for quick comparison.</li>
-          <li><strong>A- / A+</strong> changes result text size for dense data or screen sharing.</li>
+          <li><strong>More ▾ → A- / A+</strong> changes result text size for dense data or screen sharing.</li>
           <li><strong>Local filter</strong> filters rows already returned to the browser. It does not run a new database query.</li>
           <li><strong>Sorting</strong> sorts visible result rows by a column.</li>
           <li><strong>Pagination</strong> keeps large returned sets easier to scan.</li>
           <li><strong>Prev / Next</strong> moves through local result pages without re-running the query.</li>
-          <li><strong>Columns arrows</strong> scroll wide result tables horizontally without using the browser scrollbar.</li>
+          <li><strong>← / → arrows</strong> scroll wide result tables horizontally without using the browser scrollbar.</li>
           <li><strong>Column resizing</strong> lets you widen important columns and reset by double-clicking handles.</li>
           <li><strong>NULL values</strong> appear as a visible pill so blanks are easier to distinguish from missing data.</li>
           <li><strong>Long JSON/text</strong> is collapsed with Show more / Show less, while copy/export still uses the full value.</li>
           <li><strong>Cell context menu</strong> can copy the clicked cell value, column name, formatted JSON, or the whole row as JSON/CSV/INSERT, and all loaded rows as <code>INSERT</code> statements or a Markdown table. INSERT targets the table when the result is editable, otherwise a <code>[target_table]</code> placeholder you replace; SQL NULL stays <code>NULL</code>, and <code>timestamp</code>/<code>rowversion</code> columns are left out.</li>
-          <li><strong>Copy rows</strong>, <strong>Export CSV</strong> and <strong>Export JSON</strong> use the rows already loaded in the grid.</li>
-          <li><strong>Compare tabs</strong> compares the loaded rows of two result tabs. Name the key columns that identify a row (or leave it blank to compare by row order); the differences open as a new tab listing each changed cell and the rows found on only one side. A key that is not unique is refused rather than guessed.</li>
+          <li><strong>Copy rows</strong>, <strong>Export CSV</strong> and <strong>More ▾ → Export JSON</strong> use the rows already loaded in the grid. <strong>More ▾</strong> also holds Compare tabs, Audit log and the result text size.</li>
+          <li><strong>More ▾ → Compare tabs</strong> compares the loaded rows of two result tabs. Name the key columns that identify a row (or leave it blank to compare by row order); the differences open as a new tab listing each changed cell and the rows found on only one side. A key that is not unique is refused rather than guessed.</li>
           <li><strong>Row limit</strong>: a read returns at most the response row limit (250 by default). When there are more rows, a banner says the grid shows only the first rows — it never shows the loaded count as the total — and offers <strong>Export all as CSV</strong> / <strong>Export all as JSON</strong>.</li>
           <li><strong>Export all</strong> re-runs the same read query on the server and streams every row into a file, up to the export row limit (100,000 by default). Only plain reads can be exported. It can be cancelled with the editor's <strong>Cancel</strong> button, and the audit log records how many rows each export wrote.</li>
-          <li><strong>Audit log</strong> opens filters for event, outcome, action, source type, database, search text, and limit. Use it to review metadata reads, query previews, confirmations, executions, and errors.</li>
+          <li><strong>More ▾ → Audit log</strong> opens filters for event, outcome, action, source type, database, search text, and limit. Use it to review metadata reads, query previews, confirmations, executions, and errors.</li>
         </ul>
         <div className="docs-callout">
           <strong>Edit results</strong> appears when the current result is a plain single-table <code>SELECT</code> (no <code>JOIN</code>, <code>UNION</code>, <code>GROUP BY</code>, subquery, or aggregate) against an object where at least one column can identify a specific row. It never appears for Fabric Lakehouse: the Lakehouse SQL analytics endpoint is read-only, so there is nothing to save to.
@@ -311,8 +312,9 @@ WHERE <review scope before execution>;`}</pre>
           <div><strong>Mode switching</strong><span>Use the top workspace tabs to move between SQL Studio and Procedure Runner, even when the left connection rail is hidden.</span></div>
           <div><strong>Workspace restore</strong><span>Editor text, cursor position, filters, sort, result tabs, pagination, and active object are restored for the same browser tab and connection.</span></div>
           <div><strong>Saved profiles</strong><span>Server/database profile details can be saved. Passwords and service principal secrets are not saved.</span></div>
-          <div><strong>Themes</strong><span>Choose a theme in the activity panel. The selected theme is saved locally and also applies to documentation pages.</span></div>
-          <div><strong>Button colours</strong><span>Buttons are tinted glass, and each section has its own tint. Change a section's colour under <strong>Button colours</strong> in the Themes panel, or click <strong>Reset</strong>. Saved in your browser only.</span></div>
+          <div><strong>Themes</strong><span>Choose a theme in <strong>Settings → Appearance</strong>. It applies immediately, is remembered, and also applies to documentation pages.</span></div>
+          <div><strong>Button colours</strong><span>Buttons are tinted glass, and each section has its own tint. Change a section's colour under <strong>Button colours</strong> in Settings → Appearance, or click <strong>Reset</strong>.</span></div>
+          <div><strong>Appearance profiles</strong><span>Save the current theme and colours as a named profile with <strong>Save current as…</strong>, switch with <strong>Apply</strong>, and use <strong>Open with this profile</strong> so the app starts with it every time. Profiles are stored by the app, not only in the browser.</span></div>
           <div><strong>Next-step glow</strong><span>When there is an obvious next click, that button pulses for about five seconds: <strong>Load catalog</strong> after a successful test, <strong>Run query</strong> after the builder writes SQL, <strong>Save changes</strong> after your first grid edit, <strong>Exit edit mode</strong> after a save, and the confirm button once the typed phrase matches. Clicking it stops the glow.</span></div>
           <div><strong>Clear history</strong><span>Clears the current workspace history list. SQL history and procedure history are separate.</span></div>
           <div><strong>Panel layout</strong><span>Resize the connection rail, explorer, activity panel, and results height on wide layouts. Hide/show state and sizes are saved locally.</span></div>

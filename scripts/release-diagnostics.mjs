@@ -98,6 +98,7 @@ const routeFiles = [
   'app/api/schema-compare/route.js',
   'app/api/saved-connections/route.js',
   'app/api/saved-queries/route.js',
+  'app/api/appearance/route.js',
   'app/api/lifecycle/heartbeat/route.js',
   'app/api/lifecycle/status/route.js',
   'app/api/lifecycle/exit/route.js'

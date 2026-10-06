@@ -7,8 +7,37 @@ together with the current git commit and build information.
 
 ## Unreleased
 
-Liquid Glass buttons with per-section colours, a glow on the next step, and layout fixes for
-the connection panel and Object Explorer.
+Liquid Glass buttons with per-section colours, appearance profiles the app opens with, a glow on
+the next step, a calmer, denser layout, and layout fixes for the connection panel and Object
+Explorer.
+
+### Changed
+
+- **Results toolbar** keeps the everyday actions visible — filter, Edit results, Copy rows,
+  Export CSV, column arrows and paging — and moves Export JSON, Compare tabs, Audit log and the
+  result text size into a `More ▾` menu. At medium widths the old toolbar wrapped into a two-column
+  grid of full-width bars taller than the results themselves.
+- **Header actions**: Documentation, Tools, Settings and Support are in a `Help & settings ▾`
+  menu; the panel toggles read `Hide connections` / `Hide history`; Exit is a small red `Exit`.
+  `Update` still appears on its own when a new version is available.
+- Menus open above everything (they are lifted out of the header and Results cards, which clip
+  overflow), close on an outside click, Escape, or picking an item, and keep every button's id
+  and behaviour; the text-size buttons keep the menu open for repeated clicks.
+- **Object Explorer rows** are one line — a T/V/P type badge, the name (full name in the tooltip
+  when cut off), a `recent` tag and the pin star, which is filled when pinned — about 40px a row
+  instead of ~55px with names wrapping over three lines, so roughly twice as many objects fit. The
+  pin no longer appears twice on pinned rows.
+- **Fewer boxes inside boxes**: Query Builder panels have a lighter edge and fill, and panels
+  nested inside another panel (Template Context, Safe Templates, Object Analysis) are plain
+  sections with a divider.
+- **Natural-width action buttons** at medium widths instead of full-width bars (Preview rows,
+  Count rows, Reset and similar); phone widths still give each button its own row.
+- **Settings is the one place for configuration.** Themes and Button colours moved out of the
+  history panel into a new `Appearance` section at the top of Settings; the history panel now
+  holds history only. The Settings dialog scrolls as one page instead of only the `.env` part.
+- Small polish: the saved-profile `×` is a small square button instead of a full-height slab,
+  compact headings keep their action beside them (`Button colours  Reset`, `Columns  All Clear`),
+  and the empty results area no longer reserves a tall box before anything has run.
 
 ### Added
 
@@ -18,8 +47,12 @@ the connection panel and Object Explorer.
   (connection panel, workspace header, Object Explorer, Query Builder, SQL Editor and procedures,
   Results, Themes and history, dialogs), tuned separately for the light `paper` theme. Sizes,
   padding and borders are unchanged, so nothing shifts on hover.
-- **Button colours** in the Themes panel: one colour picker per section plus `Reset`, saved in
-  the browser (`dataWorkbenchButtonColorsV1`).
+- **Button colours** in Settings → Appearance: one colour picker per section plus `Reset`.
+- **Appearance profiles** in Settings → Appearance: save the current theme and button colours
+  under a name, apply one, delete one, and mark one as `Open with this profile` so the app
+  starts with it every time. Profiles are kept by the app in `data/appearance.json` (up to 30)
+  through the new `/api/appearance` route, so a browser that clears site data on close no longer
+  resets the look.
 - **"Do this next" glow.** The button you are expected to click next pulses for about five
   seconds, or until you click it: `Load catalog` after a successful connection test, `Run query`
   after the builder or a template writes SQL, `Save changes` after the first edit in the results
@@ -34,6 +67,9 @@ the connection panel and Object Explorer.
   and the generic `flex: 1 1 260px` title basis then became a 260px height. 1.4.29 fixed only the
   connection panel's copy of this; the 760px container rule and the stacked-layout rule now reset
   the basis for every card.
+- Fixed one failed save blocking every later save until the server restarted, in the saved
+  connections, saved queries and appearance stores. Each store queued writes on one promise and
+  kept the failed write's promise as the queue, so everything chained after it failed too.
 - Fixed the environment badge (`DEV`/`TEST`/`PROD`) stretching across the whole saved-profile
   card: the list's full-width span style also applied to the badge.
 
@@ -59,6 +95,11 @@ the connection panel and Object Explorer.
 - `ui-smoke.mjs` covers the button colour pickers (set, saved, reset), nothing glowing at
   start-up, and each glow trigger (Load catalog, Run query, Save changes, Exit edit mode, the
   confirm button).
+- `ui-smoke.mjs` covers Settings holding the theme list and button colours (and the history
+  panel not), saving a profile, making it the default and undoing that, and a fresh window
+  opening with a stored default profile. `server-unit.test.mjs` covers the appearance store,
+  including a rejected write followed by successful ones; `route-contract.test.mjs` covers the
+  `/api/appearance` round trip.
 - `responsive-audit.mjs` now flags any section title row with more than 32px of empty space
   inside it, not only the connection panel's; confirmed it catches the explorer heading without
   the fix.

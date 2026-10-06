@@ -57,14 +57,15 @@ export default function ProcedureRunnerDocsPage() {
 
       <DocsSection id="workspace-controls" title="Workspace Controls And Support" intro="The top workspace buttons are shared across SQL Studio and Procedure Runner. They control documentation, support, tools, panels, and the local desktop server.">
         <div className="docs-table">
-          <div><strong>Documentation</strong><span>Opens this guide in a new tab. Use it when you need procedure workflow, parameter, support-source, or troubleshooting details.</span></div>
-          <div><strong>Tools</strong><span>Opens Workbench Tools. Use it for quick actions, current SQL/procedure context, the saved query library, safe diagnostics, and support information.</span></div>
-          <div><strong>Settings</strong><span>Opens a guided editor for local <code>.env</code> settings. Each setting includes a description, appropriate values, and restart guidance. Secret values can be replaced but are never shown after saving.</span></div>
-          <div><strong>Support</strong><span>Opens a bug-report form. Fill in title, area, severity, description, reproduction steps, and optional screenshot, then open an email draft to support.</span></div>
+          <div><strong>Help &amp; settings ▾</strong><span>Opens a menu with Documentation, Tools, Settings and Support.</span></div>
+          <div><strong>Documentation</strong><span>In the Help &amp; settings menu. Opens this guide in a new tab. Use it when you need procedure workflow, parameter, support-source, or troubleshooting details.</span></div>
+          <div><strong>Tools</strong><span>In the Help &amp; settings menu. Opens Workbench Tools. Use it for quick actions, current SQL/procedure context, the saved query library, safe diagnostics, and support information.</span></div>
+          <div><strong>Settings</strong><span>In the Help &amp; settings menu. Opens a guided editor for local <code>.env</code> settings. Each setting includes a description, appropriate values, and restart guidance. Secret values can be replaced but are never shown after saving.</span></div>
+          <div><strong>Support</strong><span>In the Help &amp; settings menu. Opens a bug-report form. Fill in title, area, severity, description, reproduction steps, and optional screenshot, then open an email draft to support.</span></div>
           <div><strong>Update</strong><span>Appears only when the local Git checkout is behind the configured remote. It pulls the latest app code, preserves local <code>.env</code> and <code>.data</code>, rebuilds, restarts the local server, and reloads the browser.</span></div>
-          <div><strong>Hide / Show connection panel</strong><span>Collapses or restores the left connection rail. Use it when parameter review or results need more screen space. The current data source stays visible in the top workspace header, above the selected procedure name: the saved profile name when the connection matches a saved profile, otherwise the source type, server and database.</span></div>
-          <div><strong>Hide / Show themes & history</strong><span>Collapses or restores the right activity panel. Use it when procedure history and themes are not needed.</span></div>
-          <div><strong>Exit Data Workbench</strong><span>Requests shutdown of the local desktop server. Use it when you are done with the app.</span></div>
+          <div><strong>Hide / Show connections</strong><span>Collapses or restores the left connection rail. Use it when parameter review or results need more screen space. The current data source stays visible in the top workspace header, above the selected procedure name: the saved profile name when the connection matches a saved profile, otherwise the source type, server and database.</span></div>
+          <div><strong>Hide / Show history</strong><span>Collapses or restores the right activity panel. Use it when procedure history is not needed.</span></div>
+          <div><strong>Exit</strong><span>Requests shutdown of the local desktop server. Use it when you are done with the app.</span></div>
         </div>
         <DocsMiniSection title="Workbench Tools">
           <p><strong>Quick actions</strong> can load catalog, run the current procedure/query path, format SQL, save queries to the library, open audit filters, load dependency/profile metadata, or script ALTER/Edit.</p>
@@ -197,16 +198,16 @@ export default function ProcedureRunnerDocsPage() {
       <DocsSection id="results" title="Results And Audit" intro="Procedure results can include recordsets, rows affected, output parameters, return values, and messages. The exact shape depends on what the procedure returns.">
         <ul className="docs-check-list">
           <li><strong>Result tabs</strong> keep up to five procedure, query, and metadata results available for comparison.</li>
-          <li><strong>A- / A+</strong> changes result text size for dense procedure output or screen sharing.</li>
+          <li><strong>More ▾ → A- / A+</strong> changes result text size for dense procedure output or screen sharing.</li>
           <li><strong>Recordsets</strong> appear in the results grid when the procedure returns tabular data.</li>
           <li><strong>Rows affected</strong> shows the count reported by the database driver when available.</li>
           <li><strong>Output parameters</strong> are displayed after the confirmed execution finishes.</li>
           <li><strong>Return value</strong> is shown when the procedure returns one through the database driver.</li>
           <li><strong>Local filtering</strong> filters rows already returned to the browser. It does not execute the procedure again.</li>
           <li><strong>Prev / Next</strong> moves through local result pages without re-running the procedure.</li>
-          <li><strong>Columns arrows</strong> scroll wide result tables horizontally.</li>
+          <li><strong>← / → arrows</strong> scroll wide result tables horizontally.</li>
           <li><strong>Copy rows</strong> and <strong>Export CSV</strong> work on visible tabular results.</li>
-          <li><strong>Audit log</strong> opens filters for event, outcome, action, source type, database, search text, and limit.</li>
+          <li><strong>More ▾ → Audit log</strong> opens filters for event, outcome, action, source type, database, search text, and limit.</li>
           <li><strong>Audit entries</strong> record prepare, execute, and definition-read activity with source, database, outcome, and details where audit access is available.</li>
         </ul>
       </DocsSection>
@@ -223,7 +224,7 @@ export default function ProcedureRunnerDocsPage() {
           <div><strong>Keyboard shortcuts</strong><span><code>Ctrl + Enter</code> prepares the selected procedure (or runs the script editor when it has focus), <code>/</code> jumps to the procedure search, and <code>?</code> or <code>Ctrl + /</code> lists every shortcut.</span></div>
           <div><strong>Session restore</strong><span>The selected procedure, parameters, result tabs, filters, pagination, and history are restored for the same browser tab where possible.</span></div>
           <div><strong>Panel layout</strong><span>Resizable panels, hidden side panels, result height, and layout choices are saved locally and adapt on narrower screens.</span></div>
-          <div><strong>Panel auto-hide</strong><span>The connection and themes/history panels can fade and collapse after an idle delay. Use Settings to turn this off entirely or adjust the timing.</span></div>
+          <div><strong>Panel auto-hide</strong><span>The connection and history panels can fade and collapse after an idle delay. Use Settings to turn this off entirely or adjust the timing.</span></div>
           <div><strong>Ambient motion</strong><span>The app can use very slow background color movement for a livelier feel. It is configurable in Settings and respects reduced-motion preferences.</span></div>
           <div><strong>Tooltips</strong><span>Delayed hints explain controls and fields without opening documentation. Use Settings to turn them off or change the delay.</span></div>
         </div>

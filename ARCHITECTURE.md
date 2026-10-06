@@ -87,6 +87,7 @@ lib/server/                   The real backend — all logic lives here
   confirmation-store.js       Single-use write/procedure tokens
   audit-store.js              Append-oriented NDJSON audit log
   saved-connections-store.js  Connection profiles (never passwords)
+  appearance-store.js         Named theme + button-colour profiles and the default one
   env-settings-store.js       Typed .env schema + safe read/write/sync
   lifecycle-store.js          Heartbeat sessions and shutdown watchdog
   rate-limit.js               Sliding-window limiter
@@ -240,6 +241,7 @@ caught centrally and mapped through `error.httpStatus` (default 500).
 | `/api/query/export` | POST | `postQueryExport` | Reads only; streams the full result as CSV/JSON up to `EXPORT_ROW_LIMIT` |
 | `/api/saved-connections` | GET POST DELETE | `*SavedConnections` | |
 | `/api/saved-queries` | GET POST DELETE | `*SavedQueries` | Query library in `data/saved-queries.json`; audit names queries, never their SQL |
+| `/api/appearance` | GET POST DELETE | `*AppearanceSettings` | Appearance profiles in `data/appearance.json`; POST `{ profile, makeDefault }` or `{ defaultProfileId }` |
 | `/api/version` | GET | inline | Cached + de-duplicated git/remote check |
 | `/api/env-settings` | GET POST | inline | Local-only; POST requires Origin/Referer |
 | `/api/update` | POST | inline | Local-only; requires a Git checkout |
@@ -385,6 +387,19 @@ Profile CRUD against `${APP_DATA_DIR}/${SAVED_CONNECTIONS_FILE}`. `normalizeSave
 runs the payload through `normalizeConnectionInput` and then **omits `password` from the
 returned shape entirely** — so no code path can persist it. Writes are serialized through a
 read-modify-write promise chain.
+
+### `appearance-store.js`
+
+Up to 30 profiles `{ id, name, theme, buttonColors }` plus `defaultProfileId`, in
+`${APP_DATA_DIR}/appearance.json`. Kept on disk rather than only in localStorage because managed
+browsers are often set to clear site data on close. Input is strict (known theme, `#rrggbb` for
+known sections, else 400); stored rows are lenient, so a hand-edited file drops bad rows instead
+of failing. Saving under an existing name updates that profile. At boot the client applies the
+local theme and colours first, then the default profile once `/api/appearance` answers.
+
+The `data/` stores serialize writes on one promise chain and keep the chain itself alive with
+`.catch(() => {})`: the caller still sees a rejected write, but one failure no longer leaves
+every later write rejected until restart.
 
 ### `env-settings-store.js` (827 lines)
 
@@ -740,6 +755,7 @@ and nothing is lost on upgrade.
 | localStorage | `dataWorkbenchProcedureHistoryV1` | procedure runs + parameter values |
 | localStorage | `dataWorkbenchThemeV2` | theme id |
 | localStorage | `dataWorkbenchButtonColorsV1` | per-section Liquid Glass tints, applied as `--tint-<section>` on `<html>` |
+| server file | `data/appearance.json` | appearance profiles and the default one applied at start-up |
 | localStorage | `dataWorkbenchEditorTextSizeV1` / `…ResultsTextSizeV1` | font scales |
 | localStorage | `dataWorkbenchPanelLayoutV1` | six panel dimensions |
 | localStorage | `dataWorkbenchSidePanelVisibilityV1` | manual collapse state only |
@@ -824,7 +840,7 @@ token (`connection`, `header`, `explorer`, `builder`, `editor`, `results`, `acti
 `dialogs`), and `.ghost-btn`/`.secondary-btn`/`.segment-btn`/`.icon-btn`/`.save-conn-btn`/
 `.primary-btn` render as tinted glass from `--glass-tint` plus `--glass-highlight`/`--glass-edge`/
 `--glass-shade`/`--glass-body`, which `paper` retunes for a light background. The `Button colours`
-picker writes overrides as inline `--tint-*` properties on `<html>` (beating the theme.css
+picker (Settings → Appearance) writes overrides as inline `--tint-*` properties on `<html>` (beating the theme.css
 defaults) and stores them in `dataWorkbenchButtonColorsV1`. The glass changes only colour, light
 and shadow — never size, padding or border width — so the responsive audit's hover-stability and
 affordance checks still hold. Red buttons set `--btn-tint: var(--danger)`.

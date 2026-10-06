@@ -682,11 +682,13 @@ Saved query library:
   is kept
 - `Support`
   opens a support report form for bug reports and questions.
-- `Hide/Show connection panel`
+- `Documentation`, `Tools`, `Settings` and `Support` live in the `Help & settings ▾` menu in the
+  workspace header; `Update` stays visible when a new version is available.
+- `Hide/Show connections`
   controls the left connection rail.
-- `Hide/Show themes & history`
+- `Hide/Show history`
   controls the right activity rail.
-- `Exit Data Workbench`
+- `Exit`
   stops the local desktop server.
 
 Support reports:
@@ -790,6 +792,8 @@ The results area supports:
 - filtered audit loading into the results grid
 - `Copy rows`
 - `Export CSV` and `Export JSON` of the loaded rows
+- the toolbar keeps the everyday actions visible (filter, edit, copy, CSV, column arrows, paging);
+  `More ▾` holds Export JSON, Compare tabs, Audit log and the result text size
 - `Compare tabs`: compare the loaded rows of two result tabs, matched by key columns you choose (or
   by row order), and open the differences as a new tab with one row per changed cell plus rows
   found on only one side. A key that is not unique is refused rather than guessed.
@@ -905,20 +909,32 @@ Built-in themes:
 - `ink`
 - `paper`
 
+Theme and colours live in **Settings** (`Help & settings ▾` → `Settings`), under
+`Appearance`, together with every other configurable option.
+
 Theme behavior:
 
-- theme selection is saved locally in browser storage
+- theme selection applies immediately and is remembered in browser storage
 - dark themes and the light paper theme have separate visual tuning
 - results cell contrast is elevated for dark themes
+
+Appearance profiles:
+
+- a profile is a named theme plus button colours. `Save current as…` stores what you see now
+  (saving under an existing name updates it); pick one and `Apply` to switch to it
+- `Open with this profile` makes the selected profile the default: every time the app opens it
+  starts with that theme and those colours, so nothing has to be set up again. `Stop opening with
+  this` clears the default
+- profiles are kept by the app in `data/appearance.json` (up to 30), not only in the browser, so
+  they survive a browser that clears site data on close
 
 Liquid Glass buttons:
 
 - buttons are tinted glass: a translucent tinted body, a highlight along the top edge and a
   tinted shadow; primary buttons are a solid tinted gradient under the same glass highlight
 - each section has its own tint (connection panel, workspace header, Object Explorer, Query
-  Builder, SQL Editor and procedures, Results, Themes and history, dialogs); change any of them
-  under `Button colours` in the Themes panel, or `Reset` to the defaults. The choice is saved in
-  your browser only
+  Builder, SQL Editor and procedures, Results, history, dialogs); change any of them under
+  `Button colours` in Settings → Appearance, or `Reset` to the defaults
 - "do this next" glow: the button you are expected to click pulses for about five seconds, then
   stops (or stops as soon as you click it): `Load catalog` after a successful connection test,
   `Run query` after the builder or a template writes SQL, `Save changes` after the first edit in

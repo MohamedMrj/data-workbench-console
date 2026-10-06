@@ -1014,7 +1014,7 @@ html[data-ambient-motion='enabled'] .shell-orbit-b {
 .explorer-list {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 6px;
   min-height: 160px;
   max-height: clamp(360px, 58vh, 760px);
   flex: 1 1 0;
@@ -1117,7 +1117,8 @@ html[data-ambient-motion='enabled'] .shell-orbit-b {
 
 .saved-item {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 42px;
+  grid-template-columns: minmax(0, 1fr) 34px;
+  align-items: center;
   gap: 8px;
 }
 
@@ -1141,6 +1142,10 @@ html[data-ambient-motion='enabled'] .shell-orbit-b {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border-radius: 10px;
 }
 
 .object-type-pill,
@@ -1329,6 +1334,82 @@ html[data-ambient-motion='enabled'] .shell-orbit-b {
   opacity: 0.72;
 }
 
+/* ─── One-line explorer rows ──────────────────────────────────────────────
+   Type badge, name, optional "recent" tag and pin star on one line: about 40px a row instead of
+   ~55px with names wrapping over three lines, so roughly twice as many objects fit. The full
+   name is in the row's tooltip when it is cut off. */
+.table-item.explorer-row,
+.procedure-item.explorer-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 40px;
+  padding: 7px 12px;
+  border-radius: 12px;
+}
+
+.explorer-panel .table-item.explorer-row strong,
+.explorer-panel .procedure-item.explorer-row strong {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  overflow-wrap: normal;
+  font-size: 0.9rem;
+}
+
+.explorer-row .item-type,
+.explorer-row .item-recent {
+  display: inline-flex;
+  flex: 0 0 auto;
+  margin-top: 0;
+  align-items: center;
+  justify-content: center;
+}
+
+.explorer-row .item-type {
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: var(--tint-explorer);
+  background: color-mix(in srgb, var(--tint-explorer) 16%, transparent);
+  border: 1px solid color-mix(in srgb, var(--tint-explorer) 35%, transparent);
+}
+
+.explorer-row .item-type-view {
+  color: var(--tint-builder);
+  background: color-mix(in srgb, var(--tint-builder) 16%, transparent);
+  border-color: color-mix(in srgb, var(--tint-builder) 35%, transparent);
+}
+
+.explorer-row .item-type-procedure {
+  color: var(--tint-results);
+  background: color-mix(in srgb, var(--tint-results) 16%, transparent);
+  border-color: color-mix(in srgb, var(--tint-results) 35%, transparent);
+}
+
+.explorer-row .item-recent {
+  padding: 1px 6px;
+  border-radius: 999px;
+  font-size: 0.68rem;
+  color: var(--muted);
+  border: 1px solid color-mix(in srgb, var(--line-strong) 70%, transparent);
+}
+
+.explorer-row .pin-toggle {
+  flex: 0 0 auto;
+  margin-left: 0;
+  opacity: 0.35;
+}
+
+.explorer-row .pin-toggle.pinned {
+  color: var(--warning);
+  opacity: 1;
+}
+
 .table-item:hover .pin-toggle,
 .procedure-item:hover .pin-toggle,
 .table-item.active .pin-toggle,
@@ -1375,10 +1456,20 @@ html[data-ambient-motion='enabled'] .shell-orbit-b {
 }
 
 .builder-panel {
-  border: 1px solid color-mix(in srgb, var(--line) 82%, transparent);
+  border: 1px solid color-mix(in srgb, var(--line) 50%, transparent);
   border-radius: var(--radius-lg);
-  background: linear-gradient(180deg, color-mix(in srgb, var(--surface-soft) 66%, transparent), color-mix(in srgb, var(--surface-strong) 74%, transparent));
+  background: color-mix(in srgb, var(--surface-soft) 32%, transparent);
   padding: 14px;
+}
+
+/* A panel inside a panel (Template Context, Safe Templates and Object Analysis inside the
+   Operation panel) is a plain section with a divider, not a third nested box. */
+.builder-panel .builder-panel {
+  border: 0;
+  border-top: 1px solid color-mix(in srgb, var(--line) 60%, transparent);
+  border-radius: 0;
+  background: transparent;
+  padding: 12px 0 0;
 }
 
 .builder-panel-operation {
@@ -1820,7 +1911,11 @@ html[data-ambient-motion='enabled'] .shell-orbit-b {
 }
 
 .results-card[data-results-state="empty"] {
-  min-height: clamp(180px, 22vh, 260px);
+  min-height: 0;
+}
+
+.results-card[data-results-state="empty"] .results-panel {
+  min-height: 96px;
 }
 
 .results-card[data-results-state="summary"] {
@@ -2026,6 +2121,70 @@ html[data-ambient-motion='enabled'] .shell-orbit-b {
   color: var(--muted);
   font-size: 0.78rem;
   line-height: 1.4;
+}
+
+/* ─── Toolbar menus ─────────────────────────────────────────────────────── */
+.toolbar-menu {
+  position: relative;
+  display: inline-flex;
+}
+
+.toolbar-menu-panel {
+  display: grid;
+  gap: 6px;
+  min-width: 210px;
+  padding: 8px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-md);
+  background: var(--surface-raised);
+  box-shadow: var(--shadow);
+  backdrop-filter: blur(18px) saturate(160%);
+  -webkit-backdrop-filter: blur(18px) saturate(160%);
+}
+
+.toolbar-menu-panel.hidden {
+  display: none;
+}
+
+/* Lifted to <body> while open (see openToolbarMenu) so cards that clip overflow cannot hide it. */
+.toolbar-menu-panel.toolbar-menu-floating {
+  position: fixed;
+  z-index: 1150;
+}
+
+.toolbar-menu-panel > .ghost-btn {
+  width: 100%;
+  justify-content: flex-start;
+  text-decoration: none;
+}
+
+.toolbar-menu-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding-top: 4px;
+  border-top: 1px solid color-mix(in srgb, var(--line) 70%, transparent);
+}
+
+.toolbar-menu-row span {
+  flex: 1 1 auto;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.toolbar-group {
+  display: inline-flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.result-paging .result-scroll-btn {
+  min-width: 36px;
+}
+
+.results-toolbar {
+  align-items: center;
 }
 
 .results-truncated-banner {
@@ -2251,16 +2410,66 @@ html[data-ambient-motion='enabled'] .shell-orbit-b {
   font-size: 0.86rem;
 }
 
-.env-settings-layout {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(300px, 1fr));
-  gap: 16px;
+/* Appearance and the .env groups scroll together as one body under the dialog header. */
+.env-settings-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
   margin-top: 14px;
   overflow-y: auto;
   overflow-x: hidden;
   padding: 2px 6px 10px 2px;
-  min-height: 0;
   scrollbar-gutter: stable;
+}
+
+.env-settings-layout {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(300px, 1fr));
+  gap: 16px;
+  margin-top: 16px;
+  min-height: 0;
+}
+
+.appearance-settings {
+  display: grid;
+  gap: 12px;
+}
+
+.appearance-settings > p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.86rem;
+}
+
+.appearance-profile-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 10px 14px;
+}
+
+.appearance-profile-row .field {
+  flex: 1 1 240px;
+  max-width: 360px;
+}
+
+.appearance-subsection {
+  display: grid;
+  gap: 8px;
+  padding-top: 10px;
+  border-top: 1px solid color-mix(in srgb, var(--line) 60%, transparent);
+}
+
+.appearance-subsection h4 {
+  margin: 0;
+  font-size: 0.9rem;
+}
+
+.appearance-settings .theme-list {
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+}
+
+.appearance-subsection .button-colors-title {
+  margin-top: 0;
 }
 
 .env-settings-group {
@@ -3719,6 +3928,15 @@ tr.result-row-deleted .row-actions-cell {
     flex: 0 0 auto;
   }
 
+  .section-title-row.tight {
+    flex-direction: row;
+    align-items: center;
+  }
+
+  .section-title-row.tight .button-row.wrap {
+    width: auto;
+  }
+
   .hero-actions,
   .section-title-row .button-row.wrap,
   .modal-actions,
@@ -3726,12 +3944,14 @@ tr.result-row-deleted .row-actions-cell {
     width: 100%;
   }
 
+  /* Natural width, not full-width bars: stretched action buttons read as form fields. Phone
+     widths (540px and below) still give each button its own full-width row. */
   .hero-actions > *,
   .section-title-row .button-row.wrap > *,
   .modal-actions > *,
   .builder-actions > * {
-    flex: 1 1 100%;
-    width: 100%;
+    flex: 0 1 auto;
+    width: auto;
   }
 
   .hero-action-group {
@@ -3739,7 +3959,7 @@ tr.result-row-deleted .row-actions-cell {
   }
 
   .hero-action-group > * {
-    flex: 1 1 180px;
+    flex: 0 1 auto;
   }
 
   .results-table th,
@@ -3950,7 +4170,7 @@ tr.result-row-deleted .row-actions-cell {
 
   .hero-actions > *,
   .section-title-row .button-row.wrap > * {
-    flex: 1 1 calc(50% - 10px);
+    flex: 0 1 auto;
     justify-content: center;
   }
 
@@ -4019,6 +4239,11 @@ tr.result-row-deleted .row-actions-cell {
   flex: 0 0 auto;
 }
 
+.app-shell[data-layout-mode="stacked"] .section-title-row.tight {
+  flex-direction: row;
+  align-items: center;
+}
+
 .app-shell[data-layout-mode="stacked"] .section-title-row > :first-child,
 .app-shell[data-layout-mode="stacked"] .section-title-row > :last-child,
 .app-shell[data-layout-mode="stacked"] .hero-actions,
@@ -4045,7 +4270,7 @@ tr.result-row-deleted .row-actions-cell {
 .app-shell[data-layout-mode="stacked"] .hero-actions > *,
 .app-shell[data-layout-mode="stacked"] .modal-actions > *,
 .app-shell[data-layout-mode="stacked"] .builder-actions > * {
-  flex: 1 1 calc(50% - 8px);
+  flex: 0 1 auto;
 }
 
 .app-shell[data-layout-mode="stacked"] .hero-action-group {

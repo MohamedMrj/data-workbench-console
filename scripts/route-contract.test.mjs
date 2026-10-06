@@ -300,6 +300,23 @@ try {
   assert.equal(savedWindowsDelete.response.status, 200);
   assert.equal(savedWindowsDelete.payload.success, true);
 
+  // Appearance profiles round trip.
+  const lookCreate = await request('/api/appearance', {
+    method: 'POST',
+    body: { profile: { name: 'Contract look', theme: 'harbor', buttonColors: { results: '#123456' } }, makeDefault: true }
+  });
+  assert.equal(lookCreate.response.status, 200);
+  assert.equal(lookCreate.payload.defaultProfileId, lookCreate.payload.profile.id);
+  const lookList = await request('/api/appearance');
+  assert.equal(lookList.payload.defaultProfileId, lookCreate.payload.profile.id);
+  const lookBadTheme = await request('/api/appearance', { method: 'POST', body: { profile: { name: 'x', theme: 'neon' } } });
+  assert.equal(lookBadTheme.response.status, 400);
+  const lookEmpty = await request('/api/appearance', { method: 'POST', body: {} });
+  assert.equal(lookEmpty.response.status, 400);
+  const lookDelete = await request('/api/appearance', { method: 'DELETE', body: { id: lookCreate.payload.profile.id } });
+  assert.equal(lookDelete.response.status, 200);
+  assert.equal(lookDelete.payload.defaultProfileId, '');
+
   // Saved query library round trip.
   const queryCreate = await request('/api/saved-queries', {
     method: 'POST',
