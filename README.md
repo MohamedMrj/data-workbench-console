@@ -911,6 +911,21 @@ Theme behavior:
 - dark themes and the light paper theme have separate visual tuning
 - results cell contrast is elevated for dark themes
 
+Liquid Glass buttons:
+
+- buttons are tinted glass: a translucent tinted body, a highlight along the top edge and a
+  tinted shadow; primary buttons are a solid tinted gradient under the same glass highlight
+- each section has its own tint (connection panel, workspace header, Object Explorer, Query
+  Builder, SQL Editor and procedures, Results, Themes and history, dialogs); change any of them
+  under `Button colours` in the Themes panel, or `Reset` to the defaults. The choice is saved in
+  your browser only
+- "do this next" glow: the button you are expected to click pulses for about five seconds, then
+  stops (or stops as soon as you click it): `Load catalog` after a successful connection test,
+  `Run query` after the builder or a template writes SQL, `Save changes` after the first edit in
+  the results grid, `Exit edit mode` after a save, and the confirm button once the typed phrase
+  matches. With reduced motion turned on in the operating system, the button gets a steady ring
+  instead of pulsing
+
 ### Recent SQL History
 
 The app stores recent SQL locally with:

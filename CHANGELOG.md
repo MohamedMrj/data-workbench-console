@@ -5,6 +5,64 @@ All notable Data Workbench Console changes are tracked here.
 The in-app version is read from `package.json` and exposed through `/api/version`
 together with the current git commit and build information.
 
+## Unreleased
+
+Liquid Glass buttons with per-section colours, a glow on the next step, and layout fixes for
+the connection panel and Object Explorer.
+
+### Added
+
+- **Liquid Glass buttons.** Buttons are now tinted glass — a translucent tinted body, a
+  highlight along the top edge, a soft inner shade and a tinted shadow — and primary buttons are
+  a solid tinted gradient under the same glass highlight. Each section has its own tint
+  (connection panel, workspace header, Object Explorer, Query Builder, SQL Editor and procedures,
+  Results, Themes and history, dialogs), tuned separately for the light `paper` theme. Sizes,
+  padding and borders are unchanged, so nothing shifts on hover.
+- **Button colours** in the Themes panel: one colour picker per section plus `Reset`, saved in
+  the browser (`dataWorkbenchButtonColorsV1`).
+- **"Do this next" glow.** The button you are expected to click next pulses for about five
+  seconds, or until you click it: `Load catalog` after a successful connection test, `Run query`
+  after the builder or a template writes SQL, `Save changes` after the first edit in the results
+  grid, `Exit edit mode` after a save (staying in edit mode was easy to miss), and the confirm
+  button once the typed phrase matches. Nothing glows while the workspace is being restored at
+  start-up, and reduced-motion settings get a steady ring instead of a pulse.
+
+### Fixed
+
+- Fixed a tall empty band under card headings when a card is narrow or the layout is stacked
+  (seen under the Object Explorer heading at 1200px). Those layouts stack title rows as columns,
+  and the generic `flex: 1 1 260px` title basis then became a 260px height. 1.4.29 fixed only the
+  connection panel's copy of this; the 760px container rule and the stacked-layout rule now reset
+  the basis for every card.
+- Fixed the environment badge (`DEV`/`TEST`/`PROD`) stretching across the whole saved-profile
+  card: the list's full-width span style also applied to the badge.
+
+- Fixed the connection panel scrolling away and leaving an empty column once the page was
+  scrolled. `body` had `overflow-x: hidden`, which silently makes `body` a scroll container; the
+  sticky rail then pinned itself to `body`, which never scrolls (the page scrolls on `html`). It
+  now uses `overflow-x: clip`, which clips the same way without creating a scroll container.
+- Fixed the saved-profiles list being a short scroller inside the already-scrolling connection
+  panel. It now shows every profile and the panel's own scrollbar handles the rest; the stacked
+  and very narrow layouts keep their caps.
+- Fixed an empty band under the Object Explorer list when the studio beside it is taller (Query
+  Builder and SQL Editor side by side). The explorer card is stretched to the studio's height but
+  the list stopped at its viewport-based cap. Beside the studio, that cap is now the list's
+  minimum and the list grows to fill the card; `contain: size` keeps a long catalog from making
+  the row taller.
+
+### Verification
+
+- Reproduced in Edge with six saved profiles and a 40-object catalog: the rail now stays pinned
+  at the bottom of the page, the saved list shows all profiles, and with the studio in wide mode
+  the explorer list fills its card (only the card's padding remains below it). `ui-smoke.mjs`
+  and `responsive-audit.mjs` pass with no new findings.
+- `ui-smoke.mjs` covers the button colour pickers (set, saved, reset), nothing glowing at
+  start-up, and each glow trigger (Load catalog, Run query, Save changes, Exit edit mode, the
+  confirm button).
+- `responsive-audit.mjs` now flags any section title row with more than 32px of empty space
+  inside it, not only the connection panel's; confirmed it catches the explorer heading without
+  the fix.
+
 ## 1.5.4 - 2026-09-30
 
 Fixed the self-update poller giving up on updates that were still legitimately running.

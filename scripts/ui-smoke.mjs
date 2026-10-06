@@ -1067,6 +1067,9 @@ if (!legacyWindow.document.getElementById('tableList').textContent.includes('dbo
 }
 
 const sqlWindow = await createWindow('http://127.0.0.1:3100/');
+if (sqlWindow.document.querySelector('.glow-next')) {
+  throw new Error('Nothing should glow while the app is still restoring the workspace at start-up.');
+}
 if (sqlWindow.document.querySelectorAll('#themeList .theme-chip').length !== 6) {
   throw new Error('Theme chips did not render on the SQL page.');
 }
@@ -1399,6 +1402,31 @@ if (!sqlWindow.document.getElementById('testConnectionResult').textContent.inclu
 if (!sqlWindow.document.getElementById('testConnectionResult').textContent.includes('meta_store')) {
   throw new Error('Connection test did not render the tested database details.');
 }
+// "Do this next" glow: a successful connection test points at Load catalog.
+if (!sqlWindow.document.getElementById('loadTablesBtn').classList.contains('glow-next')) {
+  throw new Error('A successful connection test should make Load catalog glow as the next step.');
+}
+{
+  // Liquid Glass button colours: one picker per section, applied as --tint-* on <html>,
+  // saved in the browser, and cleared by Reset.
+  const colorInputs = sqlWindow.document.querySelectorAll('#buttonColorList [data-tint-section]');
+  if (colorInputs.length !== 8) {
+    throw new Error(`Expected one button colour picker per section. Found ${colorInputs.length}.`);
+  }
+  const explorerColor = sqlWindow.document.querySelector('#buttonColorList [data-tint-section="explorer"]');
+  explorerColor.value = '#ff3366';
+  explorerColor.dispatchEvent(new sqlWindow.Event('input', { bubbles: true }));
+  if (sqlWindow.document.documentElement.style.getPropertyValue('--tint-explorer') !== '#ff3366') {
+    throw new Error('Picking a section colour should set its --tint-* property.');
+  }
+  if (!JSON.parse(sqlWindow.localStorage.getItem('dataWorkbenchButtonColorsV1') || '{}').explorer) {
+    throw new Error('Picked button colours should be saved in the browser.');
+  }
+  sqlWindow.document.getElementById('resetButtonColorsBtn').click();
+  if (sqlWindow.document.documentElement.style.getPropertyValue('--tint-explorer')) {
+    throw new Error('Reset should clear the custom button colours.');
+  }
+}
 {
   const activeSource = sqlWindow.document.getElementById('activeSource');
   if (activeSource.dataset.state !== 'profile' || !activeSource.querySelector('.active-source-profile')) {
@@ -1457,6 +1485,11 @@ if (sqlWindow.document.querySelector('[data-pin-object="dbo.Alerts"]')?.hasAttri
 }
 sqlWindow.document.querySelector('[data-object="dbo.Alerts"]').click();
 await flush();
+// Picking a table builds its SELECT, so Run query glows as the next step; clicking it stops
+// the glow.
+if (!sqlWindow.document.getElementById('runQueryBtn').classList.contains('glow-next')) {
+  throw new Error('Building SQL from a selected table should make Run query glow as the next step.');
+}
 
 sqlWindow.document.getElementById('advancedSourceObjectSelect').value = 'dbo.AlertView';
 sqlWindow.document.getElementById('advancedSourceObjectSelect').dispatchEvent(new sqlWindow.Event('change', { bubbles: true }));
@@ -1914,6 +1947,9 @@ heightenedConfirmInput.value = 'EXECUTE UPDATE';
 heightenedConfirmInput.dispatchEvent(new sqlWindow.Event('input', { bubbles: true }));
 if (sqlWindow.document.getElementById('confirmModalBtn').disabled) {
   throw new Error('Continue stayed disabled after typing the heightened write phrase.');
+}
+if (!sqlWindow.document.getElementById('confirmModalBtn').classList.contains('glow-next')) {
+  throw new Error('Typing the matching phrase should make the confirm button glow as the next step.');
 }
 sqlWindow.document.getElementById('confirmModalBtn').click();
 await flush();
@@ -2611,6 +2647,9 @@ if (autoHideWindow.localStorage.getItem('dataWorkbenchSidePanelVisibilityV1')) {
   singleEditInput.focus();
   singleEditInput.value = 'INLINE_EDIT_TEST';
   singleEditInput.dispatchEvent(new editorWindow.Event('input', { bubbles: true }));
+  if (!editorWindow.document.getElementById('saveResultEditsBtn').classList.contains('glow-next')) {
+    throw new Error('The first staged edit should make Save changes glow as the next step.');
+  }
   editorWindow.document.getElementById('saveResultEditsBtn').click();
   await flush();
   if (editorWindow.document.getElementById('confirmModal').classList.contains('hidden')) {
@@ -2630,6 +2669,9 @@ if (autoHideWindow.localStorage.getItem('dataWorkbenchSidePanelVisibilityV1')) {
   }
   if (!editorWindow.document.querySelector('.results-table') || editorWindow.document.getElementById('toggleEditResultsBtn').textContent !== 'Exit edit mode') {
     throw new Error('Saving a single cell edit should refresh the grid in place and stay in edit mode.');
+  }
+  if (!editorWindow.document.getElementById('toggleEditResultsBtn').classList.contains('glow-next')) {
+    throw new Error('After a save, Exit edit mode should glow so staying in edit mode is not missed.');
   }
 
   // --- Delete row 3 (AlertId=3); this rebuilds the table, so later steps

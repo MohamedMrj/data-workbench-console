@@ -443,6 +443,136 @@ html[data-tooltips="disabled"] .app-tooltip {
     0 12px 26px color-mix(in srgb, black 18%, transparent);
 }
 
+/* ─── Liquid Glass buttons ────────────────────────────────────────────────
+   Every section card sets --btn-tint from its own --tint-<section> token, and the buttons inside
+   it are tinted glass: a translucent tinted body, a specular highlight along the top edge, a
+   soft inner shade along the bottom and a tinted drop shadow. The tokens are defaults; the
+   "Button colours" picker overrides them as inline properties on <html>, which beat these rules.
+   Sizes, padding and border widths are unchanged, so hover never shifts layout. */
+:root {
+  --tint-connection: var(--accent);
+  --tint-header: var(--accent);
+  --tint-explorer: #4f8cff;
+  --tint-builder: #9b6bff;
+  --tint-editor: var(--accent);
+  --tint-results: #f2a541;
+  --tint-activity: #ff6fa8;
+  --tint-dialogs: var(--accent);
+  --glass-highlight: rgba(255, 255, 255, 0.26);
+  --glass-edge: rgba(255, 255, 255, 0.18);
+  --glass-shade: rgba(0, 0, 0, 0.2);
+  --glass-body: color-mix(in srgb, var(--surface-soft) 52%, transparent);
+}
+
+:root[data-theme='paper'] {
+  --glass-highlight: rgba(255, 255, 255, 0.9);
+  --glass-edge: rgba(255, 255, 255, 0.75);
+  --glass-shade: rgba(60, 73, 85, 0.1);
+  --glass-body: rgba(255, 255, 255, 0.55);
+}
+
+.control-rail { --btn-tint: var(--tint-connection); }
+.hero-panel { --btn-tint: var(--tint-header); }
+.explorer-panel { --btn-tint: var(--tint-explorer); }
+.builder-card { --btn-tint: var(--tint-builder); }
+.editor-card,
+.studio-panel-procedure { --btn-tint: var(--tint-editor); }
+.results-card { --btn-tint: var(--tint-results); }
+.activity-panel { --btn-tint: var(--tint-activity); }
+.modal-card { --btn-tint: var(--tint-dialogs); }
+
+.secondary-btn,
+.ghost-btn,
+.segment-btn,
+.icon-btn,
+.save-conn-btn {
+  --glass-tint: var(--btn-tint, var(--accent));
+  border: 1px solid color-mix(in srgb, var(--glass-tint) 40%, var(--glass-edge));
+  background:
+    radial-gradient(120% 75% at 50% -25%, var(--glass-highlight), transparent 60%),
+    linear-gradient(180deg, color-mix(in srgb, var(--glass-tint) 22%, transparent), color-mix(in srgb, var(--glass-tint) 7%, transparent));
+  background-color: var(--glass-body);
+  color: color-mix(in srgb, var(--glass-tint) 26%, var(--text));
+  box-shadow:
+    inset 0 1px 0 var(--glass-highlight),
+    inset 0 -1px 0 var(--glass-shade),
+    0 6px 16px color-mix(in srgb, var(--glass-tint) 14%, transparent);
+  backdrop-filter: blur(12px) saturate(170%);
+  -webkit-backdrop-filter: blur(12px) saturate(170%);
+}
+
+.secondary-btn:hover:not(:disabled),
+.ghost-btn:hover:not(:disabled),
+.segment-btn:hover:not(:disabled),
+.icon-btn:hover:not(:disabled),
+.save-conn-btn:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--glass-tint) 70%, var(--glass-edge));
+  background:
+    radial-gradient(120% 75% at 50% -25%, var(--glass-highlight), transparent 62%),
+    linear-gradient(180deg, color-mix(in srgb, var(--glass-tint) 34%, transparent), color-mix(in srgb, var(--glass-tint) 14%, transparent));
+  background-color: var(--glass-body);
+  box-shadow:
+    inset 0 1px 0 var(--glass-highlight),
+    inset 0 -1px 0 var(--glass-shade),
+    0 10px 24px color-mix(in srgb, var(--glass-tint) 26%, transparent);
+}
+
+.primary-btn {
+  --glass-tint: var(--btn-tint, var(--accent));
+  border: 1px solid color-mix(in srgb, var(--glass-tint) 55%, rgba(255, 255, 255, 0.45));
+  background:
+    radial-gradient(120% 80% at 50% -30%, rgba(255, 255, 255, 0.42), transparent 58%),
+    linear-gradient(135deg, var(--glass-tint), color-mix(in srgb, var(--accent-2) 70%, var(--glass-tint)));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.5),
+    inset 0 -2px 6px rgba(0, 0, 0, 0.14),
+    0 12px 28px color-mix(in srgb, var(--glass-tint) 30%, transparent);
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.18);
+}
+
+.primary-btn:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--glass-tint) 40%, rgba(255, 255, 255, 0.7));
+  background:
+    radial-gradient(120% 80% at 50% -30%, rgba(255, 255, 255, 0.55), transparent 60%),
+    linear-gradient(135deg, var(--glass-tint), color-mix(in srgb, var(--accent-2) 70%, var(--glass-tint)));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.6),
+    inset 0 -2px 6px rgba(0, 0, 0, 0.14),
+    0 16px 34px color-mix(in srgb, var(--glass-tint) 40%, transparent);
+}
+
+.danger-segment { --btn-tint: var(--danger); }
+
+/* "Do this next": the button the user is expected to click pulses for five seconds (four
+   1.25s pulses), then settles. The class is removed by glowNextStep() in console-core.js. */
+.glow-next {
+  animation: glow-next 1.25s ease-in-out 4;
+}
+
+@keyframes glow-next {
+  0%,
+  100% {
+    box-shadow:
+      inset 0 1px 0 var(--glass-highlight),
+      0 0 0 0 color-mix(in srgb, var(--glass-tint, var(--accent)) 0%, transparent);
+  }
+  50% {
+    box-shadow:
+      inset 0 1px 0 var(--glass-highlight),
+      0 0 0 4px color-mix(in srgb, var(--glass-tint, var(--accent)) 32%, transparent),
+      0 0 26px 6px color-mix(in srgb, var(--glass-tint, var(--accent)) 55%, transparent);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .glow-next {
+    animation: none;
+    box-shadow:
+      inset 0 1px 0 var(--glass-highlight),
+      0 0 0 3px color-mix(in srgb, var(--glass-tint, var(--accent)) 45%, transparent);
+  }
+}
+
 .segment-btn.active,
 .theme-chip.active,
 .table-item.active,
@@ -453,6 +583,18 @@ html[data-tooltips="disabled"] .app-tooltip {
   box-shadow:
     inset 0 0 0 1px color-mix(in srgb, var(--accent) 34%, transparent),
     0 10px 22px color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
+.segment-btn.active {
+  border-color: color-mix(in srgb, var(--glass-tint) 80%, var(--glass-edge));
+  background:
+    radial-gradient(120% 75% at 50% -25%, var(--glass-highlight), transparent 60%),
+    linear-gradient(180deg, color-mix(in srgb, var(--glass-tint) 42%, transparent), color-mix(in srgb, var(--glass-tint) 20%, transparent));
+  background-color: var(--glass-body);
+  box-shadow:
+    inset 0 1px 0 var(--glass-highlight),
+    inset 0 0 0 1px color-mix(in srgb, var(--glass-tint) 34%, transparent),
+    0 10px 22px color-mix(in srgb, var(--glass-tint) 22%, transparent);
 }
 
 .field,
@@ -610,20 +752,15 @@ select {
   padding: 0 14px;
   height: 42px;
   border-radius: var(--radius-md);
-  background: var(--control-bg);
-  border: 1px solid var(--control-border);
-  color: var(--text);
   font-weight: 600;
   white-space: nowrap;
   transition: all 0.2s ease;
   cursor: pointer;
 }
 
+/* Colours come from the Liquid Glass rules above; only the lift is specific to this button. */
 .save-conn-btn:hover {
-  border-color: var(--control-border-hover);
-  background: var(--control-bg-hover);
   transform: translateY(-2px);
-  box-shadow: 0 8px 20px color-mix(in srgb, black 16%, transparent);
 }
 
 .save-conn-btn:focus-visible {
@@ -893,6 +1030,46 @@ select {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
+}
+
+.button-colors-title {
+  margin-top: 16px;
+}
+
+.button-colors-title h3 {
+  font-size: 0.95rem;
+}
+
+.button-color-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 6px 10px;
+  margin-top: 8px;
+}
+
+.button-color-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+
+.button-color-item.customized span {
+  color: var(--text);
+}
+
+/* A visible border and 30px+ height keep the swatch a clear, clickable control. */
+.button-color-item input[type='color'] {
+  flex: 0 0 auto;
+  width: 40px;
+  height: 32px;
+  padding: 2px;
+  border: 1px solid var(--control-border);
+  border-radius: 10px;
+  background: var(--glass-body);
+  cursor: pointer;
 }
 
 .theme-chip {

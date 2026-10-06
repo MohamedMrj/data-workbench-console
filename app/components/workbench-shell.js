@@ -685,6 +685,11 @@ export default function WorkbenchShell({ pageMode = 'sql' }) {
                   <span className="tiny-note">Saved locally</span>
                 </div>
                 <div id="themeList" className="theme-list" />
+                <div className="section-title-row tight button-colors-title">
+                  <h3>Button colours</h3>
+                  <button id="resetButtonColorsBtn" className="text-btn" type="button">Reset</button>
+                </div>
+                <div id="buttonColorList" className="button-color-list" />
               </section>
 
               <section className="panel-section grow-section">

@@ -438,6 +438,37 @@ async function inspectViewport(page) {
       }
     }
 
+    // A section title row that is much taller than its own content has empty space inside it:
+    // a column-direction flex row turning the title's 260px flex-basis into height did this to
+    // the connection rail (1.4.29) and later to the explorer card.
+    document.querySelectorAll('.section-title-row').forEach((row) => {
+      const rect = row.getBoundingClientRect();
+      if (!rect.height || getComputedStyle(row).display === 'none') return;
+      const style = getComputedStyle(row);
+      // Measure the real content (each child's own children, e.g. eyebrow + heading), not the
+      // children themselves: the bug inflates the child box, so the child always "fills" the row.
+      const visible = (element) => getComputedStyle(element).display !== 'none';
+      const boxes = [...row.children]
+        .filter(visible)
+        .flatMap((child) => {
+          const inner = [...child.children].filter(visible);
+          return inner.length ? inner : [child];
+        })
+        .map((element) => element.getBoundingClientRect())
+        .filter((box) => box.height > 0);
+      if (!boxes.length) return;
+      const content = Math.max(...boxes.map((box) => box.bottom)) - Math.min(...boxes.map((box) => box.top));
+      const slack = rect.height - content - (Number.parseFloat(style.paddingTop) || 0) - (Number.parseFloat(style.paddingBottom) || 0);
+      if (slack > 32) {
+        problems.push({
+          type: 'title-row-empty-space',
+          text: row.textContent.trim().slice(0, 60),
+          height: Math.round(rect.height),
+          content: Math.round(content)
+        });
+      }
+    });
+
     // In "wide" workspace mode the themes/history (activity) panel must sit
     // beside the studio, not wrap into a full-width row below it. This guards
     // the regression where a container-width fallback overrode the JS-driven

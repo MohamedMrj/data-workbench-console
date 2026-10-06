@@ -17,6 +17,18 @@ window.createConsoleApp = function createConsoleApp() {
   const RECENT_OBJECTS_KEY = 'dataWorkbenchRecentObjectsV1';
   const SCRATCHPADS_KEY = 'dataWorkbenchScratchpadsV1';
   const SCRATCHPADS_IMPORTED_KEY = 'dataWorkbenchScratchpadsImportedV1';
+  const BUTTON_COLORS_KEY = 'dataWorkbenchButtonColorsV1';
+  // One Liquid Glass tint per section card; the CSS defaults live in theme.css (--tint-*).
+  const BUTTON_TINT_SECTIONS = [
+    { id: 'connection', label: 'Connection panel' },
+    { id: 'header', label: 'Workspace header' },
+    { id: 'explorer', label: 'Object Explorer' },
+    { id: 'builder', label: 'Query Builder' },
+    { id: 'editor', label: 'SQL Editor and procedures' },
+    { id: 'results', label: 'Results' },
+    { id: 'activity', label: 'Themes and history' },
+    { id: 'dialogs', label: 'Dialogs' }
+  ];
   const SUPPORT_EMAIL = 'mohamed.al-mefrej@hotmail.com';
   const RESULT_TABS_MAX = 5;
   const LIFECYCLE_HEARTBEAT_MS = 10_000;
@@ -277,6 +289,8 @@ window.createConsoleApp = function createConsoleApp() {
     activeEditorTabId: '',
     savedQueries: [],
     savedQueriesError: '',
+    booted: false,
+    glowTimers: {},
     pendingAction: null,
     lastFocusedElement: null,
     connectionTest: null,
@@ -5451,6 +5465,87 @@ window.createConsoleApp = function createConsoleApp() {
       : 'Connect to a source and load a catalog to build, inspect, and run SQL with stronger guardrails.';
   }
 
+  // ─── Button colours (Liquid Glass tints) ──────────────────────────────────
+  // Per-viewer preference, so localStorage is the right home. Overrides are inline custom
+  // properties on <html>, which beat the --tint-* defaults in theme.css.
+
+  function readButtonColors() {
+    try {
+      const parsed = JSON.parse(safeGet(BUTTON_COLORS_KEY) || '{}');
+      return parsed && typeof parsed === 'object' ? parsed : {};
+    } catch {
+      return {};
+    }
+  }
+
+  function applyButtonColors() {
+    const colors = readButtonColors();
+    BUTTON_TINT_SECTIONS.forEach((section) => {
+      const value = String(colors[section.id] || '');
+      if (/^#[0-9a-f]{6}$/i.test(value)) {
+        document.documentElement.style.setProperty(`--tint-${section.id}`, value);
+      } else {
+        document.documentElement.style.removeProperty(`--tint-${section.id}`);
+      }
+    });
+  }
+
+  // <input type="color"> only accepts #rrggbb, but a default token can resolve to rgb().
+  function cssColorToHex(value) {
+    const text = String(value || '').trim();
+    if (/^#[0-9a-f]{6}$/i.test(text)) return text.toLowerCase();
+    if (/^#[0-9a-f]{3}$/i.test(text)) return `#${text.slice(1).split('').map((char) => char + char).join('')}`.toLowerCase();
+    const rgb = text.match(/rgba?\(\s*(\d+)[\s,]+(\d+)[\s,]+(\d+)/i);
+    if (rgb) return `#${rgb.slice(1, 4).map((part) => Number(part).toString(16).padStart(2, '0')).join('')}`;
+    return '#22b8a8';
+  }
+
+  function renderButtonColors() {
+    const list = $('buttonColorList');
+    if (!list) return;
+    const styles = window.getComputedStyle(document.documentElement);
+    const saved = readButtonColors();
+    list.innerHTML = BUTTON_TINT_SECTIONS.map((section) => {
+      const value = cssColorToHex(styles.getPropertyValue(`--tint-${section.id}`));
+      return `<label class="button-color-item${saved[section.id] ? ' customized' : ''}"><input type="color" value="${esc(value)}" data-tint-section="${esc(section.id)}" aria-label="${esc(section.label)} button colour" /><span>${esc(section.label)}</span></label>`;
+    }).join('');
+    list.querySelectorAll('[data-tint-section]').forEach((input) => {
+      input.oninput = () => {
+        const colors = { ...readButtonColors(), [input.dataset.tintSection]: input.value };
+        safeSet(BUTTON_COLORS_KEY, JSON.stringify(colors));
+        applyButtonColors();
+        input.closest('.button-color-item')?.classList.add('customized');
+      };
+    });
+  }
+
+  function resetButtonColors() {
+    safeSet(BUTTON_COLORS_KEY, '{}');
+    applyButtonColors();
+    renderButtonColors();
+    setStatus('success', 'Button colours reset to the defaults.');
+  }
+
+  // "Do this next": pulse the button the user is expected to click for a few seconds, so an
+  // easy-to-miss next step (Run query after building SQL, Exit edit mode after saving) stands
+  // out. Clicking it, or the time running out, ends the glow. Nothing glows while the app is
+  // still restoring the workspace at start-up.
+  function glowNextStep(id, durationMs = 5000) {
+    const element = $(id);
+    if (!element || !state.booted || element.disabled || element.classList.contains('hidden')) return;
+    clearTimeout(state.glowTimers[id]);
+    element.classList.remove('glow-next');
+    // Re-adding the class in the same frame would not restart the animation.
+    void element.offsetWidth;
+    element.classList.add('glow-next');
+    const stop = () => {
+      clearTimeout(state.glowTimers[id]);
+      element.classList.remove('glow-next');
+    };
+    state.glowTimers[id] = setTimeout(stop, durationMs);
+    element.addEventListener('click', stop, { once: true });
+  }
+
   function applyTheme(themeId) {
     state.currentTheme = THEMES.includes(themeId) ? themeId : 'midnight';
     document.documentElement.setAttribute('data-theme', state.currentTheme);
@@ -5520,6 +5615,7 @@ window.createConsoleApp = function createConsoleApp() {
     const readyFilters = filters.filter((item) => item.column && item.operator && ((item.operator === 'IS NULL' || item.operator === 'IS NOT NULL') || String(item.value ?? '').trim() !== ''));
     const query = state.queryMode === 'select' ? buildSelect() : state.queryMode === 'insert' ? buildInsert() : state.queryMode === 'update' ? buildUpdate() : buildDelete();
     setQuery(query);
+    glowNextStep('runQueryBtn');
     if (state.queryMode === 'insert' && filters.length) {
       setStatus('error', 'Filters are not used in Insert mode.');
       return;
@@ -6991,8 +7087,13 @@ window.createConsoleApp = function createConsoleApp() {
 
     const saveButton = $('saveResultEditsBtn');
     const discardButton = $('discardResultEditsBtn');
+    const hadChanges = saveButton ? !saveButton.disabled : false;
     if (saveButton) saveButton.disabled = !summary.total;
     if (discardButton) discardButton.disabled = !summary.total && !(state.results.insertedRows || []).length;
+    // The first staged change is when "Save changes" becomes the next step.
+    if (!hadChanges && summary.total) {
+      glowNextStep('saveResultEditsBtn');
+    }
   }
 
   // Stage or clear one cell's edit without re-rendering the results table —
@@ -7271,6 +7372,8 @@ window.createConsoleApp = function createConsoleApp() {
       renderPendingEditsBar();
       renderNewRows();
       renderResults();
+      // Still in edit mode after a save is easy to miss: point at the way out.
+      glowNextStep('toggleEditResultsBtn');
     } catch (error) {
       setStatus('error', `Saved, but could not refresh the grid: ${error.message}`);
     }
@@ -7650,6 +7753,7 @@ window.createConsoleApp = function createConsoleApp() {
     setWorkspace('sql');
     setQuery(query);
     setStatus('success', message);
+    glowNextStep('runQueryBtn');
   }
 
   function createInsertSelectTemplate() {
@@ -8112,6 +8216,7 @@ window.createConsoleApp = function createConsoleApp() {
       };
       renderConnectionTestResult();
       setStatus('success', payload.message);
+      glowNextStep('loadTablesBtn');
     } catch (error) {
       state.connectionTest = {
         state: 'error',
@@ -8195,7 +8300,9 @@ window.createConsoleApp = function createConsoleApp() {
       secondInput.placeholder = expectedText;
       confirmButton.disabled = true;
       secondInput.oninput = () => {
+        const wasDisabled = confirmButton.disabled;
         confirmButton.disabled = secondInput.value.trim().toUpperCase() !== expectedText.toUpperCase();
+        if (wasDisabled && !confirmButton.disabled) glowNextStep('confirmModalBtn');
       };
     } else {
       secondWrap?.classList.add('hidden');
@@ -8999,6 +9106,7 @@ window.createConsoleApp = function createConsoleApp() {
     $('increaseResultsTextBtn').onclick = () => changeResultsTextSize(0.04);
     $('exportCsvBtn').onclick = exportCsv;
     $('exportJsonBtn').onclick = exportJson;
+    if ($('resetButtonColorsBtn')) $('resetButtonColorsBtn').onclick = resetButtonColors;
     $('compareTabsBtn').onclick = openCompareTabsDialog;
     $('runCompareTabsBtn').onclick = runCompareTabs;
     $('cancelCompareTabsBtn').onclick = closeCompareTabsDialog;
@@ -9332,7 +9440,9 @@ window.createConsoleApp = function createConsoleApp() {
     setupResizablePanels();
     setupSidePanelAutoHide();
     applyTextPreferences();
+    applyButtonColors();
     loadTheme();
+    renderButtonColors();
     await loadConnectionHistory();
     loadSavedQueries().catch(() => {});
     loadQueryHistory();
@@ -9363,6 +9473,7 @@ window.createConsoleApp = function createConsoleApp() {
         .then(() => restoreWorkspaceState('procedure'))
         .catch((error) => setStatus('error', `Could not restore the procedure catalog: ${error.message}`));
     }
+    state.booted = true;
   }
 
   return { init };

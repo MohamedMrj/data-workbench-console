@@ -739,6 +739,7 @@ and nothing is lost on upgrade.
 | localStorage | `dataWorkbenchQueryHistoryV3` | SQL history, 20 items, 14-day retention |
 | localStorage | `dataWorkbenchProcedureHistoryV1` | procedure runs + parameter values |
 | localStorage | `dataWorkbenchThemeV2` | theme id |
+| localStorage | `dataWorkbenchButtonColorsV1` | per-section Liquid Glass tints, applied as `--tint-<section>` on `<html>` |
 | localStorage | `dataWorkbenchEditorTextSizeV1` / `…ResultsTextSizeV1` | font scales |
 | localStorage | `dataWorkbenchPanelLayoutV1` | six panel dimensions |
 | localStorage | `dataWorkbenchSidePanelVisibilityV1` | manual collapse state only |
@@ -817,6 +818,23 @@ Six themes — `midnight` (default), `harbor`, `forge`, `field`, `ink`, `paper` 
 custom-property overrides on `:root[data-theme='…']` in [app/theme.css](app/theme.css).
 Most themes change only accents; `ink` and `paper` also change surfaces, and `paper` flips
 `color-scheme` to light. `--results-cell-text` is elevated for dark themes.
+
+**Liquid Glass buttons.** Each section card sets `--btn-tint` from its own `--tint-<section>`
+token (`connection`, `header`, `explorer`, `builder`, `editor`, `results`, `activity`,
+`dialogs`), and `.ghost-btn`/`.secondary-btn`/`.segment-btn`/`.icon-btn`/`.save-conn-btn`/
+`.primary-btn` render as tinted glass from `--glass-tint` plus `--glass-highlight`/`--glass-edge`/
+`--glass-shade`/`--glass-body`, which `paper` retunes for a light background. The `Button colours`
+picker writes overrides as inline `--tint-*` properties on `<html>` (beating the theme.css
+defaults) and stores them in `dataWorkbenchButtonColorsV1`. The glass changes only colour, light
+and shadow — never size, padding or border width — so the responsive audit's hover-stability and
+affordance checks still hold. Red buttons set `--btn-tint: var(--danger)`.
+
+**Next-step glow.** `glowNextStep(id)` adds `.glow-next` (four 1.25 s pulses) and removes it after
+five seconds or on click. It is a no-op until `state.booted` is set at the end of `init()`, so
+workspace restore (which calls `generateQuery`) never makes anything glow on page load. Current
+triggers: `loadTablesBtn` after a successful test, `runQueryBtn` after `generateQuery` or a
+template, `saveResultEditsBtn` on the first staged edit, `toggleEditResultsBtn` after a save, and
+`confirmModalBtn` when the typed phrase first matches. `prefers-reduced-motion` gets a steady ring.
 
 The ambient background is two large blurred radial fields on `.shell-backdrop::before/::after`
 travelling opposite diagonals, plus two drifting orbs and a faint grid. Controlled by:

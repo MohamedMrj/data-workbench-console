@@ -394,6 +394,7 @@ html[data-ambient-motion='enabled'] .shell-orbit-b {
 
 .exit-workbench-btn,
 .cancel-query-btn {
+  --btn-tint: var(--danger);
   border-color: color-mix(in srgb, var(--danger) 45%, var(--line));
   color: color-mix(in srgb, var(--danger) 82%, var(--text));
 }
@@ -432,10 +433,12 @@ html[data-ambient-motion='enabled'] .shell-orbit-b {
   justify-content: stretch;
 }
 
+/* The rail already scrolls as a whole, so the saved list shows every profile instead of being
+   a short scroller nested inside another scroller. Stacked and very narrow rails cap it below. */
 .control-rail .grow-section .saved-connections {
   flex: none;
   align-self: start;
-  max-height: clamp(220px, 34vh, 520px);
+  max-height: none;
   overflow-y: auto;
   overflow-x: hidden;
   padding-right: 8px;
@@ -679,6 +682,27 @@ html[data-ambient-motion='enabled'] .shell-orbit-b {
 .active-source[data-environment='prod']::before {
   background: var(--danger);
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--danger) 25%, transparent);
+}
+
+/* The saved-profile list makes every span inside a profile a full-width block for its detail
+   line; the badge is a span too and must stay a small inline tag. */
+.saved-item-main .env-badge {
+  display: inline-block;
+  margin-top: 0;
+  font-size: 0.68rem;
+  color: inherit;
+}
+
+.saved-item-main .env-badge-dev {
+  color: var(--muted);
+}
+
+.saved-item-main .env-badge-test {
+  color: var(--warning);
+}
+
+.saved-item-main .env-badge-prod {
+  color: #fff;
 }
 
 .env-badge {
@@ -998,6 +1022,17 @@ html[data-ambient-motion='enabled'] .shell-orbit-b {
   overflow-x: hidden;
   padding: 4px 12px 8px 0;
   scrollbar-gutter: stable;
+}
+
+/* Beside the studio, the explorer card is stretched to the studio's height, so a capped list
+   left an empty band under it. Here the old cap becomes the minimum and the list grows into
+   the card. contain: size stops the list's own content (often thousands of pixels of objects)
+   from making the row taller; the row height still comes from the studio. */
+.app-shell:not([data-layout-mode="stacked"])[data-workspace-mode="wide"] .explorer-list,
+.app-shell:not([data-layout-mode="stacked"])[data-workspace-mode="compressed"] .explorer-list {
+  contain: size;
+  min-height: clamp(360px, 58vh, 760px);
+  max-height: none;
   overscroll-behavior: contain;
 }
 
@@ -3677,6 +3712,13 @@ tr.result-row-deleted .row-actions-cell {
     flex-direction: column;
   }
 
+  /* In a column the generic `flex: 1 1 260px` title basis becomes a 260px height, which left a
+     tall empty band under card headings (1.4.29 fixed only the connection rail's copy). */
+  .section-title-row > :first-child,
+  .section-title-row > :last-child {
+    flex: 0 0 auto;
+  }
+
   .hero-actions,
   .section-title-row .button-row.wrap,
   .modal-actions,
@@ -3886,6 +3928,11 @@ tr.result-row-deleted .row-actions-cell {
     padding-right: 6px;
   }
 
+  .app-shell:not([data-layout-mode="stacked"])[data-workspace-mode="wide"] .explorer-list,
+  .app-shell:not([data-layout-mode="stacked"])[data-workspace-mode="compressed"] .explorer-list {
+    min-height: 320px;
+  }
+
   textarea {
     min-height: clamp(180px, 38vh, 280px);
   }
@@ -3965,6 +4012,11 @@ tr.result-row-deleted .row-actions-cell {
 .app-shell[data-layout-mode="stacked"] .helper-row,
 .app-shell[data-layout-mode="stacked"] .hero-panel {
   flex-direction: column;
+}
+
+.app-shell[data-layout-mode="stacked"] .section-title-row > :first-child,
+.app-shell[data-layout-mode="stacked"] .section-title-row > :last-child {
+  flex: 0 0 auto;
 }
 
 .app-shell[data-layout-mode="stacked"] .section-title-row > :first-child,
@@ -4380,9 +4432,16 @@ tr.result-row-deleted .row-actions-cell {
   }
 }
 
-html,
-body {
+html {
   overflow-x: hidden;
+  max-width: 100vw;
+}
+
+/* clip, not hidden: overflow-x: hidden on body makes body a scroll container (overflow-y
+   computes to auto), and the sticky connection rail then pins to body — which never scrolls,
+   because the page scrolls on html — so the rail scrolled away and left an empty column. */
+body {
+  overflow-x: clip;
   max-width: 100vw;
 }
 
