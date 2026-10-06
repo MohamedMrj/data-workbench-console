@@ -134,7 +134,11 @@ try {
   const updateStatus = await request('/api/update-status');
   assert.equal(updateStatus.response.status, 200);
   assert.equal(updateStatus.payload.success, true);
-  assert.equal(updateStatus.payload.status, null);
+  // The route reads the real .data/update-status.json of this checkout, which a real update on
+  // the developer's machine leaves behind; the null/pending/failed reads are unit-tested in a
+  // temp dir instead, so only the shape is pinned here.
+  const liveStatus = updateStatus.payload.status;
+  assert.ok(liveStatus === null || ['pending', 'success', 'failed'].includes(liveStatus.outcome));
 
   const tablesMissingConnection = await request('/api/tables', {
     method: 'POST',

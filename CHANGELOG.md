@@ -5,7 +5,7 @@ All notable Data Workbench Console changes are tracked here.
 The in-app version is read from `package.json` and exposed through `/api/version`
 together with the current git commit and build information.
 
-## Unreleased
+## 1.6.0 - 2026-10-06
 
 Liquid Glass buttons with per-section colours, appearance profiles the app opens with, a glow on
 the next step, a calmer, denser layout, and layout fixes for the connection panel and Object
@@ -86,8 +86,19 @@ Explorer.
   minimum and the list grows to fill the card; `contain: size` keeps a long catalog from making
   the row taller.
 
+### Security
+
+- Pinned `source-map-js` to 1.2.2 through `overrides` (GHSA-68fv-2mgg-jv7q, a denial of service
+  from crafted source maps; reached through Next's `postcss`).
+- `sprintf-js` (GHSA-hp3w-g68c-fv3c, moderate) has no fixed release, and every `tedious` version
+  depends on it. It is not reachable here: tedious only formats fixed strings with it (packet
+  dumps and error messages), never text from a user or a server.
+
 ### Verification
 
+- `route-contract.test.mjs` no longer fails on a machine that has run a real update: the
+  update-status route reads this checkout's own `.data/update-status.json`, so the test now pins
+  only the response shape, and the null/pending/failed reads stay unit-tested in a temp folder.
 - Reproduced in Edge with six saved profiles and a 40-object catalog: the rail now stays pinned
   at the bottom of the page, the saved list shows all profiles, and with the studio in wide mode
   the explorer list fills its card (only the card's padding remains below it). `ui-smoke.mjs`
