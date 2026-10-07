@@ -975,9 +975,14 @@ cmd.exe /d /s /c  start "" /min powershell.exe -NoProfile -ExecutionPolicy Bypas
                   -ProjectDir … -Port … -OldPid …
 ```
 
-detached, `stdio: 'ignore'`, `windowsHide: true`, and returns success once
-`waitForUpdaterStart` sees the `spawn` event. The launcher exiting immediately afterwards is
-expected and must not be treated as failure.
+detached, `stdio: 'ignore'`, `windowsHide: true` and **`windowsVerbatimArguments: true`**
+(all from `buildUpdaterSpawnOptions`), and returns success once `waitForUpdaterStart` sees the
+`spawn` event. The launcher exiting immediately afterwards is expected and must not be treated
+as failure. Without verbatim arguments Node escapes the quotes inside the `/c` string as `\"`,
+which cmd does not understand: `start` gets garbage, PowerShell never runs and cmd hangs. From
+1.4.24 until this was fixed, every Update click did nothing except reload the page.
+`server-unit.test.mjs` runs the real `cmd → start → powershell` chain against a probe script
+on Windows to catch this.
 
 [scripts/apply-update.ps1](scripts/apply-update.ps1) then: stops the old server (by PID and
 by port, matching only this project's command line) → `git fetch origin main` →
@@ -1004,8 +1009,10 @@ Client side, `waitForUpdateRestart()` polls `/api/health` until it has seen the 
 down and come back (or 20s elapse), then reads `/api/update-status` before doing anything
 else: `outcome: 'failed'` shows the failed-update overlay with the captured error instead of
 reloading, so a git/npm/build failure surfaces as a clear message rather than a silent reload
-back onto the old version with the Update button still there and no explanation. Only then
-does it reload. After ~180 attempts with no server response at all, it surfaces the log path
+back onto the old version with the Update button still there and no explanation. As soon as
+the script starts, it replaces `pending` with `running`. So if the server never went down and
+the status is still `pending` after 20s, the updater never started, and the client shows
+`Update did not start`. `running` means keep waiting. Anything else reloads. After ~180 attempts with no server response at all, it surfaces the log path
 instead.
 
 ---

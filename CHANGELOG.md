@@ -37,7 +37,27 @@ you choose, and colours you can change; and the confirmation dialog can be resiz
   Field → Cottagecore, Paper → Minimal in light mode).
 - Light-mode styling now follows the mode for every theme instead of being tied to Paper.
 
+### Fixed
+
+- **Update now actually updates.** Since 1.4.24, clicking `Update` reloaded the page on the same
+  version: the updater script never ran. Node escaped the quotes in the `cmd.exe /c start …`
+  launch command as `\"`, which cmd does not understand, so PowerShell was never started and a
+  stuck `cmd.exe` was left behind. The old server kept answering, and after 20 seconds the
+  browser took that as a finished update and reloaded. The launch now passes the command to
+  cmd verbatim. **Installs on an earlier version need one manual update** (`git pull`, then
+  start from the Desktop shortcut), because their Update button cannot install this fix.
+- When the updater does not start, the browser now shows `Update did not start` with the log
+  path instead of quietly reloading onto the old version. The updater marks the update as
+  `running` as soon as it starts, so the client can tell "never started" apart from "still
+  working".
+
 ### Verification
+
+- `server-unit.test.mjs`: the updater spawn options must pass the command verbatim, and on
+  Windows the real `cmd → start → powershell` chain must run a probe script in a folder with
+  spaces and receive its `-ProjectDir`, `-Port` and `-OldPid` arguments. The suite fails with
+  the fix reverted.
+- `route-contract.test.mjs`: `/api/update-status` accepts the new `running` outcome.
 
 - `ui-smoke.mjs`: all ten themes in dark and light mode, Match system following the operating
   system, the scenery slider (level, label, off at 0, remembered), Theme colours kept per theme

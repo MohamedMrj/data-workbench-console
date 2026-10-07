@@ -1494,8 +1494,21 @@ window.createConsoleApp = function createConsoleApp() {
             setStatus('error', 'Data Workbench update failed. See the update log for details.');
             return;
           }
-          window.location.reload();
-          return;
+          // The updater stops the server within seconds of starting and replaces 'pending'
+          // with 'running'. A server that never went down while the status is still
+          // 'pending' means the updater never ran; reloading would just show the old
+          // version again with no explanation.
+          if (!sawOffline && outcome?.outcome === 'pending') {
+            state.updateInProgress = false;
+            renderVersionInfo(state.versionInfo);
+            showShutdownOverlay('Update did not start', 'The updater did not start, so Data Workbench is still on the previous version. Check .data/logs/data-workbench-update.log, then try again or update manually with git pull.', true);
+            setStatus('error', 'Data Workbench update did not start. See the update log for details.');
+            return;
+          }
+          if (outcome?.outcome !== 'running') {
+            window.location.reload();
+            return;
+          }
         }
       } catch {
         sawOffline = true;

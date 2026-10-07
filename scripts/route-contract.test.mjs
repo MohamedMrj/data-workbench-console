@@ -138,7 +138,7 @@ try {
   // the developer's machine leaves behind; the null/pending/failed reads are unit-tested in a
   // temp dir instead, so only the shape is pinned here.
   const liveStatus = updateStatus.payload.status;
-  assert.ok(liveStatus === null || ['pending', 'success', 'failed'].includes(liveStatus.outcome));
+  assert.ok(liveStatus === null || ['pending', 'running', 'success', 'failed'].includes(liveStatus.outcome));
 
   const tablesMissingConnection = await request('/api/tables', {
     method: 'POST',

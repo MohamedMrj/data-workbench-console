@@ -467,6 +467,44 @@ assert.match(updateLaunchCommand, /-File "C:\\Data Workbench\\scripts\\apply-upd
 assert.match(updateLaunchCommand, /-ProjectDir "C:\\Data Workbench"/);
 assert.match(updateLaunchCommand, /-OldPid "1234"/);
 
+// Without verbatim arguments Node re-escapes the quotes in the /c string as \", cmd.exe's
+// `start` cannot parse them, and the updater script never runs: Update reloads onto the old version.
+const updaterSpawnOptions = updateLauncher.buildUpdaterSpawnOptions('C:\\Data Workbench');
+assert.equal(updaterSpawnOptions.windowsVerbatimArguments, true);
+assert.equal(updaterSpawnOptions.detached, true);
+assert.equal(updaterSpawnOptions.cwd, 'C:\\Data Workbench');
+
+if (process.platform === 'win32') {
+  const { spawn } = await import('child_process');
+  const probeDir = path.join(tempRoot, 'update probe dir');
+  await fs.mkdir(probeDir, { recursive: true });
+  const probeScript = path.join(probeDir, 'probe-update.ps1');
+  const probeMarker = path.join(probeDir, 'probe-ran.txt');
+  await fs.writeFile(probeScript, [
+    'param([string]$ProjectDir, [int]$Port, [int]$OldPid)',
+    "Set-Content -LiteralPath (Join-Path $ProjectDir 'probe-ran.txt') -Value \"$Port $OldPid\""
+  ].join('\n'), 'utf8');
+  const probeCommand = updateLauncher.buildUpdaterLaunchCommand({
+    powerShellPath: path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe'),
+    updaterPath: probeScript,
+    projectDir: probeDir,
+    port: '3999',
+    oldPid: '4321'
+  });
+  const probeChild = spawn('cmd.exe', ['/d', '/s', '/c', probeCommand], updateLauncher.buildUpdaterSpawnOptions(probeDir));
+  await updateLauncher.waitForUpdaterStart(probeChild);
+  probeChild.unref();
+  let probeOutput = '';
+  for (let attempt = 0; attempt < 75 && !probeOutput; attempt += 1) {
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    probeOutput = await fs.readFile(probeMarker, 'utf8').catch(() => '');
+  }
+  if (!probeOutput) {
+    try { process.kill(probeChild.pid); } catch {}
+  }
+  assert.equal(probeOutput.trim(), '3999 4321', 'The real cmd.exe -> start -> PowerShell launch chain did not run the updater script.');
+}
+
 const failedUpdater = new EventEmitter();
 const failedUpdaterPromise = updateLauncher.waitForUpdaterStart(failedUpdater, 50);
 failedUpdater.emit('error', new Error('powershell missing'));

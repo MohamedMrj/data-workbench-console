@@ -132,6 +132,9 @@ try {
     }
 
     $commitBefore = (git rev-parse HEAD 2>$null)
+    # 'pending' left in place while the old server keeps answering means this script never
+    # started; 'running' tells the client to keep waiting instead.
+    Write-UpdateStatus -Outcome 'running'
 
     $npm = Find-NpmCommand
     $lockPath = Join-Path $ProjectDir 'package-lock.json'

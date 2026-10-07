@@ -296,6 +296,10 @@ When the app is a Git checkout and `origin/main` is ahead, the workspace header 
 - restarts the hidden local server
 - reloads the browser when the server is ready
 
+If the update fails, the browser shows `Update failed` with the error instead of reloading. If the updater never starts at all, it shows `Update did not start` and the app stays on the previous version.
+
+Installs on a version from before this fix cannot get it through the `Update` button, because that button never actually started the updater. Update those installs once by hand: run `git pull` in the app folder, then start Data Workbench from the Desktop shortcut, which rebuilds automatically because the build is out of date.
+
 Update logs are written to `.data/logs/data-workbench-update.log`. Set `APP_SELF_UPDATE_ENABLED=false` to hide the update path from the API while keeping version checks available.
 
 After updating, open `Settings`. If new `.env` keys were added in the release, Data Workbench shows a `Sync new settings` button. Use it to append the new defaults to the local `.env` file while preserving the user's existing port, credentials, saved profile location, safety limits, and other values.

@@ -5,7 +5,7 @@ import { promisify } from 'util';
 import { execFile } from 'child_process';
 import { NextResponse } from 'next/server';
 import { isLocalLifecycleRequest } from '../../../lib/server/lifecycle-store';
-import { buildUpdaterLaunchCommand, waitForUpdaterStart } from '../../../lib/server/update-launcher';
+import { buildUpdaterLaunchCommand, buildUpdaterSpawnOptions, waitForUpdaterStart } from '../../../lib/server/update-launcher';
 import { writeUpdateStatusPending } from '../../../lib/server/update-status-store';
 
 export const runtime = 'nodejs';
@@ -126,12 +126,7 @@ export async function POST(req) {
     // here, synchronously, before anything can go wrong.
     await writeUpdateStatusPending(projectDir);
     await writeUpdateLaunchLog(projectDir, `Launching updater for ${shortCommit(localCommit)} -> ${shortCommit(latestCommit)}.`);
-    child = spawn('cmd.exe', ['/d', '/s', '/c', launchCommand], {
-      cwd: projectDir,
-      detached: true,
-      stdio: 'ignore',
-      windowsHide: true
-    });
+    child = spawn('cmd.exe', ['/d', '/s', '/c', launchCommand], buildUpdaterSpawnOptions(projectDir));
     await waitForUpdaterStart(child);
     child.unref();
     await writeUpdateLaunchLog(projectDir, `Updater process ${child.pid || 'unknown'} launched.`);
