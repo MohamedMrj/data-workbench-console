@@ -5,7 +5,7 @@ All notable Data Workbench Console changes are tracked here.
 The in-app version is read from `package.json` and exposed through `/api/version`
 together with the current git commit and build information.
 
-## Unreleased
+## 1.7.0 - 2026-10-07
 
 Valid T-SQL is no longer broken by the row cap or by running half a batch, and error hints
 come from error codes instead of words. Also: a wider, pop-out SQL editor linked back from its
@@ -86,6 +86,12 @@ Ctrl+C respect, a choice of object list size, and Liquid Glass on everything cli
   small text buttons (`All`, `Clear`, `Reset`) and the results grid's header cells now use the
   same tinted glass as the buttons, with a stronger tint on whatever is selected or active. Rows
   skip the background blur the buttons use, so a long catalog still scrolls smoothly.
+
+### Security
+
+- Pinned `sharp` to 0.35.5 through `overrides` (GHSA-wq5f-xc86-pv6w, CVE-2026-96889 in its
+  librsvg dependency; reached through Next). The lockfile change is limited to `sharp` and its
+  platform packages.
 
 ### Fixed
 

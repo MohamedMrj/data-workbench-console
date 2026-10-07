@@ -1,6 +1,6 @@
 {
   "name": "db_interface",
-  "version": "1.6.0",
+  "version": "1.7.0",
   "type": "module",
   "description": "Production-safe multi-source SQL and procedure workbench for Fabric and SQL Server",
   "engines": {
@@ -43,7 +43,7 @@
   },
   "overrides": {
     "postcss": "8.5.28",
-    "sharp": "0.35.4",
+    "sharp": "0.35.5",
     "@azure/msal-node": "5.2.5",
     "source-map-js": "1.2.2"
   }
