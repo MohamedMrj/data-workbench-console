@@ -66,6 +66,7 @@ app/                          Next.js App Router
   api/*/route.js              17 route handlers — thin adapters over lib/server
   components/
     workbench-shell.js        The entire DOM skeleton as static JSX (no state)
+    theme-scenery.js          The ten living background scenes, static JSX (no state)
     console-app-boot.js       The only client component; boots the imperative app
   docs/                       Built-in user guides (/docs/sql-studio, /docs/procedure-runner)
     doc-shell.js              Presentational components for the guides
@@ -74,8 +75,9 @@ app/                          Next.js App Router
   procedures/page.js          Renders <WorkbenchShell pageMode="procedures" />
   page.js                     Renders <WorkbenchShell pageMode="sql" />
   layout.js                   Root layout, metadata, favicon, Google Fonts
-  globals.css                 @imports theme.css + workbench.css
-  theme.css                   Design tokens, 6 themes, shared control primitives
+  globals.css                 @imports theme.css + theme-scenery.css + workbench.css
+  theme.css                   Design tokens, 10 themes, shared control primitives
+  theme-scenery.css           Scene placement, colours and motion
   workbench.css               Layout engine, all component styling (~4.2k lines)
 
 lib/server/                   The real backend — all logic lives here
@@ -861,10 +863,10 @@ toggling does.
 
 ## 15. Theming and appearance
 
-Six themes — `midnight` (default), `harbor`, `forge`, `field`, `ink`, `paper` — defined as
+Ten themes — `glass` (default), `oled`, `neon`, `minimal`, `neumorphic`, `pastel`, `cyberpunk`,
+`cottagecore`, `garden`, `space` — each with a dark and a light palette, defined as
 custom-property overrides on `:root[data-theme='…']` in [app/theme.css](app/theme.css).
-Most themes change only accents; `ink` and `paper` also change surfaces, and `paper` flips
-`color-scheme` to light. `--results-cell-text` is elevated for dark themes.
+`--results-cell-text` is elevated for dark mode.
 
 **Themes.** A theme is a full look: structure tokens (`--font-body`, `--font-heading`,
 `--heading-tracking`, `--heading-transform`, `--radius-*`, `--surface-blur`, `--orb-opacity`,
@@ -874,13 +876,43 @@ Most themes change only accents; `ink` and `paper` also change surfaces, and `pa
 **generated** by `scripts/generate-theme-css.mjs`; change themes there and re-run it. Palette
 tokens are plain colours so the Theme colours pickers can read them; each picker writes the
 related tokens (the panel picker keeps translucent themes translucent). `--on-accent` is the text
-colour on primary buttons, for themes whose accent is light.
+colour on primary buttons, for themes whose accent is light. Each theme's `extra` CSS in the
+generator carries its material language (OLED's flat thin borders, Neon's hover-only glow,
+Neomorphic's pressed state, Cyberpunk's cut corners and split edges, Cottagecore's stitched
+panels…). Those rules restyle surfaces, borders, shadows and radii only: borders and glows derive
+from `--glass-tint`, which red buttons set to `--danger`, and text colour is never set, so
+danger, warning, disabled and focus states read the same in every theme. Themes without panel
+blur (OLED, Neon, Minimal) use solid panels so the scenery never sits behind text.
 
-**Background scenery.** `#themeScenery` holds three fixed, decorative layers behind the app.
-Each is filled with a theme colour and shaped by an SVG mask (`--scenery-a` … `-c`, with size,
-position and repeat tokens), so the art follows the mode and the user's colours. Its opacity is
-`--scenery-level` (the Settings slider, 0–1) × `--scenery-strength` (per theme). The art sits
-towards the edges and behind the panels.
+**Living scenery.** `#themeScenery` holds one scene per theme from
+[theme-scenery.js](app/components/theme-scenery.js) — static JSX with no state, procedurally
+drawn at build time from a seeded random generator so every render is identical — styled and
+animated by [theme-scenery.css](app/theme-scenery.css). Rules that matter:
+
+- **Only the active scene renders.** `:root[data-theme='x'] .scene-x { display: block }`; the
+  other nine are `display: none`, so their animations do not run at all. Slider level 0 sets
+  `data-scenery="off"` on `<html>`, which removes `#themeScenery` from rendering for the same
+  reason.
+- **Moving parts are HTML boxes, not SVG elements.** Chrome composites transforms on HTML
+  elements but repaints the whole `<svg>` when a shape inside it moves. Every independently
+  moving piece (a branch, a leaf cluster, a cloud, a pulse) is a `div` holding its own small SVG.
+  `Part` places pieces in a scene's shared design space: each piece's `viewBox` is its window into
+  that space and its box is converted to percentages of its parent, so nested parts (twig on
+  branch, leaves on twig) inherit their parent's motion and the whole stage scales as one.
+  Static art (the Garden trunk, the Cyberpunk skyline) stays a single SVG.
+- **Motion is transform and opacity only**, on `--time`/`--delay` per piece so nothing moves in
+  step, and only under `@media (prefers-reduced-motion: no-preference)` plus
+  `html[data-ambient-motion='enabled']`. `will-change` is set only inside those rules. Without
+  motion every scene is a finished still picture; pieces that only make sense moving (falling
+  leaves, fireflies, the shooting star, neon pulses) are hidden.
+- **Visibility** is `pow(--scenery-level, 0.6) × --scene-strength × --scene-small`: a gentler
+  curve than the slider so the default 40% already reads as a picture, a per-scene, per-mode
+  weight, and a calmer multiplier below 700px, where scenes also drop secondary pieces.
+- **Measured cost** with motion on (Chrome, 1600×900, five-second window): zero layouts, at most
+  ~56 ms of main-thread time (Garden, the largest scene) — about 1% of one core.
+
+The generator can still give a theme static mask layers (`scenery.a/b/c`, via `svg()` and
+`layer()`), the three `span`s in `#themeScenery`; no theme uses them now.
 
 **Liquid Glass buttons.** Each section card sets `--btn-tint` from its own `--tint-<section>`
 token (`connection`, `header`, `explorer`, `builder`, `editor`, `results`, `activity`,
@@ -900,11 +932,15 @@ template, `saveResultEditsBtn` on the first staged edit, `toggleEditResultsBtn` 
 `confirmModalBtn` when the typed phrase first matches. `prefers-reduced-motion` gets a steady ring.
 
 The ambient background is two large blurred radial fields on `.shell-backdrop::before/::after`
-travelling opposite diagonals, plus two drifting orbs and a faint grid. Controlled by:
+travelling opposite diagonals, plus two drifting orbs and a faint grid. While motion is on, the
+page background itself drifts on `.page-drift`, an oversized fixed copy moved by `transform`;
+animating `background-position` on `body` instead recalculated style and repainted the whole
+viewport every frame (~600 ms of main-thread time per five seconds). Controlled by:
 
 - `--ambient-color` / `--ambient-color-2` — set by JS from `APP_AMBIENT_COLOR`; a second hue is
   derived by `shiftHue(colour, 38)`. Blank falls back to `var(--accent)` / `var(--accent-2)`.
-- `--ambient-strength` — `APP_AMBIENT_INTENSITY / 100`, applied as opacity on the whole layer.
+- `--ambient-strength` — `APP_AMBIENT_INTENSITY / 100`, applied as opacity on the whole layer,
+  multiplied by the theme's `--theme-ambient` (OLED 0 so black stays black, Minimal 0.15, …).
 - `--ambient-motion-duration` and `html[data-ambient-motion]` — from `APP_AMBIENT_MOTION_*`.
 - All animations are disabled under `prefers-reduced-motion: reduce`.
 
@@ -1059,7 +1095,7 @@ success line and exiting non-zero on failure.
 | `route-contract.test.mjs` | yes (`next start`, port 3120) | no | HTTP status/shape for validation-only requests, secret redaction, local-only guards, favicon |
 | `smoke-test.mjs` | yes (port 3100) | no | Health, page render, batch confirmation contract, audit availability |
 | `ui-smoke.mjs` | no (jsdom) | no | The real `console-core.js` against built HTML with mocked `fetch` — wiring, dialogs, templates, history restore, panel resize, tooltips, auto-hide |
-| `responsive-audit.mjs` | yes (Playwright, port 3210) | no | 16 widths × 2 routes, 6 themes, hidden-panel and wide-rail scenarios, docs pages; asserts no offscreen elements, no own-overflow, no weak affordances, no layout regressions; writes screenshots + JSON |
+| `responsive-audit.mjs` | yes (Playwright, port 3210) | no | 16 widths × 2 routes, 10 themes × dark/light, hidden-panel and wide-rail scenarios, docs pages; asserts no offscreen elements, no own-overflow, no weak affordances, no layout regressions; writes screenshots + JSON |
 | `release-diagnostics.mjs` | no | no | Node version, `package-lock` root version/deps match `package.json`, required files and routes exist, no tracked secrets, `.env.example` sanity, `verify:release` gate contents |
 | `live-smoke.mjs` | no | **yes** | Opt-in; refuses to run without `DATA_WORKBENCH_LIVE_TESTS=true` + `LIVE_TEST_CONFIRM_NON_PRODUCTION=YES_I_UNDERSTAND`, and refuses hosts matching `/prod|prd|production|live/i` |
 

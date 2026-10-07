@@ -6854,6 +6854,8 @@ window.createConsoleApp = function createConsoleApp() {
     const value = Math.max(0, Math.min(100, Math.round(Number(level) || 0)));
     safeSet(SCENERY_LEVEL_KEY, String(value));
     document.documentElement.style.setProperty('--scenery-level', String(value / 100));
+    // At 0 the scenery is taken out of rendering, so its animations stop instead of running invisibly.
+    document.documentElement.dataset.scenery = value ? 'on' : 'off';
     const input = $('sceneryLevelInput');
     if (input && Number(input.value) !== value) input.value = String(value);
     if ($('sceneryLevelValue')) $('sceneryLevelValue').textContent = value ? `${value}%` : 'Off';

@@ -1,0 +1,1189 @@
+/* ─── Living scenery ───────────────────────────────────────────────────────────────────────────
+   One scene per theme (app/components/theme-scenery.js), drawn inside #themeScenery behind the
+   app. Only the scene matching html[data-theme] is displayed; the others are display: none, so
+   their animations do not run at all. Motion runs only with data-ambient-motion="enabled" and
+   prefers-reduced-motion: no-preference, and only on transform and opacity, so it stays on the
+   compositor. Every scene is a finished still picture without motion.
+
+   --scenery-level is the Background scenery slider (0-1). Scenes follow a gentler curve than the
+   slider itself so the default 40% already reads as a picture while 100% still means more than
+   70%. --scene-strength is a scene's own weight per mode; --scene-small calms every scene on
+   small screens, where the panels sit over most of it. */
+
+.theme-scenery .scene {
+  position: absolute;
+  inset: 0;
+  display: none;
+  overflow: hidden;
+  opacity: calc(pow(var(--scenery-level, 0.4), 0.6) * var(--scene-strength, 1) * var(--scene-small, 1));
+}
+
+:root[data-theme='glass'] .scene-glass,
+:root[data-theme='oled'] .scene-oled,
+:root[data-theme='neon'] .scene-neon,
+:root[data-theme='minimal'] .scene-minimal,
+:root[data-theme='neumorphic'] .scene-neumorphic,
+:root[data-theme='pastel'] .scene-pastel,
+:root[data-theme='cyberpunk'] .scene-cyberpunk,
+:root[data-theme='cottagecore'] .scene-cottagecore,
+:root[data-theme='garden'] .scene-garden,
+:root[data-theme='space'] .scene-space {
+  display: block;
+}
+
+/* Level 0 removes the scenery from rendering entirely instead of animating an invisible layer. */
+:root[data-scenery='off'] .theme-scenery {
+  display: none;
+}
+
+.sc-stage,
+.sc-part,
+.sc-piece {
+  position: absolute;
+}
+
+.sc-art {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+/* Gradient and clip definitions shared by a scene's pieces. */
+.sc-defs {
+  position: absolute;
+  width: 0;
+  height: 0;
+  overflow: hidden;
+}
+
+/* ─── Shared motion ─────────────────────────────────────────────────────────────────────────────
+   Each piece carries its own cycle (--time) and start offset (--delay, negative, so a page load
+   lands mid-cycle) and the amplitudes it needs; no two neighbours share a clock. */
+
+@keyframes sc-sway-1 {
+  0%,
+  100% { transform: rotate(calc(var(--sway) * -1)); }
+  50% { transform: rotate(var(--sway)); }
+}
+
+@keyframes sc-sway-2 {
+  0%,
+  100% { transform: rotate(calc(var(--sway) * -0.6)); }
+  30% { transform: rotate(var(--sway)); }
+  55% { transform: rotate(calc(var(--sway) * -0.2)); }
+  78% { transform: rotate(calc(var(--sway) * 0.5)); }
+}
+
+@keyframes sc-sway-3 {
+  0%,
+  100% { transform: rotate(calc(var(--sway) * 0.3)); }
+  22% { transform: rotate(calc(var(--sway) * -1)); }
+  48% { transform: rotate(calc(var(--sway) * 0.7)); }
+  70% { transform: rotate(calc(var(--sway) * -0.4)); }
+}
+
+@keyframes sc-drift {
+  from { transform: translate3d(0, 0, 0) rotate(0deg); }
+  to { transform: translate3d(var(--dx, 0px), var(--dy, 0px), 0) rotate(var(--rot, 0deg)); }
+}
+
+@keyframes sc-twinkle {
+  0%,
+  100% { opacity: var(--low, 0.3); }
+  50% { opacity: 1; }
+}
+
+@keyframes sc-breathe {
+  from { opacity: var(--low, 0.6); }
+  to { opacity: 1; }
+}
+
+@keyframes sc-breathe-scale {
+  from { transform: scale(1); }
+  to { transform: scale(1.02, 1.035); }
+}
+
+@keyframes sc-turn {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes sc-morph {
+  from { transform: rotate(-3deg) scale(1); }
+  to { transform: rotate(4deg) scale(1.05); }
+}
+
+@keyframes sc-pan {
+  from { transform: translate3d(0, 0, 0); }
+  to { transform: translate3d(-50%, 0, 0); }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  :root[data-ambient-motion='enabled'] .sc-sway {
+    animation: var(--sway-name, sc-sway-1) var(--sway-time, 12s) ease-in-out var(--sway-delay, 0s) infinite;
+    will-change: transform;
+  }
+
+  :root[data-ambient-motion='enabled'] .sc-drift {
+    animation: sc-drift var(--time, 60s) ease-in-out var(--delay, 0s) infinite alternate;
+    will-change: transform;
+  }
+
+  :root[data-ambient-motion='enabled'] .sc-twinkle {
+    animation: sc-twinkle var(--time, 6s) ease-in-out var(--delay, 0s) infinite;
+    will-change: opacity;
+  }
+
+  :root[data-ambient-motion='enabled'] .sc-breathe {
+    animation: sc-breathe var(--time, 30s) ease-in-out var(--delay, 0s) infinite alternate;
+    will-change: opacity;
+  }
+
+  :root[data-ambient-motion='enabled'] .sc-breathe-scale {
+    animation: sc-breathe-scale var(--time, 12s) ease-in-out var(--delay, 0s) infinite alternate;
+    will-change: transform;
+  }
+
+  :root[data-ambient-motion='enabled'] .sc-turn {
+    animation: sc-turn var(--time, 300s) linear var(--delay, 0s) infinite;
+    will-change: transform;
+  }
+
+  :root[data-ambient-motion='enabled'] .sc-morph {
+    animation: sc-morph var(--time, 80s) ease-in-out var(--delay, 0s) infinite alternate;
+    will-change: transform;
+  }
+
+  :root[data-ambient-motion='enabled'] .sc-pan {
+    animation: sc-pan var(--time, 60s) linear var(--delay, 0s) infinite;
+    will-change: transform;
+  }
+}
+
+/* Fireflies glow only in dark mode, and only while things move. */
+.sc-fireflies {
+  display: none;
+}
+
+.sc-firefly {
+  position: absolute;
+  width: 1.4vmin;
+  aspect-ratio: 1;
+}
+
+.sc-firefly > div {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  background: radial-gradient(circle, var(--firefly-core, #f4ffb0) 0 18%, color-mix(in srgb, var(--firefly, var(--accent)) 40%, transparent) 42%, transparent 70%);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  :root[data-theme-tone='dark'][data-ambient-motion='enabled'] .sc-fireflies {
+    display: block;
+  }
+
+  :root[data-ambient-motion='enabled'] .sc-firefly {
+    animation: sc-firefly-drift var(--drift-time, 15s) ease-in-out var(--drift-delay, 0s) infinite alternate;
+    will-change: transform;
+  }
+
+  :root[data-ambient-motion='enabled'] .sc-firefly > div {
+    animation: sc-firefly-pulse var(--pulse-time, 5s) ease-in-out var(--drift-delay, 0s) infinite;
+    will-change: opacity;
+  }
+}
+
+@keyframes sc-firefly-drift {
+  0% { transform: translate(0, 0); }
+  33% { transform: translate(1.6vw, -2.2vh); }
+  66% { transform: translate(-1.1vw, -3.6vh); }
+  100% { transform: translate(0.8vw, -1vh); }
+}
+
+@keyframes sc-firefly-pulse {
+  0%,
+  100% { opacity: 0.15; }
+  45% { opacity: 1; }
+  60% { opacity: 0.85; }
+}
+
+@media (max-width: 700px) {
+  .theme-scenery {
+    --scene-small: 0.75;
+  }
+}
+
+/* ─── Liquid Glass ──────────────────────────────────────────────────────────────────────────── */
+
+.scene-glass {
+  --gl-core: #ffffff;
+  --gl-rim: rgba(255, 255, 255, 0.5);
+  --gl-shine: rgba(255, 255, 255, 0.8);
+  --gl-caustic: color-mix(in srgb, var(--accent) 24%, transparent);
+}
+
+:root[data-theme-tone='light'] .scene-glass {
+  --gl-rim: rgba(255, 255, 255, 0.95);
+  --gl-shine: #ffffff;
+  --gl-caustic: rgba(255, 255, 255, 0.7);
+}
+
+.gl-bubble { aspect-ratio: 1; }
+.gl-near { opacity: 0.9; }
+.gl-mid { opacity: 0.72; }
+.gl-far { opacity: 0.5; }
+.gl-rim { fill: none; stroke: var(--gl-rim); stroke-width: 1.2; }
+.gl-shine { fill: none; stroke: var(--gl-shine); stroke-width: 3; stroke-linecap: round; opacity: 0.75; }
+.gl-under { fill: none; stroke: color-mix(in srgb, var(--accent) 55%, white); stroke-width: 2; stroke-linecap: round; opacity: 0.45; }
+.gl-spark { fill: var(--gl-shine); }
+
+.gl-liquid-a {
+  left: -9vw;
+  bottom: -12vh;
+  width: 54vmax;
+  aspect-ratio: 4 / 3;
+}
+
+.gl-liquid-b {
+  right: -12vw;
+  top: -9vh;
+  width: 58vmax;
+  aspect-ratio: 5 / 3;
+}
+
+.gl-liquid .gl-shine {
+  stroke-width: 2.4;
+  opacity: 0.55;
+}
+
+.gl-caustic {
+  width: 30vmax;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: radial-gradient(circle, var(--gl-caustic), transparent 62%);
+}
+
+.gl-caustic-a { left: 0; bottom: 2vh; }
+.gl-caustic-b { right: 2vw; top: 4vh; }
+.gl-caustic-c { right: 16vw; bottom: 8vh; width: 22vmax; }
+
+/* ─── OLED Black ────────────────────────────────────────────────────────────────────────────── */
+
+.scene-oled {
+  --scene-strength: 0.9;
+  --ol-star: #ffffff;
+}
+
+:root[data-theme-tone='light'] .scene-oled {
+  --ol-star: #000000;
+  --scene-strength: 0.7;
+}
+
+.ol-stars { inset: 0; }
+.ol-star { fill: var(--ol-star); opacity: 0.5; }
+
+.ol-glint {
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: var(--ol-star);
+  box-shadow: 0 0 6px 1px color-mix(in srgb, var(--accent) 55%, transparent);
+}
+
+.ol-horizon {
+  left: 0;
+  right: 0;
+  bottom: 8vh;
+  height: 16vh;
+}
+
+.ol-horizon-line {
+  position: absolute;
+  left: 4%;
+  right: 4%;
+  bottom: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--accent) 70%, transparent) 30%, color-mix(in srgb, var(--accent-2) 55%, transparent) 70%, transparent);
+}
+
+.ol-horizon-glow {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(55% 100% at 50% 100%, color-mix(in srgb, var(--accent) 13%, transparent), transparent 72%);
+}
+
+/* ─── Matte Neon ────────────────────────────────────────────────────────────────────────────── */
+
+.scene-neon {
+  --ne-cyan: var(--accent);
+  --ne-violet: var(--accent-2);
+  --ne-lime: #c6ff00;
+  --ne-magenta: #ff3df2;
+}
+
+:root[data-theme-tone='light'] .scene-neon {
+  --ne-lime: #6b8f00;
+  --ne-magenta: #c2189a;
+  --scene-strength: 0.85;
+}
+
+.ne-circuit {
+  width: min(44vw, 640px);
+  aspect-ratio: 3 / 2;
+}
+
+.ne-circuit-low { left: 0; bottom: 0; }
+.ne-circuit-high { right: 0; top: 0; }
+
+.ne-trace {
+  fill: none;
+  stroke-width: 1.6;
+  stroke-linejoin: round;
+  opacity: 0.5;
+}
+
+.ne-node {
+  fill: var(--bg);
+  stroke-width: 1.6;
+  opacity: 0.8;
+}
+
+.ne-cyan { stroke: var(--ne-cyan); }
+.ne-violet { stroke: var(--ne-violet); }
+.ne-magenta { stroke: var(--ne-magenta); }
+
+.ne-glow {
+  position: absolute;
+  width: 4%;
+  aspect-ratio: 1;
+  margin: -2% 0 0 -2%;
+  border-radius: 50%;
+}
+
+.ne-glow-cyan { background: radial-gradient(circle, var(--ne-cyan) 0 16%, color-mix(in srgb, var(--ne-cyan) 30%, transparent) 34%, transparent 68%); }
+.ne-glow-violet { background: radial-gradient(circle, var(--ne-violet) 0 16%, color-mix(in srgb, var(--ne-violet) 30%, transparent) 34%, transparent 68%); }
+
+.ne-track {
+  position: absolute;
+  height: 4px;
+  margin-top: -2px;
+  overflow: hidden;
+}
+
+.ne-track-reverse {
+  transform: scaleX(-1);
+}
+
+.ne-pulse {
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+}
+
+.ne-pulse-cyan { background: linear-gradient(90deg, transparent 0, var(--ne-cyan) 12%, transparent 22%); }
+.ne-pulse-lime { background: linear-gradient(90deg, transparent 0, var(--ne-lime) 12%, transparent 22%); }
+.ne-pulse-magenta { background: linear-gradient(90deg, transparent 0, var(--ne-magenta) 12%, transparent 22%); }
+
+.ne-waves {
+  left: 0;
+  right: 0;
+  bottom: 2vh;
+  height: 11vh;
+  overflow: hidden;
+}
+
+.ne-wave {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 200%;
+  height: 100%;
+}
+
+.ne-wave-line {
+  fill: none;
+  stroke-width: 1.6;
+  vector-effect: non-scaling-stroke;
+  opacity: 0.4;
+}
+
+.ne-wave-b .ne-wave-line {
+  opacity: 0.28;
+}
+
+.ne-sweep {
+  right: 0;
+  top: 0;
+  width: 46vw;
+  height: 46vh;
+  opacity: 0;
+  background: linear-gradient(225deg, transparent 42%, color-mix(in srgb, var(--ne-cyan) 14%, transparent) 50%, transparent 58%);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  :root[data-ambient-motion='enabled'] .ne-pulse {
+    animation: ne-run var(--time, 10s) linear var(--delay, 0s) infinite;
+    will-change: transform, opacity;
+  }
+
+  :root[data-ambient-motion='enabled'] .ne-wave {
+    animation: sc-pan var(--time, 60s) linear var(--delay, 0s) infinite;
+    will-change: transform;
+  }
+
+  :root[data-ambient-motion='enabled'] .ne-sweep {
+    animation: ne-sweep var(--time, 27s) ease-in-out var(--delay, 0s) infinite;
+    will-change: transform, opacity;
+  }
+}
+
+/* A pulse runs the length of its trace in about half the cycle, then the trace rests. */
+@keyframes ne-run {
+  0% { transform: translateX(-25%); opacity: 0; }
+  6% { opacity: 1; }
+  52% { opacity: 1; }
+  60% { transform: translateX(85%); opacity: 0; }
+  100% { transform: translateX(85%); opacity: 0; }
+}
+
+@keyframes ne-sweep {
+  0%,
+  72% { transform: translate(24%, -24%); opacity: 0; }
+  78% { opacity: 1; }
+  92% { transform: translate(-24%, 24%); opacity: 0; }
+  100% { transform: translate(-24%, 24%); opacity: 0; }
+}
+
+/* ─── Minimal ───────────────────────────────────────────────────────────────────────────────── */
+
+.scene-minimal {
+  --scene-strength: 0.9;
+}
+
+.mn-circle {
+  right: -9vmin;
+  top: -11vmin;
+  width: 64vmin;
+  aspect-ratio: 1;
+}
+
+.mn-line { fill: none; stroke: var(--text); stroke-width: 1; opacity: 0.16; }
+.mn-faint { opacity: 0.07; }
+
+.mn-dots {
+  left: 4vw;
+  bottom: 7vh;
+  width: 13vmin;
+  aspect-ratio: 118 / 80;
+}
+
+.mn-dot { fill: var(--text); opacity: 0.22; }
+
+.mn-rule {
+  left: 4vw;
+  bottom: 4.6vh;
+  width: 13vmin;
+  height: 1px;
+  background: var(--text);
+  opacity: 0.12;
+}
+
+/* ─── Neomorphic ────────────────────────────────────────────────────────────────────────────── */
+
+.nm-object {
+  border-radius: 50%;
+  background: var(--bg);
+  box-shadow: 14px 14px 30px var(--neu-dark), -14px -14px 30px var(--neu-light);
+}
+
+.nm-dial {
+  right: 6vw;
+  bottom: 8vh;
+  width: 26vmin;
+  aspect-ratio: 1;
+}
+
+.nm-dial-well {
+  position: absolute;
+  inset: 16%;
+  border-radius: 50%;
+  box-shadow: inset 8px 8px 18px var(--neu-dark), inset -8px -8px 18px var(--neu-light);
+}
+
+.nm-dial-knob {
+  position: absolute;
+  left: 50%;
+  top: 12%;
+  width: 10%;
+  aspect-ratio: 1;
+  margin-left: -5%;
+  border-radius: 50%;
+  background: var(--accent);
+  opacity: 0.6;
+}
+
+.nm-ring {
+  left: 4vw;
+  top: 9vh;
+  width: 18vmin;
+  aspect-ratio: 1;
+}
+
+.nm-ring-hole {
+  position: absolute;
+  inset: 30%;
+  border-radius: 50%;
+  box-shadow: inset 6px 6px 12px var(--neu-dark), inset -6px -6px 12px var(--neu-light);
+}
+
+.nm-pill {
+  left: 5vw;
+  bottom: 9vh;
+  width: 26vmin;
+  aspect-ratio: 3 / 1;
+  border-radius: 999px;
+}
+
+.nm-pill-slot {
+  position: absolute;
+  left: 14%;
+  right: 14%;
+  top: 40%;
+  height: 20%;
+  border-radius: 999px;
+  box-shadow: inset 3px 3px 6px var(--neu-dark), inset -3px -3px 6px var(--neu-light);
+}
+
+.nm-dot {
+  right: 22vw;
+  top: 7vh;
+  width: 7vmin;
+  aspect-ratio: 1;
+}
+
+.nm-dot-small {
+  right: 8vw;
+  top: 34vh;
+  width: 4vmin;
+}
+
+/* ─── Pastel ────────────────────────────────────────────────────────────────────────────────── */
+
+.scene-pastel {
+  --pa-cloud: #ffffff;
+}
+
+:root[data-theme-tone='dark'] .scene-pastel {
+  --pa-cloud: #4b3e68;
+  --scene-strength: 0.9;
+}
+
+.pa-pink { --pa: #f9a8d4; }
+.pa-butter { --pa: #fde68a; }
+.pa-sky { --pa: #93c5fd; }
+.pa-lavender { --pa: #c4b5fd; }
+.pa-mint { --pa: #86efac; }
+
+.pa-cloud { aspect-ratio: 220 / 100; }
+.pa-far { opacity: 0.5; }
+.pa-mid { opacity: 0.72; }
+.pa-near { opacity: 0.95; }
+.pa-cloud-body { fill: var(--pa-cloud); }
+
+.pa-bubble {
+  aspect-ratio: 1;
+  border-radius: 50%;
+  opacity: 0.75;
+  background: radial-gradient(circle at 34% 30%, rgba(255, 255, 255, 0.95) 0 12%, color-mix(in srgb, var(--pa) 40%, transparent) 42%, color-mix(in srgb, var(--pa) 80%, transparent) 100%);
+}
+
+.pa-sparkle {
+  width: 1.8vmin;
+  aspect-ratio: 1;
+}
+
+.pa-sparkle path { fill: var(--pa); }
+
+.pa-shape { aspect-ratio: 1; }
+.pa-shape path { fill: var(--pa-shape); }
+.pa-moon { --pa-shape: #fde68a; right: 5vw; top: 6vh; width: 7vmin; }
+.pa-heart { --pa-shape: #f9a8d4; left: 3vw; bottom: 32vh; width: 4vmin; aspect-ratio: 100 / 90; }
+.pa-star { --pa-shape: #c4b5fd; right: 3vw; bottom: 28vh; width: 5vmin; }
+
+/* ─── Cyberpunk ─────────────────────────────────────────────────────────────────────────────── */
+
+.scene-cyberpunk {
+  --cp-horizon: 70vh;
+  --cp-sun-top: #ffe600;
+  --cp-sun-bottom: var(--accent);
+  --cp-grid: var(--accent-2);
+  --cp-building: #0b0519;
+  --cp-window: color-mix(in srgb, var(--accent-2) 70%, white);
+}
+
+:root[data-theme-tone='light'] .scene-cyberpunk {
+  --cp-sun-top: #ffb86b;
+  --cp-building: #e6d3f4;
+  --cp-window: var(--accent-2);
+  --cp-grid: var(--accent);
+  --scene-strength: 0.85;
+}
+
+.cp-sun {
+  left: 74vw;
+  top: var(--cp-horizon);
+  width: 34vmin;
+  aspect-ratio: 1;
+  margin: -27vmin 0 0 -17vmin;
+}
+
+.cp-sun-glow {
+  position: absolute;
+  inset: -40%;
+  border-radius: 50%;
+  background: radial-gradient(circle, color-mix(in srgb, var(--accent) 32%, transparent), transparent 62%);
+}
+
+/* The disc sets behind the horizon: its lower fifth is cut at the horizon line. */
+.cp-sun-disc {
+  position: absolute;
+  inset: 0;
+  clip-path: inset(0 0 20.6% 0);
+}
+
+.cp-city {
+  left: 50%;
+  top: var(--cp-horizon);
+  width: max(100vw, 180vh);
+  aspect-ratio: 1600 / 150;
+  transform: translate(-50%, -100%);
+}
+
+.cp-building { fill: var(--cp-building); }
+.cp-window { fill: var(--cp-window); opacity: 0.7; }
+.cp-antenna { fill: none; stroke: var(--cp-building); stroke-width: 2; }
+
+.cp-sign {
+  position: absolute;
+  border: 2px solid currentColor;
+  border-radius: 2px;
+  box-shadow: 0 0 10px currentColor, inset 0 0 6px currentColor;
+}
+
+.cp-sign-a { left: 12%; top: 34%; width: 1.6%; height: 22%; color: var(--accent); }
+.cp-sign-b { left: 61%; top: 44%; width: 3.2%; height: 10%; color: var(--accent-2); }
+.cp-sign-c { left: 87%; top: 28%; width: 1.4%; height: 24%; color: #ffe600; }
+
+.cp-horizon {
+  left: 0;
+  right: 0;
+  top: var(--cp-horizon);
+  height: 2px;
+  background: linear-gradient(90deg, transparent, var(--accent) 20%, var(--accent-2) 80%, transparent);
+  box-shadow: 0 0 18px 2px color-mix(in srgb, var(--accent) 45%, transparent);
+}
+
+.cp-floor {
+  left: -50vw;
+  right: -50vw;
+  top: var(--cp-horizon);
+  bottom: 0;
+  overflow: hidden;
+  perspective: 26vh;
+  perspective-origin: 50% 0;
+  -webkit-mask-image: linear-gradient(to bottom, transparent, #000 35%);
+  mask-image: linear-gradient(to bottom, transparent, #000 35%);
+}
+
+.cp-plane {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 400%;
+  transform-origin: 50% 0;
+  transform: rotateX(76deg);
+  background:
+    repeating-linear-gradient(90deg, color-mix(in srgb, var(--cp-grid) 60%, transparent) 0 2px, transparent 2px 80px),
+    repeating-linear-gradient(0deg, color-mix(in srgb, var(--cp-grid) 60%, transparent) 0 2px, transparent 2px 80px);
+}
+
+.cp-scan {
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 12vh;
+  opacity: 0;
+  background: linear-gradient(180deg, transparent, color-mix(in srgb, var(--accent-2) 10%, transparent) 50%, transparent);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  :root[data-ambient-motion='enabled'] .cp-plane {
+    animation: cp-roll 7s linear infinite;
+    will-change: transform;
+  }
+
+  :root[data-ambient-motion='enabled'] .cp-scan {
+    animation: cp-scan 12s linear infinite;
+    will-change: transform, opacity;
+  }
+
+  :root[data-ambient-motion='enabled'] .cp-sign {
+    animation: cp-flicker var(--time, 15s) linear var(--delay, 0s) infinite;
+  }
+
+  :root[data-ambient-motion='enabled'] .cp-sun-disc {
+    animation: cp-glitch 41s linear -12s infinite;
+  }
+}
+
+/* The grid moves exactly one cell per cycle, so the loop has no seam. */
+@keyframes cp-roll {
+  from { transform: rotateX(76deg) translateY(-80px); }
+  to { transform: rotateX(76deg) translateY(0); }
+}
+
+@keyframes cp-scan {
+  0% { transform: translateY(-12vh); opacity: 0.9; }
+  100% { transform: translateY(100vh); opacity: 0.9; }
+}
+
+@keyframes cp-flicker {
+  0%,
+  89%,
+  92%,
+  100% { opacity: 1; }
+  90% { opacity: 0.3; }
+  93.5% { opacity: 0.15; }
+  95% { opacity: 1; }
+}
+
+/* Once every forty seconds the sun slips sideways for a fraction of a second. */
+@keyframes cp-glitch {
+  0%,
+  96%,
+  100% { transform: none; }
+  96.2% { transform: translateX(-6px) skewX(-8deg); }
+  96.5% { transform: translateX(7px); }
+  96.8% { transform: translateX(-3px); }
+  97% { transform: none; }
+}
+
+/* ─── Cottagecore ───────────────────────────────────────────────────────────────────────────── */
+
+.scene-cottagecore {
+  --cc-hill-far: color-mix(in srgb, var(--accent) 26%, #efe5cc);
+  --cc-hill-near: color-mix(in srgb, var(--accent) 42%, #e2d6b6);
+  --cc-wall: #f6ecd6;
+  --cc-roof: var(--accent-2);
+  --cc-door: #8a6a4a;
+  --cc-window: #b7a37c;
+  --cc-smoke: rgba(255, 255, 255, 0.9);
+  --cc-grass: color-mix(in srgb, var(--accent) 80%, #7d8f5a);
+  --cc-leaf: var(--accent);
+  --cc-vine: color-mix(in srgb, var(--accent) 60%, #6b5a3a);
+  --cc-cap: color-mix(in srgb, var(--accent-2) 85%, #a33b22);
+  --cc-cap-dot: #fbf3e0;
+  --cc-stalk: #f1e5c8;
+  --firefly: #ffd27a;
+}
+
+:root[data-theme-tone='dark'] .scene-cottagecore {
+  --cc-hill-far: #2e281e;
+  --cc-hill-near: #3a3224;
+  --cc-wall: #5a4a36;
+  --cc-door: #2a2016;
+  --cc-window: #ffcf73;
+  --cc-smoke: rgba(220, 210, 190, 0.5);
+  --cc-grass: #4f6a40;
+  --cc-leaf: #6f9160;
+  --cc-vine: #4d5a36;
+  --cc-stalk: #cfc2a2;
+  --cc-cap-dot: #efe3c4;
+}
+
+.cc-hills {
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 30vh;
+}
+
+.cc-hill-far { fill: var(--cc-hill-far); }
+.cc-hill-near { fill: var(--cc-hill-near); }
+
+.cc-cottage {
+  right: 15vw;
+  bottom: 19vh;
+  width: 10vmin;
+  aspect-ratio: 100 / 90;
+}
+
+.cc-chimney,
+.cc-door { fill: var(--cc-door); }
+.cc-roof { fill: var(--cc-roof); }
+.cc-wall { fill: var(--cc-wall); }
+.cc-window { fill: var(--cc-window); }
+
+:root[data-theme-tone='dark'] .cc-window {
+  filter: drop-shadow(0 0 3px #ffb347);
+}
+
+.cc-puff {
+  position: absolute;
+  left: 62%;
+  top: -4%;
+  width: 26%;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: radial-gradient(circle, var(--cc-smoke) 0 38%, transparent 70%);
+  opacity: 0;
+}
+
+/* Without motion two puffs hang above the chimney. */
+.cc-puff:nth-child(2) { opacity: 0.6; transform: translate(10%, -60%) scale(1.1); }
+.cc-puff:nth-child(3) { opacity: 0.35; transform: translate(45%, -150%) scale(1.5); }
+
+.cc-vines {
+  left: 0;
+  top: 0;
+  height: 46vh;
+  aspect-ratio: 420 / 460;
+}
+
+.cc-meadow {
+  left: 0;
+  bottom: 0;
+  height: 32vh;
+  aspect-ratio: 600 / 300;
+}
+
+.cc-shrooms {
+  right: 3vw;
+  bottom: 0;
+  height: 18vh;
+  aspect-ratio: 300 / 200;
+}
+
+.cc-cap { transform-origin: 50% 100%; }
+.cc-cap-a { left: 29.3%; top: 33%; width: 36%; height: 30%; }
+.cc-cap-b { left: 65.3%; top: 60%; width: 19.3%; height: 17%; }
+.cc-cap-c { left: 16.7%; top: 75%; width: 14%; height: 11%; }
+
+.cc-grass { fill: var(--cc-grass); }
+.cc-stem { fill: var(--cc-grass); }
+.cc-leaf { fill: var(--cc-leaf); }
+.cc-vine { fill: var(--cc-vine); }
+.cc-rose { fill: #e79aa6; }
+.cc-butter { fill: #f0cf6c; }
+.cc-lavender { fill: #b39ad8; }
+.cc-eye { fill: #f7e6a6; }
+.cc-cap-fill { fill: var(--cc-cap); }
+.cc-cap-dot { fill: var(--cc-cap-dot); }
+.cc-stalk { fill: var(--cc-stalk); }
+.cc-moss { fill: var(--cc-grass); }
+
+@media (prefers-reduced-motion: no-preference) {
+  :root[data-ambient-motion='enabled'] .cc-puff {
+    animation: cc-smoke var(--time, 10s) ease-out var(--delay, 0s) infinite;
+    will-change: transform, opacity;
+  }
+}
+
+@keyframes cc-smoke {
+  0% { transform: translate(0, 0) scale(0.5); opacity: 0; }
+  12% { opacity: 0.75; }
+  100% { transform: translate(70%, -280%) scale(1.9); opacity: 0; }
+}
+
+/* ─── Garden ────────────────────────────────────────────────────────────────────────────────── */
+
+.scene-garden {
+  --gd-wood: #8a6a50;
+  --gd-wood-light: #b39478;
+  --gd-wood-dark: #6a4f3b;
+  --gd-bark: rgba(74, 52, 36, 0.55);
+  --gd-leaf-deep: color-mix(in srgb, var(--accent) 88%, #2c4a2a);
+  --gd-leaf-mid: color-mix(in srgb, var(--accent) 72%, #b7c99a);
+  --gd-leaf-light: color-mix(in srgb, var(--accent) 38%, #dfe8c4);
+  --gd-mass: var(--gd-leaf-deep);
+  --gd-bloom: var(--accent-2);
+  --gd-bloom-eye: #f4e1b8;
+  --gd-ground: color-mix(in srgb, var(--accent) 38%, #d9d1b4);
+  --gd-ground-shadow: rgba(80, 64, 40, 0.18);
+  --gd-blade: color-mix(in srgb, var(--accent) 70%, #a8b98c);
+}
+
+:root[data-theme-tone='dark'] .scene-garden {
+  --scene-strength: 0.95;
+  --gd-wood: #2f2519;
+  --gd-wood-light: color-mix(in srgb, var(--accent-2) 30%, #4d4434);
+  --gd-wood-dark: #1f1810;
+  --gd-bark: rgba(0, 0, 0, 0.45);
+  --gd-leaf-deep: #173a22;
+  --gd-leaf-mid: #24602f;
+  --gd-leaf-light: color-mix(in srgb, var(--accent) 45%, #24602f);
+  --gd-mass: var(--gd-leaf-deep);
+  --gd-bloom: color-mix(in srgb, var(--accent-2) 70%, #e6fff4);
+  --gd-bloom-eye: color-mix(in srgb, var(--accent) 80%, white);
+  --gd-ground: #0f2618;
+  --gd-ground-shadow: rgba(0, 0, 0, 0.35);
+  --gd-blade: #1f5a2e;
+}
+
+.gd-atmosphere {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(42vmax 34vmax at 78% 8%, rgba(255, 240, 200, 0.55), transparent 70%),
+    radial-gradient(60vmax 22vmax at 85% 104%, color-mix(in srgb, var(--accent) 22%, transparent), transparent 72%);
+}
+
+:root[data-theme-tone='dark'] .gd-atmosphere {
+  background:
+    radial-gradient(18vmax 18vmax at 70% 12%, rgba(200, 255, 240, 0.12), transparent 70%),
+    radial-gradient(70vmax 26vmax at 80% 104%, color-mix(in srgb, var(--accent-2) 26%, transparent), transparent 72%);
+}
+
+.gd-stage {
+  right: 0;
+  bottom: 0;
+  height: 100%;
+  aspect-ratio: 1100 / 1000;
+}
+
+.gd-wood { fill: var(--gd-wood); }
+.gd-wood-light { fill: var(--gd-wood-light); opacity: 0.6; }
+.gd-wood-dark { fill: var(--gd-wood-dark); }
+.gd-bark { fill: none; stroke: var(--gd-bark); stroke-width: 3; stroke-linecap: round; }
+.gd-knot { fill: var(--gd-wood-dark); }
+.gd-knot-ring { fill: none; stroke: var(--gd-bark); stroke-width: 3; }
+.gd-leaf-vein { fill: var(--gd-leaf-light); opacity: 0.5; }
+.gd-ground { fill: var(--gd-ground); }
+.gd-ground-shadow { fill: var(--gd-ground-shadow); }
+.gd-blade { fill: var(--gd-blade); }
+.gd-mass { fill: var(--gd-mass); }
+.gd-leaf-deep { fill: var(--gd-leaf-deep); }
+.gd-leaf-mid { fill: var(--gd-leaf-mid); }
+.gd-leaf-light { fill: var(--gd-leaf-light); }
+.gd-bloom { fill: var(--gd-bloom); }
+.gd-bloom-eye { fill: var(--gd-bloom-eye); }
+
+/* A loose leaf and a petal exist only while things move. */
+.gd-fall {
+  display: none;
+  position: absolute;
+  width: 2.2%;
+  aspect-ratio: 26 / 12;
+}
+
+.gd-fall-a { left: 54%; top: 30%; }
+.gd-fall-b { left: 76%; top: 14%; }
+
+.gd-fall > div,
+.gd-fall svg {
+  width: 100%;
+  height: 100%;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  :root[data-ambient-motion='enabled'] .gd-fall {
+    display: block;
+    opacity: 0;
+    animation: gd-fall-y 31s linear infinite;
+    will-change: transform, opacity;
+  }
+
+  :root[data-ambient-motion='enabled'] .gd-fall-b {
+    animation-duration: 47s;
+    animation-delay: -19s;
+  }
+
+  :root[data-ambient-motion='enabled'] .gd-fall > div {
+    animation: gd-fall-x 4.6s ease-in-out infinite alternate;
+  }
+}
+
+/* A leaf comes loose, drifts down and to the left and fades out; most of the cycle it is gone. */
+@keyframes gd-fall-y {
+  0% { opacity: 0; transform: translate(0, 0); }
+  3% { opacity: 1; }
+  34% { opacity: 0.9; }
+  44% { opacity: 0; transform: translate(-9vw, 62vh); }
+  100% { opacity: 0; transform: translate(-9vw, 62vh); }
+}
+
+@keyframes gd-fall-x {
+  0% { transform: translateX(-1.4vw) rotate(-35deg); }
+  100% { transform: translateX(1.4vw) rotate(55deg); }
+}
+
+/* ─── Space ─────────────────────────────────────────────────────────────────────────────────── */
+
+.scene-space {
+  --sp-star: #eef1ff;
+  --sp-star-warm: #ffd9a8;
+  --sp-globe-light: color-mix(in srgb, var(--accent) 55%, white);
+  --sp-globe-dark: color-mix(in srgb, var(--accent-2) 55%, #140c38);
+  --sp-shadow: rgba(3, 4, 16, 0.6);
+}
+
+:root[data-theme-tone='light'] .scene-space {
+  --sp-star: #4f5bd5;
+  --sp-star-warm: #9b4dca;
+  --sp-shadow: rgba(80, 70, 150, 0.35);
+  --sp-globe-dark: color-mix(in srgb, var(--accent-2) 65%, #6a5acd);
+  --scene-strength: 0.85;
+}
+
+.sp-nebula {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(42vmax 30vmax at 84% 18%, color-mix(in srgb, var(--accent-2) 22%, transparent), transparent 70%),
+    radial-gradient(48vmax 32vmax at 8% 88%, color-mix(in srgb, var(--accent) 20%, transparent), transparent 70%);
+}
+
+.sp-field { inset: -4vh -4vw; }
+.sp-star { fill: var(--sp-star); opacity: 0.75; }
+.sp-star-warm { fill: var(--sp-star-warm); }
+
+:root[data-theme-tone='light'] .sp-star {
+  opacity: 0.4;
+}
+
+.sp-twinkle {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--sp-star);
+  box-shadow: 0 0 6px 2px color-mix(in srgb, var(--accent) 50%, transparent);
+}
+
+.sp-galaxy {
+  left: -12vmin;
+  bottom: -16vmin;
+  width: 60vmin;
+  aspect-ratio: 1;
+  transform: rotate(-28deg) scaleY(0.5);
+}
+
+.sp-galaxy-core {
+  position: absolute;
+  inset: 32%;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(255, 240, 220, 0.9) 0 8%, color-mix(in srgb, var(--accent-2) 45%, transparent) 30%, transparent 70%);
+}
+
+.sp-galaxy-spin {
+  position: absolute;
+  inset: 0;
+}
+
+.sp-arm-glow { fill: none; stroke: color-mix(in srgb, var(--accent-2) 60%, var(--sp-star)); stroke-width: 18; stroke-linecap: round; opacity: 0.12; }
+.sp-arm-glow-core { stroke-width: 6; opacity: 0.2; }
+.sp-arm-bright { fill: var(--sp-star); }
+.sp-arm-dim { fill: color-mix(in srgb, var(--accent-2) 65%, var(--sp-star)); opacity: 0.55; }
+
+.sp-planet {
+  right: 5vw;
+  top: 5vh;
+  width: 32vmin;
+  aspect-ratio: 1;
+}
+
+.sp-globe {
+  position: absolute;
+  inset: 27%;
+  border-radius: 50%;
+  overflow: hidden;
+  background: radial-gradient(circle at 34% 30%, var(--sp-globe-light) 0, var(--accent) 45%, var(--sp-globe-dark) 100%);
+}
+
+.sp-bands {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 200%;
+  background: repeating-linear-gradient(98deg, transparent 0 6%, rgba(255, 255, 255, 0.12) 6% 9%, transparent 9% 14%, rgba(0, 0, 0, 0.1) 14% 18%, transparent 18% 25%);
+  background-size: 50% 100%;
+}
+
+.sp-terminator {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: radial-gradient(circle at 30% 28%, transparent 42%, var(--sp-shadow) 88%);
+}
+
+.sp-ring { fill: none; stroke: color-mix(in srgb, var(--accent-2) 55%, var(--sp-star)); stroke-width: 4; opacity: 0.7; }
+.sp-ring-inner { stroke-width: 2; opacity: 0.45; }
+
+.sp-orbit {
+  position: absolute;
+  inset: -4%;
+}
+
+.sp-moon {
+  position: absolute;
+  left: 50%;
+  top: 0;
+  width: 6%;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 35%, #ffffff, #b8bfe0 60%, #6b7299);
+}
+
+.sp-shooting {
+  left: 66vw;
+  top: 10vh;
+  width: 14vw;
+  height: 2px;
+  opacity: 0;
+  background: linear-gradient(90deg, transparent, var(--sp-star));
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  :root[data-ambient-motion='enabled'] .sp-shooting {
+    animation: sp-shoot var(--time, 43s) linear var(--delay, 0s) infinite;
+    will-change: transform, opacity;
+  }
+}
+
+/* A shooting star crosses for about a second, once in each long cycle. */
+@keyframes sp-shoot {
+  0%,
+  96.8% { opacity: 0; transform: rotate(158deg) translateX(0); }
+  97% { opacity: 1; transform: rotate(158deg) translateX(0); }
+  99.4% { opacity: 0; transform: rotate(158deg) translateX(26vw); }
+  100% { opacity: 0; transform: rotate(158deg) translateX(26vw); }
+}
+
+/* ─── Smaller screens: simpler scenes that keep their signature object ─────────────────────── */
+
+@media (max-width: 960px) {
+  .gd-stage { height: 82%; }
+  .gl-far,
+  .pa-far { display: none; }
+  .ne-circuit { width: min(70vw, 520px); }
+  .cp-sun { left: 62vw; }
+  .sp-planet { width: 38vmin; right: 2vw; }
+}
+
+@media (max-width: 700px) {
+  .gd-stage { height: 74%; }
+  .gd-fall-b,
+  .gl-caustic-c,
+  .ne-wave-b,
+  .ne-sweep,
+  .cc-vines,
+  .nm-dot-small,
+  .pa-sparkle:nth-of-type(2n) { display: none !important; }
+  .gl-liquid-a { width: 80vmax; }
+  .cp-sun { left: 50vw; }
+  .cc-cottage { right: 8vw; }
+  .cc-meadow { height: 24vh; }
+  .sp-planet { width: 46vmin; right: -6vw; }
+  .sp-galaxy { width: 80vmin; }
+}

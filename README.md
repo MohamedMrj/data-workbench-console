@@ -983,29 +983,36 @@ Saving:
 ### Themes
 
 Themes are whole looks, not only colours: each sets fonts, corner shapes, panel blur, shadows,
-the page background and a background picture, and comes with a palette for dark mode and one
-for light mode.
+how its controls look and feel, the page background and a living background scene, and comes
+with a palette for dark mode and one for light mode.
 
-| Theme | Look | Background scenery |
+| Theme | Look | Background scene |
 | --- | --- | --- |
-| Liquid Glass (default) | frosted, translucent panels with glossy edges | glass bubbles and arcs |
-| OLED Black | true black (or pure white), quiet pastel accents, no blur | a thin horizon glow and a few dots |
-| Matte Neon | flat matte surfaces, neon lines and glow | neon wave lines |
-| Minimal | monochrome, no shadows or decoration | one thin circle and a dot grid |
-| Neomorphic | soft 3D: panels and buttons look raised, selections pressed in | soft embossed shapes |
-| Pastel | soft pastels, round shapes, pill buttons | clouds, sparkles and hearts |
-| Cyberpunk | neon pink and cyan, sharp corners, HUD headings | a synthwave sun and skyline over a neon grid |
-| Cottagecore | warm paper, sage and terracotta, serif headings | wildflower sprigs and mushrooms |
-| Garden | botanical greens with earth accents; forest and lime in dark mode | leafy branches and small blooms |
-| Space | deep night sky (a pale celestial sky in light mode) | stars, a ringed planet and a spiral galaxy |
+| Liquid Glass (default) | the strongest frosted glass, glossy panel edges, a specular lift on hover | glass bubbles at three depths, slow liquid forms and travelling caustic light |
+| OLED Black | true black (or pure white), crisp text, thin borders, no shadows or glass | almost nothing: sparse points that rarely glint and a hairline horizon |
+| Matte Neon | solid matte panels; buttons glow only on hover, selection and focus | circuit traces with pulsing nodes, light running along the traces, waveforms |
+| Minimal | monochrome, flat controls, no shadows or decoration | one large circle and a dot grid; it barely moves |
+| Neomorphic | soft 3D: raised panels and buttons, inset fields, controls that press in | soft sculpted objects in the page material, floating very slowly |
+| Pastel | soft pastels, the roundest shapes, pill buttons that lift on hover | clouds drifting at three depths, rising bubbles, blinking sparkles |
+| Cyberpunk | neon pink and cyan panel edges, cut corners, HUD headings, sharp focus outlines | a striped sun setting behind a city skyline, a grid rolling towards you, a scanline |
+| Cottagecore | warm paper, stitched panels, uneven hand-cut corners, serif headings | hills with a smoking cottage, swaying wildflowers and vines, mushrooms, fireflies at night |
+| Garden | botanical greens with earth accents, leaf-cut buttons; forest and lime in dark mode | a storybook tree rooted bottom right whose branches and leaves move in the wind |
+| Space | deep floating panels with luminous selection (a pale celestial sky in light mode) | a drifting star field, a ringed planet with an orbiting moon, a turning galaxy |
+
+The scenes sit behind the panels and towards the screen edges, and never take a click. They move
+only while ambient motion is on (`APP_AMBIENT_MOTION_ENABLED`) and the operating system or browser
+does not ask for reduced motion; otherwise each is a still picture. On narrow screens they are
+simplified and cropped. Danger, warning, success, disabled and focus states look the same in every
+theme.
 
 Everything lives in **Settings** (`Help & settings ▾` → `Settings`) → `Appearance`:
 
 - `Theme`: pick one; it applies immediately and is remembered
 - `Mode`: `Dark`, `Light` or `Match system` (follows the operating system, including when it
   changes); every theme has both palettes. The guides follow the same theme and mode
-- `Background scenery`: 0–100 slider for how visible the theme's background picture is; 0 turns
-  it off. The picture sits behind the panels and towards the edges, so it never covers controls
+- `Background scenery`: 0–100 slider for how visible the theme's background scene is; 0 turns
+  it off completely, including its motion. The scene sits behind the panels and towards the
+  edges, so it never covers controls
 - `Theme colours`: change any of a theme's main colours (page background, panels, text,
   secondary text, borders, accent, second accent, success, warning, danger). Changes are kept for
   each theme and mode separately; `Reset` puts the theme's own colours back

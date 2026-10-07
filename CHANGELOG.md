@@ -7,8 +7,9 @@ together with the current git commit and build information.
 
 ## Unreleased
 
-Themes are now whole looks with a dark and a light mode, a background picture whose visibility
-you choose, and colours you can change; and the confirmation dialog can be resized.
+Themes are now whole looks with a dark and a light mode, a living background scene whose
+visibility you choose, controls with their own material, and colours you can change; and the
+confirmation dialog can be resized.
 
 ### Added
 
@@ -17,11 +18,25 @@ you choose, and colours you can change; and the confirmation dialog can be resiz
   fonts, corner shapes, panel blur, shadows and the page background.
 - **Dark and light mode for every theme** (`Dark`, `Light` or `Match system`) in
   Settings → Appearance.
-- **Background scenery**: each theme draws a picture behind the app (stars, a ringed planet and a
-  galaxy for Space; leafy branches for Garden; a synthwave sun and grid for Cyberpunk; clouds and
-  sparkles for Pastel; and so on), towards the edges and behind the panels. A `Background
-  scenery` slider sets how visible it is; 0 turns it off. It is drawn from theme colours, so it
-  follows the mode and your colour changes.
+- **A living scene for every theme**, behind the panels and towards the screen edges, drawn
+  separately for dark and light mode: a storybook tree rooted in the bottom-right corner whose
+  branches, twigs and leaves move in the wind while the trunk stays put, with fireflies at night
+  (Garden); glass bubbles at three depths and travelling caustic light (Liquid Glass); a nearly
+  empty sky with a hairline horizon (OLED Black); circuit traces with pulsing nodes and running
+  light (Matte Neon); one large circle and a dot grid (Minimal); objects sculpted from the page
+  material (Neomorphic); layered drifting clouds and sparkles (Pastel); a striped sun setting
+  behind a city skyline over a rolling grid, with a rare glitch (Cyberpunk); hills with a smoking
+  cottage, swaying wildflowers and mushrooms (Cottagecore); a drifting star field, a ringed
+  planet with an orbiting moon and a turning galaxy (Space).
+  Motion is slow and out of step, runs only while ambient motion is on and the system does not
+  ask for reduced motion, and is otherwise a still picture. The `Background scenery` slider sets
+  how visible the scene is; 0 turns it off, motion included. Scenes are drawn from theme
+  colours, so they follow your colour changes, and are simplified on narrow screens.
+- **Controls with each theme's material**: thin flat borders on OLED Black, hover-only neon glow
+  on Matte Neon, controls that press in on Neomorphic, pill buttons that lift on Pastel, cut
+  corners and sharp focus outlines on Cyberpunk, stitched paper panels on Cottagecore, leaf-cut
+  buttons on Garden, luminous selection on Space. Danger, warning, success, disabled and focus
+  states look the same in every theme.
 - **Theme colours**: change any of a theme's ten main colours; changes are kept per theme and per
   mode, and `Reset` restores the theme's own.
 - Appearance profiles also save the mode, the theme colours and the scenery level.
@@ -50,8 +65,23 @@ you choose, and colours you can change; and the confirmation dialog can be resiz
   path instead of quietly reloading onto the old version. The updater marks the update as
   `running` as soon as it starts, so the client can tell "never started" apart from "still
   working".
+- **Ambient motion no longer costs an eighth of a CPU core.** It animated the page background's
+  position, which recalculated style and repainted the whole window every frame for as long as
+  the app was open — the kind of load that makes typing and panel resizing stutter. The
+  background now drifts as one GPU-moved layer: main-thread time with motion on fell from about
+  600 ms to 5 ms per five seconds, and the look is the same.
 
 ### Verification
+
+- Scene cost measured in Chrome at 1600×900 over five seconds with motion on: zero layouts for
+  every theme and at most ~56 ms of main-thread time (Garden). Motion off and reduced motion
+  run no scenery animations at all. Every theme was checked in dark and light, with motion on,
+  off and reduced, with the slider at 0, 40 and 100, and at 1920, 1440, 1366, 960, 768 and 390
+  wide.
+- `ui-smoke.mjs`: exactly one scene per theme, none of it focusable or clickable, and the slider
+  at 0 taking the scenery out of rendering and back.
+- `responsive-audit.mjs`: the scenery is exempt from the offscreen check (it is cropped on
+  purpose) and must never take pointer events.
 
 - `server-unit.test.mjs`: the updater spawn options must pass the command verbatim, and on
   Windows the real `cmd → start → powershell` chain must run a probe script in a folder with

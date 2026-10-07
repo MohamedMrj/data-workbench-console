@@ -1310,10 +1310,20 @@ if (sqlWindow.document.querySelectorAll('#themeList .theme-chip').length !== 10)
   }
   sqlWindow.matchMedia = originalMatchMedia;
   sqlWindow.document.querySelector('#themeModeList [data-theme-mode="dark"]').click();
-  // Background scenery: three layers behind the app, visibility from the slider (0 = off).
+  // Background scenery: three mask layers plus one living scene per theme behind the app,
+  // visibility from the slider (0 = off).
   const scenery = sqlWindow.document.getElementById('themeScenery');
-  if (!scenery || scenery.querySelectorAll('span').length !== 3 || scenery.getAttribute('aria-hidden') !== 'true') {
+  if (!scenery || scenery.querySelectorAll(':scope > span').length !== 3 || scenery.getAttribute('aria-hidden') !== 'true') {
     throw new Error('The theme scenery layer should be present, decorative and hidden from screen readers.');
+  }
+  const sceneIds = [...scenery.querySelectorAll('.scene')].map((scene) => scene.dataset.scene).sort().join(',');
+  const themeIds = [...sqlWindow.document.querySelectorAll('#themeList .theme-chip')].map((chip) => chip.dataset.theme).sort().join(',');
+  if (!themeIds || sceneIds !== themeIds) {
+    throw new Error(`Every theme should have exactly one scene. Scenes: ${sceneIds}; themes: ${themeIds}`);
+  }
+  // Scenes are decoration only: nothing in them can take focus or a click.
+  if (scenery.querySelector('button, a, input, select, textarea, [tabindex]')) {
+    throw new Error('The scenery must not contain focusable or interactive elements.');
   }
   const slider = sqlWindow.document.getElementById('sceneryLevelInput');
   slider.value = '70';
@@ -1326,8 +1336,15 @@ if (sqlWindow.document.querySelectorAll('#themeList .theme-chip').length !== 10)
   if (root.style.getPropertyValue('--scenery-level') !== '0' || sqlWindow.document.getElementById('sceneryLevelValue').textContent !== 'Off') {
     throw new Error('Scenery at 0 should be off.');
   }
+  // At 0 the scenery leaves rendering, so its animations stop rather than run invisibly.
+  if (root.dataset.scenery !== 'off') {
+    throw new Error(`Scenery at 0 should mark the page data-scenery="off". Got: ${root.dataset.scenery}`);
+  }
   slider.value = '40';
   slider.dispatchEvent(new sqlWindow.Event('input', { bubbles: true }));
+  if (root.dataset.scenery !== 'on') {
+    throw new Error('Raising the scenery level should turn the scenery back on.');
+  }
 }
 {
   // Theme colours: every theme's main colours can be changed, the change is kept for that theme

@@ -7,8 +7,9 @@
   /* --ambient-color / --ambient-color-2 default to the theme accents; the client
      overrides --ambient-color from the user's Settings colour picker (and derives
      a second hue). --ambient-strength (0-1) is the user-controlled "how strongly
-     it shows" intensity applied to the whole ambient layer. */
-  opacity: clamp(0, var(--ambient-strength, 0.55), 1);
+     it shows" intensity applied to the whole ambient layer. --theme-ambient lets a theme calm
+     it (OLED Black stays black, Minimal stays quiet) without touching the user's setting. */
+  opacity: clamp(0, calc(var(--ambient-strength, 0.55) * var(--theme-ambient, 1)), 1);
   transition: opacity 260ms ease;
 }
 

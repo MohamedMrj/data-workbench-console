@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import Script from 'next/script';
 import ConsoleAppBoot from './console-app-boot';
+import ThemeScenery from './theme-scenery';
 
 function SqlWorkspace({ hidden = false }) {
   return (
@@ -370,6 +371,7 @@ export default function WorkbenchShell({ pageMode = 'sql' }) {
   return (
     <>
       <ConsoleAppBoot />
+      <div className="page-drift" aria-hidden="true" />
       <div className="shell-backdrop" aria-hidden="true">
         <div className="shell-orbit shell-orbit-a" />
         <div className="shell-orbit shell-orbit-b" />
@@ -380,6 +382,7 @@ export default function WorkbenchShell({ pageMode = 'sql' }) {
         <span className="scenery-a" />
         <span className="scenery-b" />
         <span className="scenery-c" />
+        <ThemeScenery />
       </div>
       <div className="app-shell" data-page-mode={pageMode}>
         <aside className="control-rail surface">

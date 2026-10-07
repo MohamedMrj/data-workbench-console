@@ -296,8 +296,15 @@ async function inspectViewport(page) {
         rect.top < viewportHeight;
     });
 
+    // The scenery is decorative and cropped on purpose (a tree runs off the edge, a galaxy sits
+    // half off the corner), so it is exempt from layout checks; it must never take a click.
+    const scenery = document.querySelector('#themeScenery');
+    if (scenery && getComputedStyle(scenery).pointerEvents !== 'none') {
+      problems.push({ type: 'scenery-captures-pointer', id: 'themeScenery' });
+    }
+
     for (const element of visibleElements) {
-      if (element.closest('.shell-backdrop')) {
+      if (element.closest('.shell-backdrop, .theme-scenery, .page-drift')) {
         continue;
       }
       if (element.closest('.hidden')) {
