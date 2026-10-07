@@ -728,6 +728,22 @@ Support reports:
 
 ### SQL Editor
 
+Batch scope: some T-SQL shares scope across statements. `DECLARE`d variables and table
+variables, `BEGIN TRY … END CATCH`, `BEGIN … END` blocks, `IF … ELSE`, `BEGIN TRANSACTION` with
+its `COMMIT`/`ROLLBACK`, and temp tables created by another statement must run as one batch.
+`Ctrl+Enter` (and `Run query`) recognises these conservatively: instead of sending part of such a
+script, it shows a notice under the editor naming the dependency (for example "This statement
+uses @LastBackfillMonth, which is declared elsewhere in the editor") with a `Run All` button. It
+never widens itself to Run All. An explicit selection is always sent as selected; if SQL Server
+then reports a missing variable or a broken TRY/CATCH and the full editor has the missing part,
+the error card says so and offers Run All. `Run all` / `Ctrl+Shift+Enter` sends the whole editor
+exactly as written, through the normal batch confirmation.
+
+Errors keep SQL Server's own message and show its message number and line. The hint underneath
+is chosen from the error's code and number, never from words in the message: a T-SQL error
+(`EREQUEST`) is never described as a network problem, connection and login failures are, and a
+failure to reach the local server itself is described separately.
+
 The editor supports:
 
 - manual SQL editing
@@ -756,6 +772,14 @@ The editor supports:
   inside a string literal or comment, keeping brackets if you used them) and Run query glows
 - up to eight editor tabs, each with its own SQL, cursor and scroll position, restored with the
   workspace; double-click a tab to rename it
+- resizing: drag the editor's bottom edge for height; when the Query Builder and the editor sit
+  side by side, drag the editor's left edge to make it wider or narrower (remembered; double-click
+  the edge to go back to the default split)
+- `Pop out`: opens the editor in its own window, linked live both ways. Typing there updates the
+  editor here, `Ctrl+Enter` / `Ctrl+Shift+Enter` there run here with the same rules, and results
+  show in the main window
+- each result tab remembers the SQL that produced it; clicking an older result tab shows that SQL
+  in the editor (switching to the editor tab that holds it, or opening a new one). Nothing runs
 - live line and character counts
 - a compatibility adapter that preserves textarea behavior and can use a client-side Monaco editor instance when one is available
 
@@ -766,7 +790,9 @@ Statements are split only on top-level `;`. Blank lines are deliberately not a b
 Keyboard shortcuts (press `?` in the app for the full list):
 
 - `Ctrl+Enter` or `Cmd+Enter`
-  Run the selection or the statement under the cursor (the procedure in Procedure Runner)
+  Run the selection or the statement under the cursor (the procedure in Procedure Runner). When
+  the statement depends on others in the editor (see Batch scope below), nothing is sent and the
+  editor says to use Run All
 
 - `Ctrl+Shift+Enter`
   Run the whole editor
@@ -832,6 +858,8 @@ The results area supports:
   the ones that differ
 - JSON values are pretty-printed with keys, strings, numbers and booleans coloured; SQL `NULL`
   shows as a small dashed `NULL` marker
+- `Ctrl+C` copies the selected rows (the same as `Copy rows`); inside a text field, or with text
+  selected by mouse, it keeps the browser's normal copy
 - row selection: click a row to select it (it is highlighted, with a bar on the row number);
   `Ctrl`+click adds or removes a row; `Shift`+click selects every row between the last clicked
   row and this one (`Ctrl`+`Shift`+click adds that range). The selection follows the rows through
@@ -1056,7 +1084,13 @@ Layout behavior:
 Supported direct read behavior:
 
 - `SELECT` only
-- server-side row cap applied by wrapping the query
+- server-side row cap written into the statement only where its grammar is understood:
+  `OFFSET 0 ROWS FETCH NEXT n ROWS ONLY` after a top-level `ORDER BY` (or just `FETCH` after an
+  `OFFSET`), otherwise `TOP (n)` on the top-level `SELECT`; always in front of a trailing
+  `OPTION (...)` hint. Shapes it cannot prove safe (a user `TOP` or `FETCH`, `FOR XML/JSON`, a
+  top-level `UNION`/`EXCEPT`/`INTERSECT`, an unusual `OPTION`) run exactly as written, and the
+  read stops once one row past the cap arrives. Valid T-SQL is never rewritten into invalid
+  T-SQL; there is no derived-table wrapper any more
 - result mapping into UI-friendly row/column payloads
 
 ### Write Queries

@@ -3924,7 +3924,8 @@ tr.result-row-deleted .row-actions-cell {
   /* In a column the generic `flex: 1 1 260px` title basis becomes a 260px height, which left a
      tall empty band under card headings (1.4.29 fixed only the connection rail's copy). */
   .section-title-row > :first-child,
-  .section-title-row > :last-child {
+  .section-title-row > :last-child,
+  .section-title-row > .button-row.wrap {
     flex: 0 0 auto;
   }
 
@@ -5498,4 +5499,62 @@ body {
   margin: 0;
   color: var(--muted);
   font-size: 0.8rem;
+}
+
+/* "Needs Run All" notice under the editor: shown instead of sending part of a dependent batch. */
+.run-scope-notice {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  padding: 10px 12px;
+  border: 1px solid color-mix(in srgb, var(--warning) 45%, var(--line));
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--warning) 9%, var(--surface-soft));
+}
+
+.run-scope-notice.hidden {
+  display: none;
+}
+
+.run-scope-notice > span {
+  flex: 1 1 260px;
+  min-width: 0;
+  font-size: 0.86rem;
+  line-height: 1.45;
+}
+
+/* Editor width: a drag handle on the editor card's left edge, only when builder and editor sit
+   side by side. It sits inside the card, so the studio grid keeps exactly two columns; once
+   dragged, the editor column takes that width and the builder the rest. */
+.editor-card {
+  position: relative;
+}
+
+.editor-width-handle {
+  display: none;
+}
+
+.app-shell[data-studio-mode="wide"] .editor-width-handle.is-active {
+  display: block;
+  position: absolute;
+  top: 12px;
+  bottom: 12px;
+  left: -14px;
+  width: 12px;
+  z-index: 3;
+  border: 1px solid color-mix(in srgb, var(--line) 70%, transparent);
+  border-radius: 999px;
+}
+
+.app-shell[data-studio-mode="wide"].editor-width-set .studio-panel-sql > .studio-grid {
+  grid-template-columns: minmax(360px, 1fr) minmax(420px, var(--studio-editor-width));
+}
+
+
+/* A narrowed card turns its title row into a column; its buttons keep their own height
+   instead of stretching to the height of the heading block. */
+.section-title-row > .button-row.wrap {
+  align-items: flex-start;
+  align-content: flex-start;
 }

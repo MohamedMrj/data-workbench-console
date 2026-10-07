@@ -7,13 +7,22 @@ together with the current git commit and build information.
 
 ## Unreleased
 
-A smarter workbench (did-you-mean fixes, joins from foreign keys, per-profile memory, actions
-on selected rows, ranked history, typo-tolerant search), a clearer Settings dialog, a foldable
-connection form with Saved Profiles at the top, row selection that copy respects, a choice of
-object list size, and Liquid Glass on everything clickable.
+Valid T-SQL is no longer broken by the row cap or by running half a batch, and error hints
+come from error codes instead of words. Also: a wider, pop-out SQL editor linked back from its
+result tabs, a smarter workbench (did-you-mean fixes, joins from foreign keys, per-profile
+memory, actions on selected rows, ranked history, typo-tolerant search), a clearer Settings
+dialog, a foldable connection form with Saved Profiles at the top, row selection that copy and
+Ctrl+C respect, a choice of object list size, and Liquid Glass on everything clickable.
 
 ### Added
 
+- **Wider SQL editor**: when the Query Builder and the editor sit side by side, drag the editor's
+  left edge to make it wider or narrower; the width is remembered and a double-click restores the
+  default split.
+- **Pop-out editor**: `Pop out` opens the editor in its own window, linked live both ways;
+  running from it runs in the main window with the same rules.
+- **Result tabs remember their SQL**: clicking an older result tab shows the SQL that produced
+  it in the editor tab that holds it, or opens it in a new one. Nothing is run.
 - **Did you mean…?** When a query fails with `Invalid object name` or `Invalid column name`,
   the error card offers the closest names from the loaded catalog. One click replaces the name in
   the editor, keeping brackets if they were used and never touching string literals or comments,
@@ -80,6 +89,32 @@ object list size, and Liquid Glass on everything clickable.
 
 ### Fixed
 
+- **The read row cap broke valid T-SQL.** `ORDER BY … OPTION (MAXRECURSION 100)` got
+  `OFFSET/FETCH` appended after the hint (a syntax error), and every read without `ORDER BY` was
+  wrapped in `SELECT TOP (n) * FROM ( … ) AS __rowlimit_wrapper`, which SQL Server rejects for
+  `SELECT 1` or `SELECT GETDATE()` (no column name), `SELECT a, a` (duplicate names) and any
+  query ending in `OPTION ( … )`. The cap is now written into the statement only where its
+  grammar is understood (OFFSET/FETCH after ORDER BY, TOP on the top-level SELECT), always before
+  a trailing query hint; anything else runs as written, and reads now stream and stop at the cap
+  so those statements are still bounded.
+- **Ctrl+Enter sent part of a dependent batch.** Running the statement under the cursor in a
+  script with `DECLARE`d variables, TRY/CATCH, BEGIN…END, IF/ELSE, an explicit transaction or a
+  temp table could send a fragment ("Must declare the scalar variable", "Incorrect syntax near
+  'CATCH'"). Such fragments are no longer sent: the editor says what the statement depends on and
+  offers Run All. Ctrl+Enter is never widened to Run All automatically; Run All sends the editor
+  exactly as written through the usual batch confirmation.
+- **A T-SQL error mentioning FETCH was reported as a network failure.** The hint was chosen by
+  searching the message for words like "fetch", "login" and "timeout". Hints now come from the
+  error's code and SQL Server message number, and API error responses carry SQL Server's
+  diagnostics (`number`, `lineNumber`, `state`, `class`, `serverName`, `procName`; nothing
+  else from the error). When part of the editor was run and the error shows the missing part
+  (a variable declared elsewhere, half of a TRY/CATCH), the error card says so and offers Run All.
+- **Ctrl+C did nothing on selected result rows.** It now copies them, like Copy rows.
+- Fixed "Did you mean…?" fixes for names containing a regex character such as `$`: the helper
+  that escapes them had been corrupted when the feature was written, so such names could not be
+  replaced.
+- A narrowed card's heading buttons (for example Preview rows / Count rows / Reset) no longer
+  stretch into tall bars or leave an empty band under the heading.
 - Fixed the theme resetting when switching between SQL Studio and Procedure Runner. Each mode
   starts the app again, and every start applied the default appearance profile, replacing any
   look picked since the app opened. The default profile now applies once per app session, when
@@ -92,6 +127,26 @@ object list size, and Liquid Glass on everything clickable.
 
 ### Verification
 
+- `sql-classifier.test.mjs`: the recursive-CTE ORDER BY + OPTION(MAXRECURSION) reproduction,
+  ORDER BY + OFFSET + OPTION (FETCH only, before the hint), OFFSET/FETCH + OPTION unchanged,
+  SELECT + OPTION(RECOMPILE) (hint kept at statement level), nested hint parentheses, OPTION in
+  a string / line comment / block comment / subquery / bracketed name ignored, unusual OPTION
+  shapes left unchanged, UNION + OPTION unchanged, `SELECT 1` / `SELECT GETDATE()` /
+  `SELECT a, a` never wrapped. 154 cases pass.
+- `server-unit.test.mjs`: `runCappedRead` keeps exactly the cap and cancels the request, its own
+  cancel is not an error, a SQL error and a user cancel still reject, the SQL is run unchanged;
+  `sqlErrorDetails` copies only the named diagnostics and no config or credentials.
+- `route-contract.test.mjs`: an error response carries only `success`, `error` and `code`.
+- `ui-smoke.mjs`: Ctrl+Enter keeps running independent statements one at a time; does not post
+  a statement that uses a variable declared elsewhere, or a fragment of TRY/CATCH, and says to
+  Run All; Ctrl+Shift+Enter and the notice's Run All post the exact editor text, through the batch
+  confirmation; a failed selection missing its DECLARE, and a partial TRY/CATCH failing near
+  CATCH, get Run All guidance with SQL Server's message kept; an EREQUEST error mentioning FETCH
+  is not called a network failure, while ESOCKET and a failed request to the local server are;
+  Ctrl+C copies selected rows but not from a text field; result tabs show their SQL; the pop-out
+  syncs both ways and runs the statement under its cursor; did-you-mean with `$` in a name.
+- `responsive-audit.mjs`: dragging the editor's left edge 200px widens it, keeps the studio at
+  two columns and the builder at its minimum, and is remembered.
 - `ui-smoke.mjs` covers did-you-mean for object and column names (including leaving a string
   literal alone), the Join related table list and the JOIN autocomplete suggestion, per-profile
   memory across two profiles, Query just these rows and Compare the 2 selected rows, history run

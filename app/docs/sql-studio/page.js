@@ -188,6 +188,8 @@ ORDER BY [CreatedUtc] DESC;`}</pre>
         <DocsCardGrid
           items={[
             { title: 'Run query', text: 'Runs the selection, or the statement under the cursor when the editor holds several. SELECTs run directly; writes start a preview.' },
+            { title: 'Pop out', text: 'Opens the editor in its own window, linked live to this one. Run from there; results show here.' },
+            { title: 'Resize', text: 'Drag the bottom edge for height. With the builder beside the editor, drag the editor\'s left edge for width.' },
             { title: 'Cancel', text: 'Stops a running query on the server. A read or preview stops straight away; a confirmed write is rolled back.' },
             { title: 'Autocomplete', text: 'Suggests tables, views and columns from the loaded catalog as you type. Ctrl+Space opens it on demand.' },
             { title: 'Editor tabs', text: 'Keep up to eight SQL buffers side by side. Each keeps its own text, cursor and scroll position.' },
@@ -293,6 +295,8 @@ WHERE <review scope before execution>;`}</pre>
           <li><strong>NULL values</strong> appear as a visible pill so blanks are easier to distinguish from missing data.</li>
           <li><strong>Long JSON/text</strong> is collapsed with Show more / Show less, while copy/export still uses the full value.</li>
           <li><strong>Cell context menu</strong> can copy the clicked cell value, column name, formatted JSON, or the whole row as JSON/CSV/INSERT, and all loaded rows as <code>INSERT</code> statements or a Markdown table. INSERT targets the table when the result is editable, otherwise a <code>[target_table]</code> placeholder you replace; SQL NULL stays <code>NULL</code>, and <code>timestamp</code>/<code>rowversion</code> columns are left out.</li>
+          <li><strong>Result tabs remember their SQL</strong>: clicking an older result tab shows the SQL that produced it in the editor, in the editor tab that already holds it or a new one. Nothing is run.</li>
+          <li><strong>Ctrl + C</strong> copies the selected rows, like <strong>Copy rows</strong>.</li>
           <li><strong>Select rows</strong>: click a row to select it, <span className="docs-kbd">Ctrl</span> + click to add or remove a row, and <span className="docs-kbd">Shift</span> + click to select every row between the last clicked row and this one. Selected rows are highlighted with a bar on the row number, the selection follows the rows through sorting, paging and the filter, and the line above the grid counts it.</li>
           <li><strong>Query just these rows</strong>: right-click a selected row to write a <code>SELECT</code> for exactly the selected rows, matched on the table's key, into a new editor tab. Review it and run it yourself; it never runs on its own.</li>
           <li><strong>Compare the 2 selected rows</strong>: shows both rows column by column and marks the columns that differ.</li>
@@ -364,6 +368,13 @@ WHERE <review scope before execution>;`}</pre>
       </DocsSection>
 
       <DocsSection id="troubleshooting" title="Troubleshooting" intro="Most issues come from connection details, metadata permissions, or stale context after changing connections.">
+        <DocsMiniSection title="Batch scope: when Ctrl+Enter asks for Run All">
+          <p>Some T-SQL constructs share scope across statements. <code>DECLARE</code>d variables, <code>TRY/CATCH</code>, <code>BEGIN … END</code> blocks, <code>IF … ELSE</code>, explicit transactions (<code>BEGIN TRANSACTION</code> with its <code>COMMIT</code> or <code>ROLLBACK</code>) and temp tables created by another statement must be run with <strong>Run All</strong> (<span className="docs-kbd">Ctrl</span> + <span className="docs-kbd">Shift</span> + <span className="docs-kbd">Enter</span>) or as one complete selection.</p>
+          <p>When <span className="docs-kbd">Ctrl</span> + <span className="docs-kbd">Enter</span> would send only part of such a script, nothing is sent: a notice under the editor says what the statement depends on and offers <strong>Run All</strong>. The app never switches to Run All by itself, because that could run statements you did not mean to run. A selection you make is always sent as it is; if it then fails because it left out a <code>DECLARE</code> or half of a <code>TRY/CATCH</code>, the error says so.</p>
+        </DocsMiniSection>
+        <DocsMiniSection title="Reading an error">
+          <p>The error card shows SQL Server's own message with its message number and line. The hint below it comes from the error code: a T-SQL error is never reported as a network problem just because the message mentions a word like <code>FETCH</code>.</p>
+        </DocsMiniSection>
         <DocsMiniSection title="Did you mean…?">
           <p>When a query fails with <em>Invalid object name</em> or <em>Invalid column name</em>, the error card suggests the closest names from the loaded catalog. Click one to fix the name everywhere it appears in the editor (string literals and comments are left alone), then run the query again.</p>
         </DocsMiniSection>

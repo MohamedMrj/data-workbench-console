@@ -112,7 +112,10 @@ window.createConsoleApp = function createConsoleApp() {
     countRowsBtn: 'Build a row count query for the active table or view.',
     resetBuilderBtn: 'Reset builder choices such as columns, filters, sorting, top rows, and distinct.',
     generateQueryBtn: 'Rebuild the SQL editor text from the current builder selections.',
+    popoutEditorBtn: 'Open the SQL editor in its own window, linked live to this one. Results still show here.',
     envSettingsSearch: 'Find a setting by its name, what it does, or its .env key.',
+    runScopeRunAllBtn: 'Run the whole editor as one batch. Writes still go through preview and confirmation.',
+    runScopeDismissBtn: 'Hide this message.',
     relatedJoinSelect: 'Add a JOIN to a table related to the active object by a foreign key, with the ON clause filled in.',
     historyProfileOnlyToggle: 'Show only history from the connection you are using now.',
     historySortSelect: 'Order history by most recent, or by how often and how recently you ran it.',
@@ -242,7 +245,9 @@ window.createConsoleApp = function createConsoleApp() {
     activity: 320,
     results: 300,
     builder: 420,
-    procedure: 360
+    procedure: 360,
+    // 0 keeps the default builder/editor ratio; a width is only set once the editor is dragged.
+    editor: 0
   };
   const PANEL_LIMITS = {
     controlRail: { min: 300, max: 460 },
@@ -250,7 +255,8 @@ window.createConsoleApp = function createConsoleApp() {
     activity: { min: 260, max: 420 },
     results: { min: 140, max: 460 },
     builder: { min: 320, max: 760 },
-    procedure: { min: 320, max: 640 }
+    procedure: { min: 320, max: 640 },
+    editor: { min: 420, max: 4000 }
   };
   const MIN_STUDIO_SPACE_WITH_EXPLORER = 720;
   const MIN_STUDIO_SPACE_WITH_ACTIVITY = 620;
@@ -336,6 +342,7 @@ window.createConsoleApp = function createConsoleApp() {
     catalogSignature: '',
     historyView: { profileOnly: false, sort: 'recent' },
     settingsAdvancedOpen: false,
+    popoutEditor: null,
     sidePanels: {
       controlRailCollapsed: false,
       activityPanelCollapsed: false
@@ -395,6 +402,8 @@ window.createConsoleApp = function createConsoleApp() {
       elapsedMs: null,
       // The SQL that produced this result, so Export all can re-run it on the server.
       sourceQuery: '',
+      // The SQL that produced this result (read or write), so its tab can show it again.
+      ranQuery: '',
       // Row-editability state (results-grid inline editor). Deliberately not
       // persisted across session restore or tab snapshots: normalizeResultsSnapshot
       // below always resets these to the defaults here regardless of what a
@@ -471,6 +480,34 @@ window.createConsoleApp = function createConsoleApp() {
     persistWorkspaceState(state.workspace);
   }
 
+  // A result tab stays tied to the SQL that produced it: opening the tab shows that SQL in the
+  // editor tab that already holds it, or opens it in a new editor tab. Nothing is run.
+  function showResultTabQuery(tab) {
+    const ranQuery = String(tab?.results?.ranQuery || tab?.results?.sourceQuery || '').trim();
+    if (!ranQuery || state.workspace === 'procedure' || !$('queryEditor')) return;
+    syncActiveEditorTab();
+    const holds = (editorTab) => String(editorTab?.query || '').includes(ranQuery);
+    const holder = holds(activeEditorTab()) ? activeEditorTab() : state.editorTabs.find(holds);
+    if (holder) {
+      if (holder.id !== state.activeEditorTabId) activateEditorTab(holder.id);
+    } else if (state.editorTabs.length < EDITOR_TABS_MAX) {
+      newEditorTab(ranQuery);
+      const created = activeEditorTab();
+      if (created) {
+        created.title = String(tab.title || created.title).slice(0, 40);
+        renderEditorTabs();
+      }
+    } else {
+      setStatus('neutral', `The SQL behind this result is not open, and all ${EDITOR_TABS_MAX} editor tabs are in use. Close one to show it.`);
+      return;
+    }
+    const start = getQuery().indexOf(ranQuery);
+    if (start >= 0) {
+      flashRunRange({ partial: true, start, end: start + ranQuery.length });
+    }
+    persistWorkspaceState('sql');
+  }
+
   function closeResultTab(tabId) {
     if (tabId === state.activeResultTabId && !confirmDiscardPendingResultEdits('close this result tab')) {
       return;
@@ -530,6 +567,7 @@ window.createConsoleApp = function createConsoleApp() {
           return;
         }
         activateResultTab(button.dataset.resultTab);
+        showResultTabQuery(state.resultTabs.find((item) => item.id === button.dataset.resultTab));
       };
     });
     container.querySelectorAll('[data-close-result-tab]').forEach((button) => {
@@ -598,7 +636,8 @@ window.createConsoleApp = function createConsoleApp() {
         activity: Number(saved.activity) || DEFAULT_PANEL_LAYOUT.activity,
         results: Number(saved.results) || DEFAULT_PANEL_LAYOUT.results,
         builder: Number(saved.builder) || DEFAULT_PANEL_LAYOUT.builder,
-        procedure: Number(saved.procedure) || DEFAULT_PANEL_LAYOUT.procedure
+        procedure: Number(saved.procedure) || DEFAULT_PANEL_LAYOUT.procedure,
+        editor: Number(saved.editor) || 0
       };
     } catch {
       panelLayout = { ...DEFAULT_PANEL_LAYOUT };
@@ -846,6 +885,9 @@ window.createConsoleApp = function createConsoleApp() {
     if (handleName === 'builder') {
       return layoutMode.studioMode === 'wide' && studioWidth > 1180;
     }
+    if (handleName === 'editor') {
+      return layoutMode.studioMode === 'wide';
+    }
     if (handleName === 'procedure') {
       return layoutMode.shellMode !== 'stacked' && procedureStudioWidth > 920;
     }
@@ -879,6 +921,14 @@ window.createConsoleApp = function createConsoleApp() {
     shell.style.setProperty('--procedure-panel-width', `${panelLayout.procedure}px`);
     shell.style.setProperty('--results-height', `${panelLayout.results}px`);
     shell.style.setProperty('--builder-primary-width', `${panelLayout.builder}px`);
+    if (panelLayout.editor > 0) {
+      const editorBounds = editorWidthBounds();
+      panelLayout.editor = clamp(panelLayout.editor, editorBounds.min, editorBounds.max);
+      shell.style.setProperty('--studio-editor-width', `${panelLayout.editor}px`);
+    } else {
+      shell.style.removeProperty('--studio-editor-width');
+    }
+    shell.classList.toggle('editor-width-set', panelLayout.editor > 0);
     shell.classList.toggle('control-rail-collapsed', state.sidePanels.controlRailCollapsed);
     shell.classList.toggle('activity-panel-collapsed', state.sidePanels.activityPanelCollapsed);
     const layoutMode = getLayoutMode();
@@ -1140,7 +1190,17 @@ window.createConsoleApp = function createConsoleApp() {
     if (handleName === 'procedure') {
       return PANEL_LIMITS.procedure;
     }
+    if (handleName === 'editor') {
+      return editorWidthBounds();
+    }
     return PANEL_LIMITS.results;
+  }
+
+  // The Query Builder keeps at least 360px beside the editor.
+  function editorWidthBounds() {
+    const studio = document.querySelector('.studio-panel-sql > .studio-grid');
+    const available = studio ? studio.getBoundingClientRect().width : 0;
+    return { min: PANEL_LIMITS.editor.min, max: Math.max(PANEL_LIMITS.editor.min, Math.round(available - 360 - 16)) };
   }
 
   function setupResizablePanels() {
@@ -1166,7 +1226,11 @@ window.createConsoleApp = function createConsoleApp() {
 
         const startX = event.clientX;
         const startY = event.clientY;
-        const startValue = panelLayout[handleName];
+        // Until the editor is first dragged its width comes from the default ratio, so start
+        // from what is on screen.
+        const startValue = handleName === 'editor' && !panelLayout.editor
+          ? Math.round(handle.closest('.editor-card')?.getBoundingClientRect().width || PANEL_LIMITS.editor.min)
+          : panelLayout[handleName];
         const bounds = handleBounds(handleName);
 
         handle.classList.add('is-dragging');
@@ -1178,7 +1242,8 @@ window.createConsoleApp = function createConsoleApp() {
           let nextValue = startValue;
           if (handleName === 'controlRail' || handleName === 'explorer' || handleName === 'builder' || handleName === 'procedure') {
             nextValue = startValue + (moveEvent.clientX - startX);
-          } else if (handleName === 'activity') {
+          } else if (handleName === 'activity' || handleName === 'editor') {
+            // Both handles sit on the left edge of their panel, so dragging left widens it.
             nextValue = startValue - (moveEvent.clientX - startX);
           } else if (handleName === 'results') {
             nextValue = startValue + (startY - moveEvent.clientY);
@@ -1620,13 +1685,21 @@ window.createConsoleApp = function createConsoleApp() {
   }
 
   async function api(url, { method = 'GET', data, signal } = {}) {
-    const response = await fetch(url, {
-      method,
-      credentials: 'same-origin',
-      headers: { 'Content-Type': 'application/json' },
-      body: data ? JSON.stringify(data) : undefined,
-      signal
-    });
+    let response;
+    try {
+      response = await fetch(url, {
+        method,
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: data ? JSON.stringify(data) : undefined,
+        signal
+      });
+    } catch (error) {
+      if (error?.name === 'AbortError') throw error;
+      // fetch itself failed: the browser never got an answer from the local server. Marked
+      // here, so nothing downstream has to guess from the wording of a message.
+      throw Object.assign(new Error('Could not reach the Data Workbench server.'), { transport: true, cause: error });
+    }
     const contentType = response.headers.get('content-type') || '';
     const payload = contentType.includes('application/json')
       ? await response.json()
@@ -2484,7 +2557,8 @@ window.createConsoleApp = function createConsoleApp() {
       visualKind: String(snapshot.visualKind || ''),
       visualObject: String(snapshot.visualObject || ''),
       elapsedMs: Number.isFinite(Number(snapshot.elapsedMs)) && snapshot.elapsedMs !== null ? Number(snapshot.elapsedMs) : null,
-      sourceQuery: String(snapshot.sourceQuery || '')
+      sourceQuery: String(snapshot.sourceQuery || ''),
+      ranQuery: String(snapshot.ranQuery || '')
     };
   }
 
@@ -4367,6 +4441,197 @@ window.createConsoleApp = function createConsoleApp() {
     return ranges;
   }
 
+  // ─── Batch scope ──────────────────────────────────────────────────────────
+  // Ctrl+Enter sends one semicolon-delimited statement, but T-SQL scope is the batch: variables,
+  // TRY/CATCH, BEGIN/END blocks, IF/ELSE, explicit transactions and temp tables all span
+  // statements. Sending one piece of such a script makes SQL Server reject valid SQL, or worse,
+  // run part of a transaction. This is a conservative recogniser, not a parser: it only has to
+  // spot clear dependencies, and when it does, nothing is sent and the user is told to Run All
+  // or select the whole batch. It never widens what runs by itself.
+
+  // The text with strings, quoted names and comments blanked to spaces, so positions still line
+  // up and nothing inside them looks like code.
+  function sqlCodeOnly(text) {
+    const sql = String(text || '');
+    let code = '';
+    let last = 0;
+    sqlRegions(sql).forEach((region) => {
+      if (region.type === 'code') return;
+      const keepBracket = region.type === 'quoted' && sql[region.start] === '[';
+      code += sql.slice(last, region.start) + (keepBracket ? sql.slice(region.start, region.end).replace(/[^\n]/g, '_') : sql.slice(region.start, region.end).replace(/[^\n]/g, ' '));
+      last = region.end;
+    });
+    return code + sql.slice(last);
+  }
+
+  function sqlCodeWords(text) {
+    const code = sqlCodeOnly(text);
+    const words = [];
+    const pattern = /[A-Za-z_][A-Za-z0-9_]*/g;
+    let match;
+    while ((match = pattern.exec(code))) {
+      if (/[@#$]/.test(code[match.index - 1] || '')) continue;
+      words.push({ word: match[0].toUpperCase(), index: match.index, end: match.index + match[0].length });
+    }
+    return words;
+  }
+
+  // BEGIN … END, BEGIN TRY … END TRY + BEGIN CATCH … END CATCH (one unit), and explicit
+  // transactions. CASE … END is tracked only so its END is not taken for a block's.
+  function sqlBatchBlocks(text) {
+    const words = sqlCodeWords(text);
+    const stack = [];
+    const blocks = [];
+    const transactions = { begins: [], ends: [] };
+    for (let index = 0; index < words.length; index += 1) {
+      const { word, index: at } = words[index];
+      const next = words[index + 1]?.word || '';
+      if (word === 'CASE') {
+        stack.push({ type: 'CASE', start: at });
+      } else if (word === 'BEGIN') {
+        if (next === 'TRY' || next === 'CATCH') {
+          stack.push({ type: next, start: at });
+          index += 1;
+        } else if (next === 'TRAN' || next === 'TRANSACTION' || next === 'DISTRIBUTED') {
+          transactions.begins.push(at);
+        } else if (next !== 'DIALOG' && next !== 'CONVERSATION') {
+          stack.push({ type: 'BEGIN', start: at });
+        }
+      } else if (word === 'END') {
+        if (next === 'TRY' || next === 'CATCH') {
+          const openAt = stack.map((item) => item.type).lastIndexOf(next);
+          if (openAt >= 0) {
+            const [open] = stack.splice(openAt);
+            blocks.push({ type: next, start: open.start, end: words[index + 1].end });
+          }
+          index += 1;
+        } else if (next !== 'CONVERSATION') {
+          const open = stack.pop();
+          if (open && open.type !== 'CASE') {
+            blocks.push({ type: open.type, start: open.start, end: words[index].end });
+          }
+        }
+      } else if ((word === 'COMMIT' || word === 'ROLLBACK') && words[index - 1]?.word !== 'ON') {
+        transactions.ends.push(at);
+      }
+    }
+    // An unclosed block runs to the end of the text.
+    stack.filter((item) => item.type !== 'CASE').forEach((open) => blocks.push({ type: open.type, start: open.start, end: String(text || '').length }));
+    // TRY and the CATCH that follows it must run together.
+    const merged = blocks.map((block) => ({ ...block }));
+    merged.filter((block) => block.type === 'TRY').forEach((tryBlock) => {
+      const catchBlock = merged
+        .filter((block) => block.type === 'CATCH' && block.start >= tryBlock.end)
+        .sort((left, right) => left.start - right.start)[0];
+      if (catchBlock) {
+        tryBlock.end = Math.max(tryBlock.end, catchBlock.end);
+        catchBlock.start = Math.min(catchBlock.start, tryBlock.start);
+      }
+    });
+    return { blocks: merged, transactions };
+  }
+
+  function sqlDeclaredVariables(text) {
+    const code = sqlCodeOnly(text);
+    const declared = new Map();
+    const declare = /\bDECLARE\b/gi;
+    let match;
+    while ((match = declare.exec(code))) {
+      const end = code.indexOf(';', match.index);
+      const statement = code.slice(match.index, end < 0 ? code.length : end);
+      const names = /(?:\bDECLARE|,)\s*(@[A-Za-z_][A-Za-z0-9_@#$]*)/gi;
+      let name;
+      while ((name = names.exec(statement))) {
+        declared.set(name[1].toLowerCase(), { name: name[1], index: match.index + name.index });
+      }
+    }
+    return declared;
+  }
+
+  function sqlVariableReferences(text) {
+    const code = sqlCodeOnly(text);
+    const found = new Map();
+    const pattern = /(^|[^@A-Za-z0-9_#$])(@[A-Za-z_][A-Za-z0-9_@#$]*)/g;
+    let match;
+    while ((match = pattern.exec(code))) {
+      if (!found.has(match[2].toLowerCase())) found.set(match[2].toLowerCase(), match[2]);
+    }
+    return found;
+  }
+
+  function sqlTempTables(text) {
+    const code = sqlCodeOnly(text);
+    const used = new Map();
+    const created = new Set();
+    let match;
+    const use = /(^|[^A-Za-z0-9_@#$])(##?[A-Za-z_][A-Za-z0-9_@#$]*)/g;
+    while ((match = use.exec(code))) {
+      if (!used.has(match[2].toLowerCase())) used.set(match[2].toLowerCase(), match[2]);
+    }
+    const create = /\b(?:CREATE\s+TABLE|INTO)\s+(##?[A-Za-z_][A-Za-z0-9_@#$]*)/gi;
+    while ((match = create.exec(code))) created.add(match[1].toLowerCase());
+    return { used, created };
+  }
+
+  const RUN_ALL_ADVICE = 'Use Run All (Ctrl+Shift+Enter), or select the complete batch you want to execute.';
+
+  /**
+   * Why the statement in [start, end) cannot run on its own, or null when it can.
+   * Only called for Ctrl+Enter's statement under the cursor; a selection is respected as is.
+   */
+  function batchScopeDependency(text, start, end) {
+    const sql = String(text || '');
+    const target = sql.slice(start, end);
+    const outside = `${sql.slice(0, start)}${' '.repeat(Math.max(0, end - start))}${sql.slice(end)}`;
+    const { blocks, transactions } = sqlBatchBlocks(sql);
+    const crosses = (block) => (block.start < start && block.end > start) || (block.start < end && block.end > end);
+    const crossing = blocks.filter(crosses);
+    if (crossing.some((block) => block.type === 'TRY' || block.type === 'CATCH')) {
+      return { kind: 'trycatch', message: 'TRY/CATCH must be executed as one SQL batch. Use Run All (Ctrl+Shift+Enter), or select the complete TRY/CATCH block.' };
+    }
+    const declaredInTarget = sqlDeclaredVariables(target);
+    const declaredElsewhere = sqlDeclaredVariables(outside);
+    const borrowed = [...sqlVariableReferences(target).entries()].find(([key]) => !declaredInTarget.has(key) && declaredElsewhere.has(key));
+    if (borrowed) {
+      return { kind: 'variable', variable: borrowed[1], message: `This statement uses ${borrowed[1]}, which is declared elsewhere in the editor. Run the complete batch with Run All (Ctrl+Shift+Enter), or select the DECLARE statements together with the dependent query.` };
+    }
+    if (crossing.length) {
+      return { kind: 'block', message: `This statement is part of a BEGIN … END block, which runs as one batch. ${RUN_ALL_ADVICE}` };
+    }
+    const inTarget = (position) => position >= start && position < end;
+    const beginsHere = transactions.begins.some(inTarget);
+    const endsHere = transactions.ends.some(inTarget);
+    const beginsElsewhere = transactions.begins.some((position) => !inTarget(position));
+    const endsElsewhere = transactions.ends.some((position) => !inTarget(position));
+    if ((endsHere && beginsElsewhere && !beginsHere) || (beginsHere && endsElsewhere && !endsHere)) {
+      return { kind: 'transaction', message: `BEGIN TRANSACTION and its COMMIT or ROLLBACK must run in the same batch. ${RUN_ALL_ADVICE}` };
+    }
+    const targetTemps = sqlTempTables(target);
+    const otherTemps = sqlTempTables(outside);
+    const borrowedTemp = [...targetTemps.used.entries()].find(([key]) => !targetTemps.created.has(key) && otherTemps.created.has(key));
+    if (borrowedTemp) {
+      return { kind: 'temp', message: `This statement uses ${borrowedTemp[1]}, which another statement in the editor creates. Temporary tables only last for one batch. ${RUN_ALL_ADVICE}` };
+    }
+    const ranges = sqlStatementRanges(sql);
+    const position = ranges.findIndex((range) => range.start === start);
+    const firstWord = (range) => (range ? sqlCodeWords(sql.slice(range.start, range.end))[0]?.word || '' : '');
+    if (firstWord({ start, end }) === 'ELSE' || (['IF', 'WHILE'].includes(firstWord({ start, end })) && firstWord(ranges[position + 1]) === 'ELSE')) {
+      return { kind: 'ifelse', message: `IF and its ELSE run as one batch. ${RUN_ALL_ADVICE}` };
+    }
+    return null;
+  }
+
+  function showRunScopeNotice(message) {
+    const notice = $('runScopeNotice');
+    if (!notice) return;
+    $('runScopeNoticeText').textContent = message;
+    notice.classList.remove('hidden');
+  }
+
+  function hideRunScopeNotice() {
+    $('runScopeNotice')?.classList.add('hidden');
+  }
+
   // ─── SQL editor autocomplete ──────────────────────────────────────────────
   // Suggestions come only from metadata the app already loaded (the catalog and each
   // object's columns), so they never cost a query unless a column list is missing.
@@ -4893,11 +5158,11 @@ window.createConsoleApp = function createConsoleApp() {
   // cursor when the editor holds several, otherwise everything.
   function queryRunTarget(scope = 'auto') {
     const text = getQuery();
-    const whole = { query: text.trim(), start: 0, end: text.length, partial: false, index: 0, count: 1 };
+    const whole = { query: text.trim(), start: 0, end: text.length, partial: false, index: 0, count: 1, scope: 'all' };
     if (scope === 'all') return whole;
     const selection = editorAdapter().getSelection();
     if (selection.end > selection.start && text.slice(selection.start, selection.end).trim()) {
-      return { query: text.slice(selection.start, selection.end).trim(), start: selection.start, end: selection.end, partial: true, selection: true, index: 0, count: 1 };
+      return { query: text.slice(selection.start, selection.end).trim(), start: selection.start, end: selection.end, partial: true, selection: true, index: 0, count: 1, scope: 'selection' };
     }
     const ranges = sqlStatementRanges(text);
     if (ranges.length <= 1) return whole;
@@ -4908,7 +5173,7 @@ window.createConsoleApp = function createConsoleApp() {
       chosen = ranges.reduce((best, range, index) => (range.start <= cursor ? index : best), 0);
     }
     const range = ranges[chosen];
-    return { query: text.slice(range.start, range.end).trim(), start: range.start, end: range.end, partial: true, index: chosen, count: ranges.length };
+    return { query: text.slice(range.start, range.end).trim(), start: range.start, end: range.end, partial: true, index: chosen, count: ranges.length, scope: 'statement' };
   }
 
   function highlightSql(text) {
@@ -4980,6 +5245,7 @@ window.createConsoleApp = function createConsoleApp() {
   }
 
   function syncEditorBackdrop() {
+    syncPopoutEditor();
     if (state.editorAdapter?.kind === 'monaco') return;
     const editor = $('queryEditor');
     const backdrop = $('queryEditorBackdrop');
@@ -5058,6 +5324,115 @@ window.createConsoleApp = function createConsoleApp() {
     state.activeEditorTabId = state.editorTabs.some((tab) => tab.id === builder.activeEditorTabId)
       ? builder.activeEditorTabId
       : (state.editorTabs[0]?.id || '');
+  }
+
+  // ─── Pop-out editor ───────────────────────────────────────────────────────
+  // A second window bound to the same editor text, for a bigger editing area or a second
+  // screen. It is not a copy: typing there updates the editor here and the other way round,
+  // and running from it runs here, through the same classification, preview and confirmation.
+
+  // Closed, or navigated somewhere else (reading it then throws): either way it is gone.
+  function popoutWindow() {
+    const popout = state.popoutEditor;
+    try {
+      if (popout && !popout.closed && popout.document?.getElementById('popoutQuery')) return popout;
+    } catch {
+      // Fall through and forget it.
+    }
+    state.popoutEditor = null;
+    return null;
+  }
+
+  function syncPopoutEditor() {
+    const popout = popoutWindow();
+    const area = popout?.document.getElementById('popoutQuery');
+    if (!area) return;
+    const text = getQuery();
+    if (area.value !== text) {
+      const { selectionStart, selectionEnd } = area;
+      area.value = text;
+      area.setSelectionRange(Math.min(selectionStart, text.length), Math.min(selectionEnd, text.length));
+    }
+    const title = popout.document.getElementById('popoutTitle');
+    if (title) title.textContent = activeEditorTab()?.title || 'SQL editor';
+  }
+
+  function openPopoutEditor() {
+    const existing = popoutWindow();
+    if (existing) {
+      existing.focus();
+      return;
+    }
+    const popout = window.open('', 'dataWorkbenchSqlEditor', 'popup,width=960,height=640');
+    if (!popout) {
+      setStatus('error', 'The browser blocked the pop-out window. Allow pop-ups for this app and try again.');
+      return;
+    }
+    const doc = popout.document;
+    const styles = window.getComputedStyle(document.documentElement);
+    const bodyFont = window.getComputedStyle(document.body).fontFamily;
+    const token = (name, fallback) => styles.getPropertyValue(name).trim() || fallback;
+    doc.title = 'SQL editor · Data Workbench';
+    doc.body.textContent = '';
+    const style = doc.createElement('style');
+    style.textContent = `
+      html, body { height: 100%; margin: 0; }
+      body { display: flex; flex-direction: column; gap: 8px; padding: 12px; box-sizing: border-box;
+        background: ${token('--bg', '#0b1620')}; color: ${token('--text', '#e6f0f3')};
+        font-family: ${bodyFont || 'system-ui, sans-serif'}; }
+      header { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+      header strong { flex: 1 1 auto; }
+      button { min-height: 34px; padding: 4px 12px; border-radius: 10px; cursor: pointer;
+        border: 1px solid ${token('--line-strong', '#3b5560')}; background: transparent; color: inherit; font: inherit; }
+      textarea { flex: 1 1 auto; width: 100%; box-sizing: border-box; resize: none; padding: 12px;
+        border: 1px solid ${token('--input-border', '#3b5560')}; border-radius: 8px;
+        background: ${token('--input-bg', '#0f1f29')}; color: inherit;
+        font: 0.95rem/1.6 'IBM Plex Mono', Consolas, monospace; tab-size: 4; }
+      p { margin: 0; font-size: 0.8rem; opacity: 0.75; }`;
+    doc.head.appendChild(style);
+    const header = doc.createElement('header');
+    const title = doc.createElement('strong');
+    title.id = 'popoutTitle';
+    const runButton = doc.createElement('button');
+    runButton.textContent = 'Run (Ctrl+Enter)';
+    const runAllButton = doc.createElement('button');
+    runAllButton.textContent = 'Run All (Ctrl+Shift+Enter)';
+    header.append(title, runButton, runAllButton);
+    const area = doc.createElement('textarea');
+    area.id = 'popoutQuery';
+    area.spellcheck = false;
+    const note = doc.createElement('p');
+    note.textContent = 'Linked to the editor in the main window: changes show there as you type, and results appear there.';
+    doc.body.append(header, area, note);
+    state.popoutEditor = popout;
+
+    const pushToMain = () => {
+      const adapter = editorAdapter();
+      adapter.setValue(area.value);
+      adapter.setSelection(area.selectionStart, area.selectionEnd);
+      syncActiveEditorTab();
+      syncEditorBackdrop();
+      updateEditorStats();
+      persistWorkspaceState('sql');
+    };
+    // Ctrl+Enter there runs exactly what it would run here: the selection made there, or the
+    // statement under that cursor, with the same batch-scope checks.
+    const run = (scope) => {
+      pushToMain();
+      runQuery(scope === 'all' ? { scope: 'all' } : {}).catch((error) => setStatus('error', error.message));
+    };
+    area.addEventListener('input', pushToMain);
+    area.addEventListener('keydown', (event) => {
+      if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
+        event.preventDefault();
+        run(event.shiftKey ? 'all' : 'auto');
+      }
+    });
+    runButton.addEventListener('click', () => run('auto'));
+    runAllButton.addEventListener('click', () => run('all'));
+    syncPopoutEditor();
+    area.focus();
+    setStatus('success', 'Opened the editor in its own window. It stays linked to this one.');
   }
 
   function activateEditorTab(id) {
@@ -6910,6 +7285,7 @@ window.createConsoleApp = function createConsoleApp() {
       visualObject: meta.visualObject || meta.object || '',
       elapsedMs: Number.isFinite(Number(meta.elapsedMs)) && meta.elapsedMs !== undefined && meta.elapsedMs !== null ? Number(meta.elapsedMs) : null,
       sourceQuery: String(meta.sourceQuery || ''),
+      ranQuery: String(meta.ranQuery || meta.sourceQuery || ''),
       // A brand new result set never inherits the previous one's editability or
       // in-progress edits (this spreads ...state.results above, unlike
       // resetResultsForRun/renderResultError which rebuild from
@@ -6975,37 +7351,109 @@ window.createConsoleApp = function createConsoleApp() {
     renderNewRows();
   }
 
+  // What kind of failure this is, from structured fields only. SQL Server's messages quote the
+  // SQL ("Invalid usage of the option NEXT in the FETCH statement"), so a word such as FETCH,
+  // NETWORK, LOGIN or TIMEOUT in a message says nothing about what went wrong.
+  const CONNECTIVITY_ERROR_CODES = new Set(['ESOCKET', 'ECONNCLOSED', 'ENOTOPEN', 'ECONNRESET', 'ECONNREFUSED', 'ENOTFOUND', 'EINSTLOOKUP', 'ENOCONN', 'ECONNABORTED', 'EPIPE', 'EHOSTUNREACH', 'ENETUNREACH']);
+  const AUTH_ERROR_CODES = new Set(['ELOGIN', 'EAUTH', 'CredentialUnavailableError', 'AuthenticationRequiredError']);
+  const SQL_AUTH_ERROR_NUMBERS = new Set([18456, 18452, 18486, 18487, 18488, 4060]);
+  const SQL_PERMISSION_ERROR_NUMBERS = new Set([229, 230, 262, 297, 300, 916, 15247]);
+  const SQL_SYNTAX_ERROR_NUMBERS = new Set([102, 105, 111, 153, 156, 170, 319, 1038, 4145]);
+
+  function errorCategory(error) {
+    if (error?.transport) return 'transport';
+    const code = String(error?.code || '').toUpperCase();
+    const number = Number(error?.number || 0);
+    if (code === 'CANCELLED' || code === 'ECANCEL') return 'cancelled';
+    if (code === 'ETIMEOUT' || code === 'ETIMEDOUT' || number === -2) return 'timeout';
+    if (AUTH_ERROR_CODES.has(String(error?.code || '')) || AUTH_ERROR_CODES.has(code) || SQL_AUTH_ERROR_NUMBERS.has(number)) return 'auth';
+    if (CONNECTIVITY_ERROR_CODES.has(code)) return 'connectivity';
+    if (code === 'EREQUEST' || number > 0) return 'sql';
+    return 'app';
+  }
+
+  // Run-All advice only with evidence that running part of the editor caused the error: the
+  // error names a variable declared elsewhere, or a TRY/CATCH or transaction keyword, and the
+  // full editor really has that DECLARE or block. Any other error keeps its plain hint.
+  function partialExecutionHint(error, context) {
+    const scope = String(context.executionScope || 'all');
+    if (scope === 'all' || errorCategory(error) !== 'sql') return '';
+    const message = String(error?.message || '');
+    const editor = String(context.editorText || '');
+    const sent = String(context.query || '');
+    const variable = message.match(/Must declare the (?:scalar|table) variable "(@[^"]+)"/i)?.[1];
+    if (variable && sqlDeclaredVariables(editor).has(variable.toLowerCase()) && !sqlDeclaredVariables(sent).has(variable.toLowerCase())) {
+      return `SQL Server could not see ${variable} because only part of the editor was executed. Run All (Ctrl+Shift+Enter), or select the DECLARE and the dependent statement together.`;
+    }
+    const near = message.match(/Incorrect syntax near (?:the keyword )?'([A-Za-z]+)'/i)?.[1]?.toUpperCase() || '';
+    const blocks = sqlBatchBlocks(editor).blocks;
+    if (['CATCH', 'TRY', 'END', 'BEGIN'].includes(near) && blocks.some((block) => block.type === 'TRY' || block.type === 'CATCH')) {
+      return 'Only part of a TRY/CATCH batch was executed. Run All (Ctrl+Shift+Enter), or select the complete TRY/CATCH block.';
+    }
+    if (['ELSE', 'END'].includes(near) && (blocks.length || /\bIF\b/i.test(sqlCodeOnly(editor)))) {
+      return `Only part of a block was executed. ${RUN_ALL_ADVICE}`;
+    }
+    const number = Number(error?.number || 0);
+    if ((number === 3902 || number === 3903 || /has no corresponding BEGIN TRANSACTION/i.test(message)) && sqlBatchBlocks(editor).transactions.begins.length) {
+      return `The COMMIT or ROLLBACK ran without its BEGIN TRANSACTION. ${RUN_ALL_ADVICE}`;
+    }
+    return '';
+  }
+
   function resultErrorHint(error, context = {}) {
     const message = String(error?.message || '');
     const sql = String(context.query || '').trim();
     const operation = String(context.operation || 'operation').toLowerCase();
+    const category = errorCategory(error);
+    const number = Number(error?.number || 0);
+    const scopeHint = partialExecutionHint(error, context);
+    if (scopeHint) return scopeHint;
+    if (category === 'transport') {
+      return 'The browser could not reach the local Data Workbench server. Check that it is still running (start it again from the desktop shortcut if needed), then retry.';
+    }
+    if (category === 'connectivity') {
+      return 'The app could not reach the database server. Check the server name, port and network access, and that the database is online.';
+    }
+    if (category === 'timeout') {
+      return 'The database did not answer in time. Try again, narrow the query, or check whether the source is under load.';
+    }
+    if (category === 'auth') {
+      return 'The database rejected the sign-in. Check the saved connection, credentials, and whether the account has access to this database.';
+    }
+    if (category === 'sql') {
+      if (/\bLIMIT\b/i.test(sql) && (SQL_SYNTAX_ERROR_NUMBERS.has(number) || /^Incorrect syntax near/i.test(message))) {
+        return 'This connection uses T-SQL, where LIMIT is not valid. Move the row limit to SELECT TOP (100) near the start of the query, or use ORDER BY ... OFFSET 0 ROWS FETCH NEXT 100 ROWS ONLY.';
+      }
+      if (number === 208 || /^Invalid object name/i.test(message)) {
+        return 'SQL Server does not know that table or view on this connection. Check the name and schema; the suggestions below may help.';
+      }
+      if (number === 207 || /^Invalid column name/i.test(message)) {
+        return 'A column name is not valid for this table. Check the spelling; the suggestions below may help.';
+      }
+      if (SQL_PERMISSION_ERROR_NUMBERS.has(number) || /permission was denied/i.test(message)) {
+        return 'The current account does not have permission for this. Use a permitted account or ask the database owner to grant access.';
+      }
+      if (number === 1205) {
+        return 'SQL Server chose this request as a deadlock victim. Nothing from it was kept; run it again.';
+      }
+      if (SQL_SYNTAX_ERROR_NUMBERS.has(number) || /^Incorrect syntax near/i.test(message)) {
+        return 'SQL Server rejected the T-SQL syntax. The message above is SQL Server\'s own description of the problem.';
+      }
+      return 'SQL Server rejected the request. The message above is SQL Server\'s own description of the problem.';
+    }
     if (/GO batch separators/i.test(message)) {
       return 'GO is a client-side script separator, not a SQL Server statement. Remove GO lines and run a driver-compatible batch, or execute separate batches one at a time.';
     }
     if (/confirmation|token|expired/i.test(message)) {
       return 'The review window expired or no longer matches the request. Start the action again so the app can create a fresh confirmation.';
     }
-    if (/login|authentication|credential|password|principal|access denied/i.test(message)) {
-      return 'The database rejected the connection or permissions. Check the saved connection, credentials, and whether the account has access to this database/object.';
-    }
-    if (/timeout|timed out|deadlock|busy/i.test(message)) {
-      return 'The database did not complete the request in time. Try again, narrow the query, or check whether the source is under load.';
-    }
-    if (/invalid object|does not exist|not found|could not find|unknown object/i.test(message)) {
+    if (/does not exist|not found|could not find|unknown object/i.test(message)) {
       return 'The selected object may have been renamed, removed, or is not visible to this connection. Reload the catalog and select it again.';
     }
     if (/permission|not authorized|unauthorized|forbidden|denied/i.test(message)) {
       return 'The current account does not have enough permission for this action. Use a permitted account or ask the database owner to grant access.';
     }
-    if (/\bLIMIT\b/i.test(sql) && /syntax|parse|near|limit/i.test(message)) {
-      return 'This connection uses T-SQL, where LIMIT is not valid. Move the row limit to SELECT TOP (100) near the start of the query, or use ORDER BY ... OFFSET 0 ROWS FETCH NEXT 100 ROWS ONLY.';
-    }
-    if (/syntax|parse|near/i.test(message)) {
-      return 'SQL Server rejected the statement syntax. Review the highlighted SQL text and run a smaller statement if needed.';
-    }
-    if (/fetch|network/i.test(message)) {
-      return 'The app could not reach the local server or database endpoint. Check that the Data Workbench server is still running and that the connection profile is valid.';
-    }
+
     if (operation.includes('profile')) {
       return 'The object profile could not be loaded. Reload the catalog, verify the object still exists, and check that the connection can read its metadata and sample rows.';
     }
@@ -7052,7 +7500,10 @@ window.createConsoleApp = function createConsoleApp() {
     const panel = $('resultsPanel');
     const resultsCard = panel?.closest('.results-card');
     if (panel) {
-      panel.innerHTML = `<div class="result-error-card"><strong>${esc(title)}</strong><p>${esc(message)}</p>${code ? `<code>${esc(code)}</code>` : ''}<span>${esc(hint)}</span>${context.operation === 'query' ? '<div class="result-error-suggestions hidden"></div>' : ''}</div>`;
+      const scopeHint = context.operation === 'query' && hint === partialExecutionHint(error, context) && hint;
+      const details = [code, error?.number ? `Msg ${error.number}` : '', error?.lineNumber ? `Line ${error.lineNumber}` : ''].filter(Boolean).join(' · ');
+      panel.innerHTML = `<div class="result-error-card"><strong>${esc(title)}</strong><p>${esc(message)}</p>${details ? `<code>${esc(details)}</code>` : ''}<span>${esc(hint)}</span>${scopeHint ? '<div class="button-row wrap"><button class="ghost-btn small" type="button" data-error-run-all="true">Run All (Ctrl+Shift+Enter)</button></div>' : ''}${context.operation === 'query' ? '<div class="result-error-suggestions hidden"></div>' : ''}</div>`;
+      panel.querySelector('[data-error-run-all]')?.addEventListener('click', () => runQuery({ scope: 'all' }).catch((runError) => setStatus('error', runError.message)));
       if (context.operation === 'query') {
         renderErrorSuggestions(message, context.query).catch(() => {});
       }
@@ -7109,7 +7560,7 @@ window.createConsoleApp = function createConsoleApp() {
   function applyNameFix(from, to) {
     const parts = unquoteIdentifierChain(from).split('.').filter(Boolean);
     if (!parts.length) return;
-    const escapeRegExp = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\  function renderQueryError(error, query) {');
+    const escapeRegExp = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const partPattern = (part) => `(?:\\[${escapeRegExp(part.replace(/]/g, ']]'))}\\]|${escapeRegExp(part)})`;
     const pattern = new RegExp(`${parts.map(partPattern).join('\\s*\\.\\s*')}`, 'gi');
     const text = getQuery();
@@ -7140,11 +7591,13 @@ window.createConsoleApp = function createConsoleApp() {
     glowNextStep('runQueryBtn');
   }
 
-  function renderQueryError(error, query) {
+  function renderQueryError(error, query, scopeContext = {}) {
     renderResultError(error, {
       title: 'Query failed',
       operation: 'query',
-      query
+      query,
+      executionScope: scopeContext.executionScope || 'all',
+      editorText: scopeContext.editorText || query
     });
   }
 
@@ -9535,6 +9988,17 @@ window.createConsoleApp = function createConsoleApp() {
       setStatus('error', 'Enter a query first.');
       return;
     }
+    hideRunScopeNotice();
+    if (target.scope === 'statement') {
+      // Nothing is sent: running part of a dependent batch fails at best, and at worst runs
+      // half of a transaction. Ctrl+Enter is never widened to Run All automatically either.
+      const dependency = batchScopeDependency(getQuery(), target.start, target.end);
+      if (dependency) {
+        showRunScopeNotice(dependency.message);
+        setStatus('neutral', 'This SQL needs batch scope. Press Ctrl+Shift+Enter to Run All, or select the complete dependent batch.');
+        return;
+      }
+    }
     flashRunRange(target);
     const runLabel = target.selection
       ? 'Executing selection...'
@@ -9620,7 +10084,7 @@ window.createConsoleApp = function createConsoleApp() {
         showCancelledRun(error, run);
         return;
       }
-      renderQueryError(error, query);
+      renderQueryError(error, query, { executionScope: target.scope, editorText: getQuery() });
     }
   }
 
@@ -9744,7 +10208,8 @@ window.createConsoleApp = function createConsoleApp() {
         elapsedMs: payload.elapsedMs ?? null,
         visualKind: 'query',
         tabTitle: `${payload.action || 'Write'} executed`,
-        tabKey: ''
+        tabKey: '',
+        ranQuery: executedQuery
       });
       addQueryHistory(executedQuery);
       setStatus('success', `${payload.message} ${payload.rowsAffected} row${payload.rowsAffected === 1 ? '' : 's'} affected.`);
@@ -9976,6 +10441,15 @@ window.createConsoleApp = function createConsoleApp() {
     if ($('applyAuditFiltersBtn')) $('applyAuditFiltersBtn').onclick = () => loadAudit().catch((error) => setStatus('error', error.message));
     $('runQueryBtn').onclick = () => runQuery().catch((error) => setStatus('error', error.message));
     $('runAllQueryBtn').onclick = () => runQuery({ scope: 'all' }).catch((error) => setStatus('error', error.message));
+    if ($('popoutEditorBtn')) {
+      $('popoutEditorBtn').onclick = openPopoutEditor;
+    }
+    if ($('runScopeRunAllBtn')) {
+      $('runScopeRunAllBtn').onclick = () => runQuery({ scope: 'all' }).catch((error) => setStatus('error', error.message));
+    }
+    if ($('runScopeDismissBtn')) {
+      $('runScopeDismissBtn').onclick = hideRunScopeNotice;
+    }
     $('decreaseEditorTextBtn').onclick = () => changeEditorTextSize(-0.05);
     $('increaseEditorTextBtn').onclick = () => changeEditorTextSize(0.05);
     $('formatQueryBtn').onclick = formatSql;
@@ -10388,6 +10862,15 @@ window.createConsoleApp = function createConsoleApp() {
         return;
       }
       const dialogOpen = [...document.querySelectorAll('.modal-backdrop')].some((element) => !element.classList.contains('hidden'));
+      // Selected rows are the app's own selection, not text the browser can copy, so Ctrl+C
+      // copies them here. Typing in a field, or text selected with the mouse, keeps the
+      // browser's normal copy.
+      if (!dialogOpen && (event.ctrlKey || event.metaKey) && !event.shiftKey && !event.altKey && event.key.toLowerCase() === 'c'
+        && !isTypingTarget(event.target) && !String(window.getSelection?.() || '') && selectedResultRows().length) {
+        event.preventDefault();
+        copyResults();
+        return;
+      }
       if (!dialogOpen && !event.ctrlKey && !event.metaKey && !event.altKey && !isTypingTarget(event.target)) {
         if (event.key === '?') {
           event.preventDefault();

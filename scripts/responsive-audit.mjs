@@ -794,6 +794,42 @@ try {
   for (const width of [2180, 2100]) {
     results.push(await runCase(browser, '/', width, { collapseControlRailOnly: true }));
   }
+
+  // The SQL editor's left edge drags to make it wider when builder and editor sit side by
+  // side; the studio stays a two-column grid and the builder keeps its minimum.
+  {
+    const page = await browser.newPage({ viewport: { width: 2400, height: 900 } });
+    await page.addInitScript(() => {
+      localStorage.clear();
+      sessionStorage.clear();
+    });
+    await attachApiMocks(page);
+    await page.goto(`${baseUrl}/`, { waitUntil: 'networkidle' });
+    await page.locator('#toggleControlRailBtn').click();
+    await page.waitForTimeout(250);
+    const before = await page.locator('.editor-card').boundingBox();
+    const handle = await page.locator('[data-resize-handle="editor"]').boundingBox();
+    if (!before || !handle) {
+      throw new Error('The editor width handle should be visible when builder and editor are side by side.');
+    }
+    const x = handle.x + handle.width / 2;
+    const y = handle.y + Math.min(80, handle.height / 2);
+    await page.mouse.move(x, y);
+    await page.mouse.down();
+    await page.mouse.move(x - 200, y, { steps: 12 });
+    await page.mouse.up();
+    await page.waitForTimeout(150);
+    const after = await page.locator('.editor-card').boundingBox();
+    const layout = await page.evaluate(() => ({
+      columns: getComputedStyle(document.querySelector('.studio-panel-sql > .studio-grid')).gridTemplateColumns.split(' ').length,
+      builder: document.querySelector('.builder-card').getBoundingClientRect().width,
+      saved: JSON.parse(localStorage.getItem('dataWorkbenchPanelLayoutV1') || '{}').editor
+    }));
+    if (after.width - before.width < 150 || layout.columns !== 2 || layout.builder < 360 || !layout.saved) {
+      throw new Error(`Dragging the editor edge should widen it, keep two columns and remember the width. Before ${Math.round(before.width)}px, after ${Math.round(after.width)}px, ${JSON.stringify(layout)}`);
+    }
+    await page.close();
+  }
 } finally {
   await browser.close();
   serverProcess?.kill();

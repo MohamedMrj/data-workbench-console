@@ -317,6 +317,24 @@ assert.deepEqual(savedQueryDirEntries.filter((name) => name.endsWith('.tmp')), [
   assert.ok(FIELD_DEFINITIONS.every((field) => ENV_SETTING_GROUPS.some((group) => group.id === field.group)), 'every setting belongs to a listed group');
 }
 
+{
+  // Error payloads carry SQL Server's diagnostics so the browser can classify by code and
+  // number, and nothing else from the error: no config, credentials or request.
+  const { sqlErrorDetails } = await import('../lib/server/error-details.js');
+  const requestError = Object.assign(new Error("Invalid usage of the option NEXT in the FETCH statement."), {
+    code: 'EREQUEST',
+    originalError: { info: { number: 153, lineNumber: 4, state: 2, class: 15, serverName: 'sql-dev-01', procName: '' } },
+    config: { password: 'hunter2', authentication: { options: { clientSecret: 'shh' } } },
+    request: { parameters: { secret: 'x' } }
+  });
+  const details = sqlErrorDetails(requestError);
+  assert.deepEqual(details, { code: 'EREQUEST', number: 153, lineNumber: 4, state: 2, class: 15, serverName: 'sql-dev-01' });
+  assert.ok(!JSON.stringify(details).includes('hunter2') && !JSON.stringify(details).includes('shh'));
+  assert.deepEqual(sqlErrorDetails(Object.assign(new Error('Failed to connect'), { code: 'ESOCKET' })), { code: 'ESOCKET' });
+  assert.deepEqual(sqlErrorDetails(new Error('plain')), { code: null });
+  assert.deepEqual(sqlErrorDetails(Object.assign(new Error('x'), { code: 'not a code; DROP' })), { code: null }, 'only code-shaped values pass');
+}
+
 const appearanceStore = await import('../lib/server/appearance-store.js');
 assert.deepEqual(await appearanceStore.getAppearance(), { profiles: [], defaultProfileId: '' });
 await assert.rejects(appearanceStore.saveAppearanceProfile({ name: 'Bad theme', theme: 'neon' }), (error) => error.httpStatus === 400);
@@ -571,6 +589,7 @@ assert.equal(runRegistry.isCancelError({ code: 'EREQUEST' }), false);
 
 // write-execution with fake pools: a cancel never commits, and a preview always rolls back.
 const writeExecution = await import('../lib/server/write-execution.js');
+const sqlMetadataForCap = await import('../lib/server/sql-metadata.js');
 function fakePool({ onQuery = () => ({ rowsAffected: [2], recordset: undefined }) } = {}) {
   const calls = [];
   return {
@@ -650,6 +669,74 @@ function fakeSamplingPool({ outputScript, countRowsAffected = [3] }) {
       };
     }
   };
+}
+
+// runCappedRead: reads the limiter could not rewrite still stop at the cap. One row past it
+// cancels the request (the server stops producing rows) and the cap's own cancel is not an
+// error; a real error, or a user's cancel, still is.
+function fakeStreamingReadPool(script) {
+  const state = { cancelled: 0, sql: '' };
+  return {
+    state,
+    request() {
+      const request = new EventEmitter();
+      request.cancel = () => {
+        state.cancelled += 1;
+        setImmediate(() => {
+          request.emit('error', Object.assign(new Error('Canceled.'), { code: 'ECANCEL' }));
+          request.emit('done', {});
+        });
+      };
+      request.query = async (sql) => {
+        state.sql = sql;
+        setImmediate(() => script(request, state));
+        return undefined;
+      };
+      return request;
+    }
+  };
+}
+{
+  const manyRows = fakeStreamingReadPool((request, state) => {
+    request.emit('recordset', { n: { name: 'n' } });
+    for (let n = 1; n <= 1000 && !state.cancelled; n += 1) request.emit('row', { n });
+    if (!state.cancelled) request.emit('done', {});
+  });
+  const capped = await writeExecution.runCappedRead(manyRows, 'SELECT n FROM dbo.Big UNION ALL SELECT n FROM dbo.Bigger', { rowCap: 4 });
+  assert.equal(capped.capped, true);
+  assert.equal(capped.recordset.length, 4, 'keeps exactly the cap');
+  assert.equal(manyRows.state.cancelled, 1, 'stops the server once the cap is passed');
+  assert.equal(manyRows.state.sql, 'SELECT n FROM dbo.Big UNION ALL SELECT n FROM dbo.Bigger', 'runs the SQL exactly as given');
+  const mapped = sqlMetadataForCap.mapRecordset(capped, 3);
+  assert.equal(mapped.truncated, true);
+  assert.equal(mapped.rows.length, 3);
+
+  const fewRows = fakeStreamingReadPool((request) => {
+    request.emit('recordset', { n: { name: 'n' } });
+    request.emit('row', { n: 1 });
+    request.emit('row', { n: 2 });
+    request.emit('rowsaffected', 2);
+    request.emit('done', {});
+  });
+  const whole = await writeExecution.runCappedRead(fewRows, 'SELECT 1', { rowCap: 4 });
+  assert.equal(whole.capped, false);
+  assert.deepEqual(whole.recordset.map((row) => row.n), [1, 2]);
+  assert.deepEqual(whole.rowsAffected, [2]);
+  assert.equal(fewRows.state.cancelled, 0);
+
+  const failing = fakeStreamingReadPool((request) => {
+    request.emit('error', Object.assign(new Error("Invalid column name 'x'."), { code: 'EREQUEST', number: 207 }));
+    request.emit('done', {});
+  });
+  await assert.rejects(writeExecution.runCappedRead(failing, 'SELECT x FROM dbo.T', { rowCap: 4 }), (error) => error.number === 207);
+
+  const userCancelled = fakeStreamingReadPool((request) => {
+    request.emit('recordset', { n: { name: 'n' } });
+    request.emit('row', { n: 1 });
+    request.emit('error', Object.assign(new Error('Canceled.'), { code: 'ECANCEL' }));
+    request.emit('done', {});
+  });
+  await assert.rejects(writeExecution.runCappedRead(userCancelled, 'SELECT 1', { rowCap: 4 }), (error) => error.code === 'ECANCEL', 'a cancel the cap did not issue is still a cancel');
 }
 
 const updatePool = fakeSamplingPool({

@@ -146,6 +146,10 @@ try {
   });
   assert.equal(tablesMissingConnection.response.status, 400);
   assert.match(tablesMissingConnection.payload.error, /Server and database/);
+  // Error payloads carry SQL Server diagnostics (code, number, line, state, class, server, procedure)
+  // and nothing else: no connection details or credentials.
+  assert.deepEqual(Object.keys(tablesMissingConnection.payload).sort(), ['code', 'error', 'success']);
+  assert.equal(tablesMissingConnection.payload.code, null);
 
   const columnsMissingObject = await request('/api/columns', {
     method: 'POST',

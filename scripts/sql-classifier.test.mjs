@@ -8,7 +8,7 @@
  */
 
 import assert from 'node:assert/strict';
-import { analyzeSingleTableSelect, buildLimitedReadQuery, buildPreviewOutputQuery, classifyQuery, stripCommentsAndTrim, tokenizeSql, splitStatements } from '../lib/server/sql-classifier.js';
+import { analyzeSingleTableSelect, buildLimitedReadQuery, buildPreviewOutputQuery, classifyQuery, splitTrailingQueryHint, stripCommentsAndTrim, tokenizeSql, splitStatements } from '../lib/server/sql-classifier.js';
 
 let passed = 0;
 let failed = 0;
@@ -392,9 +392,23 @@ test('trailing semicolon on SELECT does not cause multi-statement block', () => 
 
 console.log('\nbuildLimitedReadQuery');
 
-test('plain SELECT is wrapped with server row cap', () => {
+test('plain SELECT gets the row cap as TOP inside the statement', () => {
   const limited = buildLimitedReadQuery('SELECT * FROM dbo.T', 25);
-  assert.equal(limited, 'SELECT TOP (25) * FROM (\nSELECT * FROM dbo.T\n) AS __rowlimit_wrapper;');
+  assert.equal(limited, 'SELECT TOP (25) * FROM dbo.T;');
+});
+
+// The old fallback wrapped reads in SELECT TOP (n) * FROM (<query>) AS __rowlimit_wrapper,
+// which SQL Server rejects for unnamed columns (8155) and duplicate names (8156).
+test('reads with unnamed or duplicate columns are never put in a derived table', () => {
+  for (const [sql, expected] of [
+    ['SELECT 1', 'SELECT TOP (25) 1;'],
+    ['SELECT GETDATE()', 'SELECT TOP (25) GETDATE();'],
+    ['SELECT a, a FROM dbo.T', 'SELECT TOP (25) a, a FROM dbo.T;']
+  ]) {
+    const limited = buildLimitedReadQuery(sql, 25);
+    assert.equal(limited, expected);
+    assert.ok(!limited.includes('__rowlimit_wrapper'));
+  }
 });
 
 test('top-level ORDER BY uses OFFSET FETCH instead of invalid derived table wrapper', () => {
@@ -499,12 +513,105 @@ test('a set operator inside a subquery does not disable the CTE row cap', () => 
 
 test('ORDER BY inside OVER does not trigger top-level ORDER BY handling', () => {
   const limited = buildLimitedReadQuery('SELECT ROW_NUMBER() OVER (ORDER BY Id) AS rn FROM dbo.T', 25);
-  assert.ok(limited.startsWith('SELECT TOP (25) * FROM ('));
+  assert.equal(limited, 'SELECT TOP (25) ROW_NUMBER() OVER (ORDER BY Id) AS rn FROM dbo.T;');
 });
 
 test('ORDER BY inside a string does not trigger top-level ORDER BY handling', () => {
   const limited = buildLimitedReadQuery("SELECT 'ORDER BY Id' AS label FROM dbo.T", 25);
-  assert.ok(limited.startsWith('SELECT TOP (25) * FROM ('));
+  assert.equal(limited, "SELECT TOP (25) 'ORDER BY Id' AS label FROM dbo.T;");
+});
+
+// ─── Trailing OPTION (...) query hints ──────────────────────────────────────
+// T-SQL order is ORDER BY, OFFSET/FETCH, FOR, OPTION. Anything the cap adds goes in front of
+// the hint; a cap after OPTION is a syntax error.
+
+const RECURSIVE_MONTHS = `;WITH Months AS
+(
+    SELECT CAST('2025-01-01' AS date) AS MonthStart
+
+    UNION ALL
+
+    SELECT DATEADD(month, 1, MonthStart)
+    FROM Months
+    WHERE MonthStart < CAST('2026-07-01' AS date)
+)
+SELECT
+    MonthStart
+FROM Months
+ORDER BY MonthStart
+OPTION (MAXRECURSION 100);`;
+
+test('CTE + ORDER BY + OPTION(MAXRECURSION): OFFSET/FETCH goes before the hint', () => {
+  const limited = buildLimitedReadQuery(RECURSIVE_MONTHS, 251);
+  assert.ok(limited.endsWith('ORDER BY MonthStart\nOFFSET 0 ROWS FETCH NEXT 251 ROWS ONLY\nOPTION (MAXRECURSION 100);'), limited);
+  assert.ok(!/OPTION\s*\(MAXRECURSION 100\)\s*OFFSET/.test(limited), 'OFFSET/FETCH must not follow OPTION');
+  assert.ok(limited.startsWith(';WITH Months AS'), 'the statement itself is not rewritten');
+  assert.equal(classifyQuery(RECURSIVE_MONTHS).kind, 'read');
+});
+
+test('ORDER BY + OFFSET + OPTION: only FETCH is added, before the hint', () => {
+  const limited = buildLimitedReadQuery('SELECT Id FROM dbo.T ORDER BY Id OFFSET 10 ROWS OPTION (RECOMPILE)', 25);
+  assert.equal(limited, 'SELECT Id FROM dbo.T ORDER BY Id OFFSET 10 ROWS\nFETCH NEXT 25 ROWS ONLY\nOPTION (RECOMPILE);');
+});
+
+test('ORDER BY + OFFSET/FETCH + OPTION is left exactly as written', () => {
+  const sql = 'SELECT Id FROM dbo.T ORDER BY Id OFFSET 0 ROWS FETCH NEXT 5 ROWS ONLY OPTION (RECOMPILE)';
+  assert.equal(buildLimitedReadQuery(sql, 25), `${sql};`);
+});
+
+test('plain SELECT + OPTION(RECOMPILE) keeps the hint at statement level, not in a derived table', () => {
+  const limited = buildLimitedReadQuery('SELECT a FROM dbo.T OPTION (RECOMPILE);', 25);
+  assert.equal(limited, 'SELECT TOP (25) a FROM dbo.T\nOPTION (RECOMPILE);');
+  assert.ok(!limited.includes('__rowlimit_wrapper'));
+});
+
+test('a hint with several options and nested parentheses is kept whole', () => {
+  const limited = buildLimitedReadQuery("SELECT a FROM dbo.T WHERE b = @b ORDER BY a OPTION (OPTIMIZE FOR (@b = 1), MAXDOP 1)", 25);
+  assert.ok(limited.endsWith('OFFSET 0 ROWS FETCH NEXT 25 ROWS ONLY\nOPTION (OPTIMIZE FOR (@b = 1), MAXDOP 1);'), limited);
+});
+
+test('OPTION in a string, a comment or a subquery is not taken for the query hint', () => {
+  for (const sql of [
+    "SELECT 'OPTION (RECOMPILE)' AS t FROM dbo.T ORDER BY t",
+    'SELECT a FROM dbo.T -- OPTION (RECOMPILE)\nORDER BY a',
+    'SELECT a FROM dbo.T /* OPTION (RECOMPILE) */ ORDER BY a',
+    'SELECT a FROM (SELECT a FROM dbo.T) AS s ORDER BY a',
+    'SELECT [OPTION] FROM dbo.T ORDER BY [OPTION]'
+  ]) {
+    assert.deepEqual(splitTrailingQueryHint(sql), { body: sql, hint: '' }, sql);
+    assert.ok(buildLimitedReadQuery(sql, 25).endsWith('OFFSET 0 ROWS FETCH NEXT 25 ROWS ONLY;'), sql);
+  }
+});
+
+test('an OPTION clause of unexpected shape leaves the statement unchanged', () => {
+  for (const sql of [
+    'SELECT a FROM dbo.T ORDER BY a OPTION (RECOMPILE) FOR XML PATH',
+    'SELECT a FROM dbo.T ORDER BY a OPTION RECOMPILE',
+    'SELECT a FROM dbo.T ORDER BY a OPTION (RECOMPILE) OPTION (MAXDOP 1)'
+  ]) {
+    assert.equal(splitTrailingQueryHint(sql), null, sql);
+    assert.equal(buildLimitedReadQuery(sql, 25), `${sql};`, sql);
+  }
+});
+
+test('a trailing comment after the hint does not stop the cap going in front of it', () => {
+  const limited = buildLimitedReadQuery('SELECT a FROM dbo.T ORDER BY a OPTION (RECOMPILE) -- keep plan fresh', 25);
+  assert.ok(limited.includes('OFFSET 0 ROWS FETCH NEXT 25 ROWS ONLY\nOPTION (RECOMPILE)'), limited);
+});
+
+test('a top-level set operator without ORDER BY is left unchanged, hint and all', () => {
+  const sql = 'SELECT a FROM dbo.T UNION ALL SELECT a FROM dbo.U OPTION (RECOMPILE)';
+  assert.equal(buildLimitedReadQuery(sql, 25), `${sql};`);
+});
+
+test('a leading-semicolon CTE without ORDER BY gets TOP on its final SELECT', () => {
+  const limited = buildLimitedReadQuery(';WITH q AS (SELECT 1 AS n) SELECT n FROM q OPTION (MAXRECURSION 10)', 25);
+  assert.equal(limited, ';WITH q AS (SELECT 1 AS n) SELECT TOP (25) n FROM q\nOPTION (MAXRECURSION 10);');
+});
+
+test('a read with no top-level SELECT is left unchanged rather than guessed at', () => {
+  const sql = '(SELECT a FROM dbo.T)';
+  assert.equal(buildLimitedReadQuery(sql, 25), `${sql};`);
 });
 
 // ─── analyzeSingleTableSelect — row-editability shape analysis ──────────────

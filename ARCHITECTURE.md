@@ -88,6 +88,7 @@ lib/server/                   The real backend — all logic lives here
   audit-store.js              Append-oriented NDJSON audit log
   saved-connections-store.js  Connection profiles (never passwords)
   appearance-store.js         Named theme + button-colour profiles and the default one
+  error-details.js            Safe SQL Server diagnostics (code, number, line, ...) for error responses
   env-settings-store.js       Typed .env schema + safe read/write/sync
   lifecycle-store.js          Heartbeat sessions and shutdown watchdog
   rate-limit.js               Sliding-window limiter
@@ -179,7 +180,18 @@ than one, otherwise the whole editor (`scope: 'all'` — **Run all**, Ctrl+Shift
 server's `scanSqlRegions` because `public/` cannot import `lib/`; it only chooses which text is
 sent, and the server re-classifies whatever arrives, so a disagreement can pick the wrong
 statement but never skip a confirmation. Statements split on top-level `;` only — **not blank
-lines**, which could cut a `WHERE` off an `UPDATE`. `state.runHighlight` wraps the executed range
+lines**, which could cut a `WHERE` off an `UPDATE`.
+
+A `;` is not a safe execution boundary for every script, so before the statement under the
+cursor is sent `batchScopeDependency()` looks for clear batch-scoped dependencies: a variable
+used here but `DECLARE`d in another statement, a TRY/CATCH or BEGIN…END block the statement only
+partly covers (`sqlBatchBlocks` pairs BEGIN/END and skips CASE…END), a BEGIN TRANSACTION whose
+COMMIT/ROLLBACK is elsewhere, a temp table created elsewhere, an `ELSE` cut from its `IF`. On a
+match nothing is sent and `#runScopeNotice` explains and offers Run All; Ctrl+Enter is never
+widened automatically. A selection is respected; `partialExecutionHint()` adds Run All advice to
+an error only when the error (Msg 137, a syntax error near CATCH/TRY/END/ELSE, Msg 3902/3903) and
+the full editor both show the missing part. Error hints come from `errorCategory()` — the
+transport flag set by `api()`, `code` and `number` — never from words in a message. `state.runHighlight` wraps the executed range
 in a `.sql-run-range` span in the backdrop for 1.6 s; it has no padding or border so the
 backdrop glyphs stay aligned with the transparent textarea on top.
 
@@ -498,18 +510,27 @@ rolled-back transaction without paying its cost.
 
 ### `buildLimitedReadQuery(query, rowLimit)`
 
-Applying the server row cap without breaking valid T-SQL requires five cases, because SQL
-Server rejects `ORDER BY` inside a derived table unless paired with `TOP`, `OFFSET` or
-`FOR XML/JSON`:
+Invariant: **the row cap never turns valid T-SQL into invalid T-SQL.** It is written into the
+statement only for shapes whose grammar is understood, always in front of a trailing
+`OPTION ( … )` hint (split off by `splitTrailingQueryHint`, which ignores OPTION in strings,
+comments, brackets and subqueries and returns null for any other shape):
 
 | Query shape | Result |
 | --- | --- |
-| top-level `ORDER BY` **and** user `TOP` | unchanged (avoids `TOP` + `OFFSET` conflict) |
-| top-level `ORDER BY`, no `OFFSET`/`FETCH`/`FOR` | append `OFFSET 0 ROWS FETCH NEXT n ROWS ONLY` |
-| top-level `ORDER BY` with `OFFSET`, no `FETCH` | append `FETCH NEXT n ROWS ONLY` |
-| top-level `ORDER BY` with `FETCH` or `FOR` | unchanged |
-| leading `WITH` (CTE) | inject `TOP (n)` into the final top-level `SELECT`, or leave alone if it already has `TOP` |
-| everything else | `SELECT TOP (n) * FROM ( … ) AS __rowlimit_wrapper` |
+| top-level `ORDER BY` **and** user `TOP`, or with `FETCH` or `FOR` | unchanged |
+| top-level `ORDER BY`, no `OFFSET` | `OFFSET 0 ROWS FETCH NEXT n ROWS ONLY` (before any `OPTION`) |
+| top-level `ORDER BY` with `OFFSET`, no `FETCH` | `FETCH NEXT n ROWS ONLY` (before any `OPTION`) |
+| no `ORDER BY`, user `TOP` or a top-level set operator | unchanged |
+| no `ORDER BY`, one top-level `SELECT` (plain or CTE) | `TOP (n)` after `SELECT [ALL\|DISTINCT]` |
+| top-level `OPTION` of any other shape, no top-level `SELECT` | unchanged |
+
+There is no derived-table wrapper: `SELECT TOP (n) * FROM ( … ) AS w` rejected `SELECT 1`
+(8155, no column name), `SELECT a, a` (8156) and anything ending in `OPTION ( … )`. Unchanged
+statements are still bounded: the read path runs through `runCappedRead` (write-execution.js),
+which streams and cancels the request once `RESPONSE_ROW_LIMIT + 1` rows have arrived, so the
+server stops and the app never buffers more than the cap. Its own cancel is not an error; a
+real error or the user's Cancel still is. A cancel only aborts the request; the pooled
+connection's session settings are untouched.
 
 "Top-level" is computed by `topLevelSqlWords()`, which tracks paren depth and skips strings,
 brackets and comments — so `ORDER BY` inside `OVER (…)` or inside a string literal does not
@@ -752,6 +773,7 @@ and nothing is lost on upgrade.
 | --- | --- | --- |
 | localStorage | `dataWorkbenchConnectionsV2` | saved-profile mirror (server is authoritative) |
 | localStorage | `dataWorkbenchQueryHistoryV3` | SQL history, 50 items, 14-day retention, with an optional `runCount` per entry |
+| localStorage | `dataWorkbenchPanelLayoutV1` `.editor` | SQL editor width once dragged (0 = default builder/editor ratio) |
 | localStorage | `dataWorkbenchHistoryViewV1` | history panel view: `profileOnly`, `sort` (`recent`/`frequent`) |
 | localStorage | `dataWorkbenchProfileWorkspacesV1` | per-connection memory keyed by connection signature: active object/procedure, procedure values, builder snapshot (editor tabs, filters, sort). Never results. Last 12 connections |
 | localStorage | `dataWorkbenchProcedureHistoryV1` | procedure runs + parameter values |

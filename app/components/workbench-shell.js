@@ -135,6 +135,13 @@ function SqlWorkspace({ hidden = false }) {
         </section>
 
         <section className="editor-card">
+          <button
+            className="panel-resize-handle panel-resize-handle-vertical editor-width-handle"
+            data-resize-handle="editor"
+            type="button"
+            aria-label="Resize the SQL editor width"
+            aria-hidden="true"
+          />
           <div className="section-title-row">
             <div>
               <div className="eyebrow">Execute</div>
@@ -147,6 +154,7 @@ function SqlWorkspace({ hidden = false }) {
               <button id="formatQueryBtn" className="ghost-btn small">Format</button>
               <button id="copyQueryBtn" className="ghost-btn small">Copy</button>
               <button id="clearQueryBtn" className="ghost-btn small">Clear</button>
+              <button id="popoutEditorBtn" className="ghost-btn small" type="button">Pop out</button>
               <button id="runAllQueryBtn" className="ghost-btn small" type="button">Run all</button>
               <button id="cancelQueryBtn" className="ghost-btn small cancel-query-btn hidden" type="button">Cancel</button>
               <button id="runQueryBtn" className="primary-btn">Run query</button>
@@ -227,6 +235,11 @@ function SqlWorkspace({ hidden = false }) {
             <div id="queryEditorBackdrop" className="editor-backdrop" aria-hidden="true"></div>
             <textarea id="queryEditor" spellCheck="false" aria-autocomplete="list" aria-controls="editorSuggest" />
             <div id="editorSuggest" className="editor-suggest hidden" role="listbox" aria-label="SQL suggestions" />
+          </div>
+          <div id="runScopeNotice" className="run-scope-notice hidden" role="status" aria-live="polite">
+            <span id="runScopeNoticeText" />
+            <button id="runScopeRunAllBtn" className="ghost-btn small" type="button">Run All (Ctrl+Shift+Enter)</button>
+            <button id="runScopeDismissBtn" className="icon-btn" type="button" aria-label="Dismiss">×</button>
           </div>
           <div className="helper-row">
             <span id="editorHint">Ctrl+Enter runs the selection or the statement under the cursor, Ctrl+Shift+Enter runs everything, Ctrl+Space suggests names. Press ? for all shortcuts.</span>

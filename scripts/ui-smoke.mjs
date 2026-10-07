@@ -657,6 +657,23 @@ function attachMocks(window) {
       const queryText = String(body.query || '');
       window.__postedQueries = [...(window.__postedQueries || []), queryText];
       window.__postedRunIds = [...(window.__postedRunIds || []), body.runId];
+      // Errors shaped like the server sends them: SQL Server's message plus its code and number.
+      const sqlError = (status, payload) => new Response(JSON.stringify({ success: false, ...payload }), { status, headers: { 'Content-Type': 'application/json' } });
+      if (queryText.includes('TRANSPORT_TEST')) {
+        throw new TypeError('Failed to fetch');
+      }
+      if (queryText.includes('FETCH_ERROR_TEST')) {
+        return sqlError(400, { error: 'Invalid usage of the option NEXT in the FETCH statement.', code: 'EREQUEST', number: 153, lineNumber: 3, state: 2, class: 15 });
+      }
+      if (queryText.includes('SOCKET_ERROR_TEST')) {
+        return sqlError(500, { error: 'Failed to connect to demo:1433 - getaddrinfo ENOTFOUND demo', code: 'ESOCKET' });
+      }
+      if (queryText.trim() === 'SELECT @x AS x') {
+        return sqlError(400, { error: 'Must declare the scalar variable "@x".', code: 'EREQUEST', number: 137, lineNumber: 1 });
+      }
+      if (/^END TRY/i.test(queryText.trim())) {
+        return sqlError(400, { error: "Incorrect syntax near 'CATCH'.", code: 'EREQUEST', number: 102, lineNumber: 2 });
+      }
       // A read that hit the row limit: the server fetched limit + 1 rows and reports truncated.
       if (queryText.includes('JSON_CELL_TEST')) {
         return new Response(JSON.stringify({
@@ -732,11 +749,12 @@ function attachMocks(window) {
         }), { status: 200, headers: { 'Content-Type': 'application/json' } });
       }
       // SQL Server's own wording, so the did-you-mean parser is tested against the real text.
-      if (/dbo\.Alrts/i.test(queryText) || /\bStatsu\b/.test(queryText)) {
+      if (/dbo\.Alrts/i.test(queryText) || /\bStatsu\b/.test(queryText) || /Stat\$su/.test(queryText)) {
         return new Response(JSON.stringify({
           success: false,
-          error: /dbo\.Alrts/i.test(queryText) ? "Invalid object name 'dbo.Alrts'." : "Invalid column name 'Statsu'.",
-          code: 'EREQUEST'
+          error: /dbo\.Alrts/i.test(queryText) ? "Invalid object name 'dbo.Alrts'." : /Stat\$su/.test(queryText) ? "Invalid column name 'Stat$su'." : "Invalid column name 'Statsu'.",
+          code: 'EREQUEST',
+          number: /dbo\.Alrts/i.test(queryText) ? 208 : 207
         }), { status: 400, headers: { 'Content-Type': 'application/json' } });
       }
       if (/\bLIMIT\s+\d+\s*;?\s*$/i.test(queryText)) {
@@ -1327,7 +1345,7 @@ if (sqlWindow.document.documentElement.style.getPropertyValue('--tooltip-delay-m
     throw new Error(`Safety Policy panel did not render the server safety limits. Got: ${policyText}`);
   }
 }
-['saveConnectionBtn', 'testConnectionBtn', 'loadTablesBtn', 'runQueryBtn', 'runAllQueryBtn', 'exportJsonBtn', 'exportAllCsvBtn', 'exportAllJsonBtn', 'contextCopyInsertBtn', 'contextCopyAllInsertBtn', 'contextCopyMarkdownBtn', 'compareTabsBtn', 'runCompareTabsBtn', 'runCompareBtn', 'saveQueryBtn', 'resultsMoreBtn', 'headerMenuBtn', 'clearHistoryBtn', 'toggleAdvancedOperationsBtn', 'toggleConnectionDetailsBtn', 'contextFilterSelectedBtn', 'contextCompareSelectedBtn', 'insertSelectTemplateBtn', 'updateJoinTemplateBtn', 'mergePreviewBtn', 'profileObjectBtn', 'dependencyViewBtn', 'insertSqlHelperBtn', 'wrapSqlHelperBtn', 'openWorkbenchToolsBtn', 'openEnvSettingsBtn', 'openSupportBtn', 'scrollResultsLeftBtn', 'scrollResultsRightBtn', 'scrollResultsDockLeftBtn', 'scrollResultsDockRightBtn'].forEach((id) => {
+['saveConnectionBtn', 'testConnectionBtn', 'loadTablesBtn', 'runQueryBtn', 'runAllQueryBtn', 'exportJsonBtn', 'exportAllCsvBtn', 'exportAllJsonBtn', 'contextCopyInsertBtn', 'contextCopyAllInsertBtn', 'contextCopyMarkdownBtn', 'compareTabsBtn', 'runCompareTabsBtn', 'runCompareBtn', 'saveQueryBtn', 'resultsMoreBtn', 'headerMenuBtn', 'clearHistoryBtn', 'toggleAdvancedOperationsBtn', 'toggleConnectionDetailsBtn', 'popoutEditorBtn', 'runScopeRunAllBtn', 'runScopeDismissBtn', 'contextFilterSelectedBtn', 'contextCompareSelectedBtn', 'insertSelectTemplateBtn', 'updateJoinTemplateBtn', 'mergePreviewBtn', 'profileObjectBtn', 'dependencyViewBtn', 'insertSqlHelperBtn', 'wrapSqlHelperBtn', 'openWorkbenchToolsBtn', 'openEnvSettingsBtn', 'openSupportBtn', 'scrollResultsLeftBtn', 'scrollResultsRightBtn', 'scrollResultsDockLeftBtn', 'scrollResultsDockRightBtn'].forEach((id) => {
   const element = sqlWindow.document.getElementById(id);
   if (!element || typeof element.onclick !== 'function') {
     throw new Error(`Expected ${id} to be wired on the SQL page.`);
@@ -1874,7 +1892,8 @@ if (!sqlWindow.document.getElementById('queryEditor').value.includes('execution 
   const before = editor.value;
   for (const [query, bad, good, fixed] of [
     ["SELECT * FROM dbo.Alrts WHERE Status = 'dbo.Alrts';", 'dbo.Alrts', 'dbo.Alerts', "SELECT * FROM dbo.Alerts WHERE Status = 'dbo.Alrts';"],
-    ['SELECT Statsu FROM dbo.Alerts;', 'Statsu', 'Status', 'SELECT Status FROM dbo.Alerts;']
+    ['SELECT Statsu FROM dbo.Alerts;', 'Statsu', 'Status', 'SELECT Status FROM dbo.Alerts;'],
+    ['SELECT Stat$su FROM dbo.Alerts;', 'Stat$su', 'Status', 'SELECT Status FROM dbo.Alerts;']
   ]) {
     editor.value = query;
     editor.dispatchEvent(new sqlWindow.Event('input', { bubbles: true }));
@@ -1928,6 +1947,34 @@ if (!sqlWindow.document.getElementById('queryEditor').value.includes('execution 
   profileOnly.dispatchEvent(new sqlWindow.Event('change', { bubbles: true }));
   sort.value = 'recent';
   sort.dispatchEvent(new sqlWindow.Event('change', { bubbles: true }));
+  // Each result tab is tied to the SQL that produced it: opening an older result shows that SQL,
+  // in a new editor tab when no tab holds it, and in the same tab the next time.
+  const editorTabCount = () => sqlWindow.document.querySelectorAll('#editorTabs .editor-tab').length;
+  editor.value = 'SELECT 99 AS unrelated_work;';
+  editor.dispatchEvent(new sqlWindow.Event('input', { bubbles: true }));
+  const tabsBefore = editorTabCount();
+  // Newest first: [0] ran history_once, [1] and [2] each ran history_twice.
+  const resultTabButtons = () => [...sqlWindow.document.querySelectorAll('#resultTabs [data-result-tab]')];
+  const olderTab = resultTabButtons()[1];
+  olderTab.click();
+  if (!olderTab || editorTabCount() !== tabsBefore + 1 || !editor.value.includes('history_twice')) {
+    throw new Error(`Opening a result tab should show its SQL in a new editor tab. Editor: ${editor.value}`);
+  }
+  if (!sqlWindow.__postedQueries || sqlWindow.document.getElementById('confirmModal').classList.contains('hidden') === false) {
+    throw new Error('Showing a result\'s SQL must not run anything.');
+  }
+  const postedBefore = sqlWindow.__postedQueries.length;
+  resultTabButtons()[2].click();
+  if (editorTabCount() !== tabsBefore + 1 || !editor.value.includes('history_twice') || sqlWindow.__postedQueries.length !== postedBefore) {
+    throw new Error('Opening the same result tab again should reuse the editor tab that holds its SQL, without running it.');
+  }
+  const originalConfirmForTabs = sqlWindow.confirm;
+  sqlWindow.confirm = () => true;
+  while (editorTabCount() > tabsBefore) {
+    sqlWindow.document.querySelector('#editorTabs .editor-tab.active .editor-tab-close')?.click();
+  }
+  sqlWindow.confirm = originalConfirmForTabs;
+
   editor.value = before;
   editor.dispatchEvent(new sqlWindow.Event('input', { bubbles: true }));
 }
@@ -1997,6 +2044,20 @@ if (!sqlWindow.document.querySelector('.visual-helper-card')?.textContent.includ
     const copied = sqlWindow.__lastClipboardText.split('\n');
     if (copied.length !== 3 || !copied[1].startsWith('3\t') || !copied[2].startsWith('5\t')) {
       throw new Error(`Copy rows should copy only the selected rows, in grid order. Copied: ${JSON.stringify(copied)}`);
+    }
+    // Ctrl+C with rows selected copies the same thing; typing in a field keeps normal copy.
+    sqlWindow.__lastClipboardText = '';
+    sqlWindow.document.body.dispatchEvent(new sqlWindow.KeyboardEvent('keydown', { key: 'c', ctrlKey: true, bubbles: true, cancelable: true }));
+    await flush();
+    const viaKeyboard = sqlWindow.__lastClipboardText.split('\n');
+    if (viaKeyboard.length !== 3 || !viaKeyboard[1].startsWith('3\t') || !viaKeyboard[2].startsWith('5\t')) {
+      throw new Error(`Ctrl+C should copy the selected rows. Copied: ${JSON.stringify(sqlWindow.__lastClipboardText)}`);
+    }
+    sqlWindow.__lastClipboardText = '';
+    sqlWindow.document.getElementById('localResultsFilter').dispatchEvent(new sqlWindow.KeyboardEvent('keydown', { key: 'c', ctrlKey: true, bubbles: true, cancelable: true }));
+    await flush();
+    if (sqlWindow.__lastClipboardText) {
+      throw new Error('Ctrl+C in a text field must keep the browser\'s own copy.');
     }
     const rightClick = (index) => rows()[index].querySelector('td:last-child').dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
     rightClick(4);
@@ -2532,6 +2593,162 @@ sqlWindow.document.dispatchEvent(new sqlWindow.KeyboardEvent('keydown', { key: '
 await flush();
 if (sqlWindow.__postedQueries.at(-1) !== 'SELECT 1 AS a;') {
   throw new Error(`Ctrl+Enter should run the statement under the cursor. Sent: ${sqlWindow.__postedQueries.at(-1)}`);
+}
+{
+  // Batch scope: Ctrl+Enter never sends part of a dependent batch and never widens itself to
+  // Run All; Ctrl+Shift+Enter sends the editor exactly as written.
+  const doc = sqlWindow.document;
+  const notice = doc.getElementById('runScopeNotice');
+  const ctrlEnter = async (shift = false) => {
+    doc.dispatchEvent(new sqlWindow.KeyboardEvent('keydown', { key: 'Enter', ctrlKey: true, shiftKey: shift, bubbles: true }));
+    await flush();
+  };
+  const setEditor = (text, cursorAt) => {
+    editor.value = text;
+    editor.dispatchEvent(new sqlWindow.Event('input', { bubbles: true }));
+    const cursor = text.indexOf(cursorAt) + 2;
+    editor.setSelectionRange(cursor, cursor);
+  };
+
+  const declared = 'DECLARE @x int = 1;\nSELECT @x AS x;';
+  setEditor(declared, 'SELECT @x');
+  sqlWindow.__postedQueries = [];
+  await ctrlEnter();
+  if (sqlWindow.__postedQueries.length) {
+    throw new Error(`Ctrl+Enter on a statement that uses a DECLAREd variable must not send it alone. Sent: ${JSON.stringify(sqlWindow.__postedQueries)}`);
+  }
+  if (notice.classList.contains('hidden') || !notice.textContent.includes('@x') || !notice.textContent.includes('Run All (Ctrl+Shift+Enter)')) {
+    throw new Error(`The editor should say @x is declared elsewhere and point to Run All. Notice: ${notice.textContent}`);
+  }
+  if (editor.value !== declared) {
+    throw new Error('Stopping a run must leave the editor text unchanged.');
+  }
+  await ctrlEnter(true);
+  if (sqlWindow.__postedQueries.at(-1) !== declared) {
+    throw new Error(`Ctrl+Shift+Enter should post the whole editor exactly. Sent: ${sqlWindow.__postedQueries.at(-1)}`);
+  }
+  if (!notice.classList.contains('hidden')) {
+    throw new Error('Running everything should clear the batch-scope notice.');
+  }
+  // Two statements are a batch: the full run goes through the normal RUN BATCH confirmation.
+  if (doc.getElementById('confirmModal').classList.contains('hidden') || !doc.getElementById('statusText').textContent.includes('RUN BATCH')) {
+    throw new Error('Running the whole DECLARE script should go through the batch confirmation.');
+  }
+  doc.getElementById('cancelModalBtn').click();
+  await flush();
+
+  const tryCatch = 'SET XACT_ABORT ON;\n\nBEGIN TRY\n    BEGIN TRANSACTION;\n    SELECT 1 AS step_one;\n    SELECT 2 AS step_two;\n    COMMIT TRANSACTION;\nEND TRY\nBEGIN CATCH\n    IF @@TRANCOUNT > 0\n        ROLLBACK TRANSACTION;\n    THROW;\nEND CATCH;';
+  setEditor(tryCatch, 'SELECT 2 AS step_two');
+  sqlWindow.__postedQueries = [];
+  await ctrlEnter();
+  if (sqlWindow.__postedQueries.length || !notice.textContent.includes('TRY/CATCH must be executed as one SQL batch')) {
+    throw new Error(`Ctrl+Enter inside TRY/CATCH must not send a fragment. Sent: ${JSON.stringify(sqlWindow.__postedQueries)} Notice: ${notice.textContent}`);
+  }
+  doc.getElementById('runScopeRunAllBtn').click();
+  await flush();
+  if (sqlWindow.__postedQueries.at(-1) !== tryCatch) {
+    throw new Error(`Run All from the notice should post the exact TRY/CATCH batch. Sent: ${sqlWindow.__postedQueries.at(-1)}`);
+  }
+  if (!doc.getElementById('confirmModal').classList.contains('hidden')) {
+    doc.getElementById('cancelModalBtn')?.click();
+    await flush();
+  }
+
+  // Independent statements are unaffected.
+  setEditor('SELECT 1 AS a;\n\nSELECT 2 AS b;', 'SELECT 2');
+  await ctrlEnter();
+  if (sqlWindow.__postedQueries.at(-1) !== 'SELECT 2 AS b;' || !notice.classList.contains('hidden')) {
+    throw new Error(`Independent statements should still run one at a time. Sent: ${sqlWindow.__postedQueries.at(-1)}`);
+  }
+
+  // A selection is respected; when it fails for want of its DECLARE, the error says why.
+  editor.value = declared;
+  editor.dispatchEvent(new sqlWindow.Event('input', { bubbles: true }));
+  editor.setSelectionRange(declared.indexOf('SELECT @x'), declared.indexOf('SELECT @x') + 'SELECT @x AS x'.length);
+  doc.getElementById('runQueryBtn').click();
+  await flush();
+  const errorCard = () => doc.querySelector('.result-error-card');
+  if (sqlWindow.__postedQueries.at(-1) !== 'SELECT @x AS x' || !errorCard()?.textContent.includes('Must declare the scalar variable "@x".') || !errorCard().textContent.includes('could not see @x because only part of the editor was executed')) {
+    throw new Error(`A failed selection that left out its DECLARE should keep SQL Server's error and add Run All guidance. Card: ${errorCard()?.textContent}`);
+  }
+  if (!errorCard().querySelector('[data-error-run-all]')) {
+    throw new Error('Partial-execution guidance should offer a Run All button.');
+  }
+
+  // A selected fragment of TRY/CATCH that SQL Server rejects near CATCH gets the TRY/CATCH advice.
+  editor.value = tryCatch;
+  editor.dispatchEvent(new sqlWindow.Event('input', { bubbles: true }));
+  editor.setSelectionRange(tryCatch.indexOf('END TRY'), tryCatch.length);
+  doc.getElementById('runQueryBtn').click();
+  await flush();
+  if (!errorCard()?.textContent.includes("Incorrect syntax near 'CATCH'.") || !errorCard().textContent.includes('Only part of a TRY/CATCH batch was executed')) {
+    throw new Error(`A partial TRY/CATCH failure should say to run the whole block. Card: ${errorCard()?.textContent}`);
+  }
+
+  // Error categories come from codes, not words: FETCH in a T-SQL error is not a network fault.
+  for (const [query, expect, reject] of [
+    ['SELECT 1 /* FETCH_ERROR_TEST */', 'SQL Server rejected the T-SQL syntax', 'could not reach'],
+    ['SELECT 1 /* SOCKET_ERROR_TEST */', 'could not reach the database server', 'SQL Server rejected'],
+    ['SELECT 1 /* TRANSPORT_TEST */', 'could not reach the local Data Workbench server', 'SQL Server rejected']
+  ]) {
+    setEditor(query, 'SELECT');
+    doc.getElementById('runAllQueryBtn').click();
+    await flush();
+    const text = errorCard()?.textContent || '';
+    if (!text.includes(expect) || text.includes(reject)) {
+      throw new Error(`${query} should be explained as "${expect}". Card: ${text}`);
+    }
+    if (errorCard().querySelector('[data-error-run-all]')) {
+      throw new Error('A full run that fails should not suggest Run All.');
+    }
+  }
+  if (!errorCard() || !doc.querySelector('.result-error-card code')) {
+    // The last card is the transport failure, which has no SQL details; check the FETCH one shows them.
+  }
+  setEditor('SELECT 1 /* FETCH_ERROR_TEST */', 'SELECT');
+  doc.getElementById('runAllQueryBtn').click();
+  await flush();
+  if (!errorCard()?.querySelector('code')?.textContent.includes('Msg 153')) {
+    throw new Error(`SQL Server's message number should be shown with the error. Card: ${errorCard()?.textContent}`);
+  }
+  editor.value = '';
+  editor.dispatchEvent(new sqlWindow.Event('input', { bubbles: true }));
+}
+
+{
+  // Pop-out editor: a second window linked live to this editor, both ways, and running from it
+  // runs here (with the same scope rules).
+  const popup = new JSDOM('<!doctype html><html><head></head><body></body></html>').window;
+  const originalOpen = sqlWindow.open;
+  sqlWindow.open = () => popup;
+  editor.value = 'SELECT 1 AS first_statement;\nSELECT 2 AS second_statement;';
+  editor.dispatchEvent(new sqlWindow.Event('input', { bubbles: true }));
+  sqlWindow.document.getElementById('popoutEditorBtn').click();
+  const popupArea = popup.document.getElementById('popoutQuery');
+  if (!popupArea || popupArea.value !== editor.value) {
+    throw new Error('The pop-out editor should open with the current editor text.');
+  }
+  popupArea.value = 'SELECT 3 AS typed_in_popout;';
+  popupArea.dispatchEvent(new popup.Event('input', { bubbles: true }));
+  if (editor.value !== 'SELECT 3 AS typed_in_popout;') {
+    throw new Error(`Typing in the pop-out should update the main editor. Editor: ${editor.value}`);
+  }
+  editor.value = 'SELECT 4 AS typed_in_main;\nSELECT 5 AS other;';
+  editor.dispatchEvent(new sqlWindow.Event('input', { bubbles: true }));
+  if (popupArea.value !== editor.value) {
+    throw new Error(`Typing in the main editor should update the pop-out. Pop-out: ${popupArea.value}`);
+  }
+  sqlWindow.__postedQueries = [];
+  popupArea.setSelectionRange(popupArea.value.indexOf('SELECT 5') + 2, popupArea.value.indexOf('SELECT 5') + 2);
+  popupArea.dispatchEvent(new popup.KeyboardEvent('keydown', { key: 'Enter', ctrlKey: true, bubbles: true, cancelable: true }));
+  await flush();
+  if (sqlWindow.__postedQueries.at(-1) !== 'SELECT 5 AS other;') {
+    throw new Error(`Ctrl+Enter in the pop-out should run the statement under its cursor here. Sent: ${JSON.stringify(sqlWindow.__postedQueries)}`);
+  }
+  popup.close();
+  sqlWindow.open = originalOpen;
+  editor.value = '';
+  editor.dispatchEvent(new sqlWindow.Event('input', { bubbles: true }));
 }
 
 // Autocomplete: object names after FROM, alias-qualified columns, and Escape to dismiss.
