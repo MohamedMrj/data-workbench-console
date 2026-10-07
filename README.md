@@ -6,7 +6,7 @@ Production-safe internal SQL workbench for Microsoft Fabric SQL endpoints, Fabri
 
 Data Workbench Console is built for controlled operational work: browse metadata, generate SQL, run read queries, preview writes before execution, run stored procedures from a dedicated flow, and keep an audit trail of important actions.
 
-Current app version: `1.7.0`. See [CHANGELOG.md](CHANGELOG.md) for release notes.
+Current app version: `1.8.0`. See [CHANGELOG.md](CHANGELOG.md) for release notes.
 
 <p>
   <img alt="Next.js" src="https://img.shields.io/badge/Next.js-15-111827?style=for-the-badge&logo=nextdotjs" />
@@ -988,16 +988,16 @@ with a palette for dark mode and one for light mode.
 
 | Theme | Look | Background scene |
 | --- | --- | --- |
-| Liquid Glass (default) | the strongest frosted glass, glossy panel edges, a specular lift on hover | glass bubbles at three depths, slow liquid forms and travelling caustic light |
+| Liquid Glass (default) | the strongest frosted glass, glossy panel edges, a specular lift on hover | clear glass orbs at three depths floating slowly, refractive glass arcs and breathing pools of caustic light |
 | OLED Black | true black (or pure white), crisp text, thin borders, no shadows or glass | almost nothing: sparse points that rarely glint and a hairline horizon |
 | Matte Neon | solid matte panels; buttons glow only on hover, selection and focus | circuit traces with pulsing nodes, light running along the traces, waveforms |
 | Minimal | monochrome, flat controls, no shadows or decoration | one large circle and a dot grid; it barely moves |
 | Neomorphic | soft 3D: raised panels and buttons, inset fields, controls that press in | soft sculpted objects in the page material, floating very slowly |
-| Pastel | soft pastels, the roundest shapes, pill buttons that lift on hover | clouds drifting at three depths, rising bubbles, blinking sparkles |
-| Cyberpunk | neon pink and cyan panel edges, cut corners, HUD headings, sharp focus outlines | a striped sun setting behind a city skyline, a grid rolling towards you, a scanline |
-| Cottagecore | warm paper, stitched panels, uneven hand-cut corners, serif headings | hills with a smoking cottage, swaying wildflowers and vines, mushrooms, fireflies at night |
-| Garden | botanical greens with earth accents, leaf-cut buttons; forest and lime in dark mode | a storybook tree rooted bottom right whose branches and leaves move in the wind |
-| Space | deep floating panels with luminous selection (a pale celestial sky in light mode) | a drifting star field, a ringed planet with an orbiting moon, a turning galaxy |
+| Pastel | soft pastels, the roundest shapes, pill buttons that lift on hover | painted clouds drifting at three depths, a rainbow, rising iridescent bubbles, blinking sparkles, a moon and a rare shooting star at night |
+| Cyberpunk | neon pink and cyan panel edges, cut corners, HUD headings, sharp focus outlines | a striped synthwave sun setting behind a painted city skyline, a grid rolling towards you, a rare hovercraft and a rare glitch |
+| Cottagecore | warm paper, stitched panels, uneven hand-cut corners, serif headings | a painted cottage with chimney smoke on soft hills, a fence with a robin, swaying wildflowers, a rose vine with a lantern; moon, stars and fireflies at night |
+| Garden | botanical greens with earth accents, leaf-cut buttons; deep teal forest and soft lime in dark mode | a painted flowering tree rooted bottom right whose canopy branches and blossom twigs move in the wind, with a rare falling leaf and fireflies at night |
+| Space | deep floating panels with luminous selection (a pale celestial sky in light mode) | a drifting star field, a painted ringed planet close by, a slowly turning spiral galaxy, a nebula and a rare shooting star |
 
 The scenes sit behind the panels and towards the screen edges, and never take a click. They move
 only while ambient motion is on (`APP_AMBIENT_MOTION_ENABLED`) and the operating system or browser

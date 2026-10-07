@@ -58,6 +58,29 @@
   overflow: hidden;
 }
 
+/* Painted layers (Art in theme-scenery.js). The image is a background picked by tone, so only the
+   active tone's file is fetched, and nothing at all for a hidden scene. Each box carries its art's
+   aspect ratio; contain keeps the art undistorted where a light and a dark file differ in shape. */
+.sc-img {
+  position: absolute;
+  background: var(--img-light) no-repeat center / contain;
+}
+
+:root[data-theme-tone='dark'] .sc-img {
+  background-image: var(--img-dark, var(--img-light));
+}
+
+/* Small layers (sparkles, drops, fireflies) fade faster than the signature art as the level drops,
+   so at 40% the main objects still read while the details recede. */
+.sc-group {
+  position: absolute;
+  inset: 0;
+}
+
+.sc-detail {
+  opacity: clamp(0, calc((var(--scenery-level, 0.4) - 0.2) * 1.25), 1);
+}
+
 /* ─── Shared motion ─────────────────────────────────────────────────────────────────────────────
    Each piece carries its own cycle (--time) and start offset (--delay, negative, so a page load
    lands mid-cycle) and the amplitudes it needs; no two neighbours share a clock. */
@@ -217,57 +240,45 @@
 
 /* ─── Liquid Glass ──────────────────────────────────────────────────────────────────────────── */
 
-.scene-glass {
-  --gl-core: #ffffff;
-  --gl-rim: rgba(255, 255, 255, 0.5);
-  --gl-shine: rgba(255, 255, 255, 0.8);
-  --gl-caustic: color-mix(in srgb, var(--accent) 24%, transparent);
-}
-
 :root[data-theme-tone='light'] .scene-glass {
-  --gl-rim: rgba(255, 255, 255, 0.95);
-  --gl-shine: #ffffff;
-  --gl-caustic: rgba(255, 255, 255, 0.7);
+  --scene-strength: 0.9;
 }
 
-.gl-bubble { aspect-ratio: 1; }
-.gl-near { opacity: 0.9; }
-.gl-mid { opacity: 0.72; }
-.gl-far { opacity: 0.5; }
-.gl-rim { fill: none; stroke: var(--gl-rim); stroke-width: 1.2; }
-.gl-shine { fill: none; stroke: var(--gl-shine); stroke-width: 3; stroke-linecap: round; opacity: 0.75; }
-.gl-under { fill: none; stroke: color-mix(in srgb, var(--accent) 55%, white); stroke-width: 2; stroke-linecap: round; opacity: 0.45; }
-.gl-spark { fill: var(--gl-shine); }
-
-.gl-liquid-a {
-  left: -9vw;
-  bottom: -12vh;
-  width: 54vmax;
-  aspect-ratio: 4 / 3;
+.gl-atmosphere {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(50vmax 34vmax at 88% 6%, rgba(255, 255, 255, 0.7), transparent 70%),
+    radial-gradient(40vmax 18vmax at 70% 100%, rgba(255, 196, 150, 0.22), transparent 72%),
+    radial-gradient(60vmax 26vmax at 24% 104%, color-mix(in srgb, var(--accent) 16%, transparent), transparent 72%);
 }
 
-.gl-liquid-b {
-  right: -12vw;
-  top: -9vh;
-  width: 58vmax;
-  aspect-ratio: 5 / 3;
+:root[data-theme-tone='dark'] .gl-atmosphere {
+  background:
+    radial-gradient(50vmax 34vmax at 86% 8%, rgba(60, 170, 200, 0.18), transparent 70%),
+    radial-gradient(40vmax 18vmax at 70% 100%, rgba(255, 150, 60, 0.12), transparent 72%),
+    radial-gradient(60vmax 26vmax at 20% 104%, rgba(20, 110, 130, 0.26), transparent 72%);
 }
 
-.gl-liquid .gl-shine {
-  stroke-width: 2.4;
-  opacity: 0.55;
-}
-
-.gl-caustic {
-  width: 30vmax;
+.gl-orb,
+.gl-drop {
   aspect-ratio: 1;
-  border-radius: 50%;
-  background: radial-gradient(circle, var(--gl-caustic), transparent 62%);
 }
 
-.gl-caustic-a { left: 0; bottom: 2vh; }
-.gl-caustic-b { right: 2vw; top: 4vh; }
-.gl-caustic-c { right: 16vw; bottom: 8vh; width: 22vmax; }
+/* The large orb is cropped by the top right corner; a medium and a small one sit further back. */
+.gl-orb-a { right: -10vh; top: -14vh; height: 66vh; }
+.gl-orb-b { left: 24vw; top: 28vh; height: 18vh; opacity: 0.9; }
+.gl-orb-c { right: 31vw; top: 15vh; height: 7vh; opacity: 0.8; }
+.gl-drop-a { left: 40vw; top: 11vh; height: 3.4vh; }
+.gl-drop-b { right: 20vw; bottom: 24vh; height: 2.8vh; }
+
+.gl-arc { opacity: 0.85; }
+.gl-arc-a { left: -6vw; bottom: 3vh; width: 46vw; aspect-ratio: 405 / 172; }
+.gl-arc-b { right: -3vw; bottom: 12vh; width: 30vw; aspect-ratio: 310 / 143; }
+
+.gl-caustic { aspect-ratio: 400 / 163; }
+.gl-caustic-a { left: 6vw; bottom: -5vh; width: 52vw; }
+.gl-caustic-b { right: 2vw; bottom: -3vh; width: 36vw; }
 
 /* ─── OLED Black ────────────────────────────────────────────────────────────────────────────── */
 
@@ -571,110 +582,145 @@
 
 /* ─── Pastel ────────────────────────────────────────────────────────────────────────────────── */
 
-.scene-pastel {
-  --pa-cloud: #ffffff;
-}
-
 :root[data-theme-tone='dark'] .scene-pastel {
-  --pa-cloud: #4b3e68;
   --scene-strength: 0.9;
 }
 
-.pa-pink { --pa: #f9a8d4; }
-.pa-butter { --pa: #fde68a; }
-.pa-sky { --pa: #93c5fd; }
-.pa-lavender { --pa: #c4b5fd; }
-.pa-mint { --pa: #86efac; }
+.pa-atmosphere {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(44vmax 30vmax at 82% 8%, rgba(255, 246, 214, 0.6), transparent 70%),
+    radial-gradient(50vmax 30vmax at 6% 20%, rgba(186, 230, 253, 0.4), transparent 70%),
+    radial-gradient(60vmax 30vmax at 50% 104%, rgba(251, 207, 232, 0.4), transparent 72%);
+}
 
-.pa-cloud { aspect-ratio: 220 / 100; }
-.pa-far { opacity: 0.5; }
-.pa-mid { opacity: 0.72; }
+:root[data-theme-tone='dark'] .pa-atmosphere {
+  background:
+    radial-gradient(40vmax 30vmax at 84% 10%, rgba(216, 180, 254, 0.18), transparent 70%),
+    radial-gradient(60vmax 30vmax at 50% 104%, rgba(244, 170, 210, 0.2), transparent 72%);
+}
+
+/* Three depths: far clouds fainter and slower, near cloud banks along the bottom edge. */
+.pa-far { opacity: 0.55; }
+.pa-mid { opacity: 0.8; }
 .pa-near { opacity: 0.95; }
-.pa-cloud-body { fill: var(--pa-cloud); }
 
-.pa-bubble {
-  aspect-ratio: 1;
-  border-radius: 50%;
-  opacity: 0.75;
-  background: radial-gradient(circle at 34% 30%, rgba(255, 255, 255, 0.95) 0 12%, color-mix(in srgb, var(--pa) 40%, transparent) 42%, color-mix(in srgb, var(--pa) 80%, transparent) 100%);
+.pa-cloud { aspect-ratio: 390 / 182; }
+.pa-cloud-a { left: -4vw; top: 6vh; width: 26vw; }
+.pa-cloud-b { right: 20vw; top: 1vh; width: 22vw; }
+.pa-cloud-c { left: 6vw; top: 44vh; width: 30vw; }
+.pa-cloud-d { left: 28vw; bottom: -11vh; width: 46vw; }
+.pa-blob-a { left: -7vw; bottom: -6vh; width: 40vw; aspect-ratio: 280 / 138; }
+.pa-blob-b { right: -7vw; bottom: -5vh; width: 40vw; aspect-ratio: 279 / 152; }
+
+.pa-rainbow {
+  right: 6vw;
+  top: 34vh;
+  width: 24vw;
+  aspect-ratio: 366 / 168;
+  opacity: 0.85;
 }
 
-.pa-sparkle {
-  width: 1.8vmin;
-  aspect-ratio: 1;
+/* The moon belongs to the night sky only. */
+.pa-moon {
+  display: none;
+  right: 8vw;
+  top: 7vh;
+  height: 13vh;
+  aspect-ratio: 170 / 186;
 }
 
-.pa-sparkle path { fill: var(--pa); }
+:root[data-theme-tone='dark'] .pa-moon {
+  display: block;
+}
 
-.pa-shape { aspect-ratio: 1; }
-.pa-shape path { fill: var(--pa-shape); }
-.pa-moon { --pa-shape: #fde68a; right: 5vw; top: 6vh; width: 7vmin; }
-.pa-heart { --pa-shape: #f9a8d4; left: 3vw; bottom: 32vh; width: 4vmin; aspect-ratio: 100 / 90; }
-.pa-star { --pa-shape: #c4b5fd; right: 3vw; bottom: 28vh; width: 5vmin; }
+.pa-bubble { aspect-ratio: 1; opacity: 0.85; }
+.pa-bubble-a { left: 14vw; top: 22vh; height: 9vh; }
+.pa-bubble-b { right: 27vw; top: 15vh; height: 6vh; }
+.pa-bubble-c { left: 47vw; top: 58vh; height: 4vh; }
+
+.pa-sparkle { height: 4.4vh; aspect-ratio: 3 / 4; }
+.pa-sparkle-a { left: 30vw; top: 9vh; }
+.pa-sparkle-b { right: 13vw; top: 50vh; }
+.pa-sparkle-c { left: 5vw; top: 36vh; }
+.pa-sparkle-d { right: 41vw; top: 5vh; }
+
+.pa-star { right: 35vw; top: 31vh; height: 5vh; aspect-ratio: 1; }
+
+.pa-shooting {
+  display: none;
+  left: 46vw;
+  top: 8vh;
+  width: 26vw;
+  aspect-ratio: 594 / 114;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  :root[data-ambient-motion='enabled'] .pa-shooting {
+    display: block;
+    opacity: 0;
+    animation: pa-shoot var(--time, 53s) ease-out var(--delay, 0s) infinite;
+    will-change: transform, opacity;
+  }
+}
+
+/* The arc glides a little and fades; it is visible for about two seconds of each long cycle. */
+@keyframes pa-shoot {
+  0%,
+  94% { opacity: 0; transform: translateX(4vw); }
+  95% { opacity: 1; transform: translateX(3vw); }
+  98.5% { opacity: 0; transform: translateX(-2vw); }
+  100% { opacity: 0; transform: translateX(-2vw); }
+}
 
 /* ─── Cyberpunk ─────────────────────────────────────────────────────────────────────────────── */
 
 .scene-cyberpunk {
-  --cp-horizon: 70vh;
-  --cp-sun-top: #ffe600;
-  --cp-sun-bottom: var(--accent);
+  --cp-horizon: 66vh;
+  /* The sun's disc diameter; the box around it is derived from the art's own proportions. */
+  --cp-sun: 50vh;
   --cp-grid: var(--accent-2);
-  --cp-building: #0b0519;
-  --cp-window: color-mix(in srgb, var(--accent-2) 70%, white);
 }
 
 :root[data-theme-tone='light'] .scene-cyberpunk {
-  --cp-sun-top: #ffb86b;
-  --cp-building: #e6d3f4;
-  --cp-window: var(--accent-2);
   --cp-grid: var(--accent);
   --scene-strength: 0.85;
 }
 
-.cp-sun {
-  left: 74vw;
-  top: var(--cp-horizon);
-  width: 34vmin;
-  aspect-ratio: 1;
-  margin: -27vmin 0 0 -17vmin;
-}
-
-.cp-sun-glow {
-  position: absolute;
-  inset: -40%;
-  border-radius: 50%;
-  background: radial-gradient(circle, color-mix(in srgb, var(--accent) 32%, transparent), transparent 62%);
-}
-
-/* The disc sets behind the horizon: its lower fifth is cut at the horizon line. */
-.cp-sun-disc {
+.cp-atmosphere {
   position: absolute;
   inset: 0;
-  clip-path: inset(0 0 20.6% 0);
+  background:
+    radial-gradient(60vmax 34vmax at 44% var(--cp-horizon), color-mix(in srgb, var(--accent) 26%, transparent), transparent 70%),
+    linear-gradient(180deg, transparent 0, color-mix(in srgb, var(--accent-2) 10%, transparent) var(--cp-horizon), transparent 100%);
 }
 
-.cp-city {
-  left: 50%;
+/* The disc sinks behind the skyline: its lowest eighth is cut off at the horizon. */
+.cp-sun {
+  left: 44vw;
   top: var(--cp-horizon);
-  width: max(100vw, 180vh);
-  aspect-ratio: 1600 / 150;
-  transform: translate(-50%, -100%);
+  height: var(--cp-sun);
+  aspect-ratio: 1374 / 1145;
+  margin: calc(var(--cp-sun) * -0.88) 0 0 calc(var(--cp-sun) * -0.6);
+  clip-path: inset(0 0 calc(var(--cp-sun) * 0.12) 0);
 }
 
-.cp-building { fill: var(--cp-building); }
-.cp-window { fill: var(--cp-window); opacity: 0.7; }
-.cp-antenna { fill: none; stroke: var(--cp-building); stroke-width: 2; }
-
-.cp-sign {
-  position: absolute;
-  border: 2px solid currentColor;
-  border-radius: 2px;
-  box-shadow: 0 0 10px currentColor, inset 0 0 6px currentColor;
+:root[data-theme-tone='dark'] .cp-sun {
+  height: calc(var(--cp-sun) * 1.053);
+  aspect-ratio: 1;
+  margin: calc(var(--cp-sun) * -0.903) 0 0 calc(var(--cp-sun) * -0.526);
+  clip-path: inset(0 0 calc(var(--cp-sun) * 0.15) 0);
 }
 
-.cp-sign-a { left: 12%; top: 34%; width: 1.6%; height: 22%; color: var(--accent); }
-.cp-sign-b { left: 61%; top: 44%; width: 3.2%; height: 10%; color: var(--accent-2); }
-.cp-sign-c { left: 87%; top: 28%; width: 1.4%; height: 24%; color: #ffe600; }
+/* The skyline art has a strip of empty canvas under the street; it is pulled down onto the horizon. */
+.cp-skyline {
+  left: -2vw;
+  top: var(--cp-horizon);
+  width: 104vw;
+  aspect-ratio: 2172 / 724;
+  margin-top: calc(104vw / 3 * -0.906);
+}
 
 .cp-horizon {
   left: 0;
@@ -710,32 +756,29 @@
     repeating-linear-gradient(0deg, color-mix(in srgb, var(--cp-grid) 60%, transparent) 0 2px, transparent 2px 80px);
 }
 
-.cp-scan {
+.cp-craft {
+  display: none;
   left: 0;
-  right: 0;
-  top: 0;
-  height: 12vh;
-  opacity: 0;
-  background: linear-gradient(180deg, transparent, color-mix(in srgb, var(--accent-2) 10%, transparent) 50%, transparent);
+  top: 17vh;
+  height: 5.5vh;
+  aspect-ratio: 228 / 91;
 }
 
 @media (prefers-reduced-motion: no-preference) {
   :root[data-ambient-motion='enabled'] .cp-plane {
-    animation: cp-roll 7s linear infinite;
+    animation: cp-roll 11s linear infinite;
     will-change: transform;
   }
 
-  :root[data-ambient-motion='enabled'] .cp-scan {
-    animation: cp-scan 12s linear infinite;
+  :root[data-ambient-motion='enabled'] .cp-sun {
+    animation: cp-glitch 47s linear -12s infinite;
+  }
+
+  :root[data-ambient-motion='enabled'] .cp-craft {
+    display: block;
+    opacity: 0;
+    animation: cp-fly 76s linear -20s infinite;
     will-change: transform, opacity;
-  }
-
-  :root[data-ambient-motion='enabled'] .cp-sign {
-    animation: cp-flicker var(--time, 15s) linear var(--delay, 0s) infinite;
-  }
-
-  :root[data-ambient-motion='enabled'] .cp-sun-disc {
-    animation: cp-glitch 41s linear -12s infinite;
   }
 }
 
@@ -745,22 +788,7 @@
   to { transform: rotateX(76deg) translateY(0); }
 }
 
-@keyframes cp-scan {
-  0% { transform: translateY(-12vh); opacity: 0.9; }
-  100% { transform: translateY(100vh); opacity: 0.9; }
-}
-
-@keyframes cp-flicker {
-  0%,
-  89%,
-  92%,
-  100% { opacity: 1; }
-  90% { opacity: 0.3; }
-  93.5% { opacity: 0.15; }
-  95% { opacity: 1; }
-}
-
-/* Once every forty seconds the sun slips sideways for a fraction of a second. */
+/* Once every three-quarters of a minute the sun slips sideways for a fraction of a second. */
 @keyframes cp-glitch {
   0%,
   96%,
@@ -771,253 +799,399 @@
   97% { transform: none; }
 }
 
+/* The hovercraft crosses the sky in about fourteen seconds, then the sky stays empty for a minute. */
+@keyframes cp-fly {
+  0% { opacity: 0; transform: translateX(-12vw); }
+  1.5% { opacity: 1; }
+  17% { opacity: 1; }
+  18.5% { opacity: 0; transform: translateX(104vw); }
+  100% { opacity: 0; transform: translateX(104vw); }
+}
+
 /* ─── Cottagecore ───────────────────────────────────────────────────────────────────────────── */
 
 .scene-cottagecore {
-  --cc-hill-far: color-mix(in srgb, var(--accent) 26%, #efe5cc);
-  --cc-hill-near: color-mix(in srgb, var(--accent) 42%, #e2d6b6);
-  --cc-wall: #f6ecd6;
-  --cc-roof: var(--accent-2);
-  --cc-door: #8a6a4a;
-  --cc-window: #b7a37c;
-  --cc-smoke: rgba(255, 255, 255, 0.9);
-  --cc-grass: color-mix(in srgb, var(--accent) 80%, #7d8f5a);
-  --cc-leaf: var(--accent);
-  --cc-vine: color-mix(in srgb, var(--accent) 60%, #6b5a3a);
-  --cc-cap: color-mix(in srgb, var(--accent-2) 85%, #a33b22);
-  --cc-cap-dot: #fbf3e0;
-  --cc-stalk: #f1e5c8;
+  --cc-hill-far: color-mix(in srgb, var(--accent) 22%, #efe4c8);
+  --cc-hill-near: color-mix(in srgb, var(--accent) 34%, #e4d8b6);
+  /* The cottage's height; the wall and the flowers in front of it are placed from its width. */
+  --cc-cottage: 56vh;
+  --cc-cottage-w: calc(var(--cc-cottage) * 1.333);
   --firefly: #ffd27a;
+  --firefly-core: #fff3cf;
 }
 
 :root[data-theme-tone='dark'] .scene-cottagecore {
-  --cc-hill-far: #2e281e;
-  --cc-hill-near: #3a3224;
-  --cc-wall: #5a4a36;
-  --cc-door: #2a2016;
-  --cc-window: #ffcf73;
-  --cc-smoke: rgba(220, 210, 190, 0.5);
-  --cc-grass: #4f6a40;
-  --cc-leaf: #6f9160;
-  --cc-vine: #4d5a36;
-  --cc-stalk: #cfc2a2;
-  --cc-cap-dot: #efe3c4;
+  --cc-hill-far: #3b2d21;
+  --cc-hill-near: #2d231a;
+}
+
+.cc-atmosphere {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(46vmax 30vmax at 80% 10%, rgba(255, 236, 196, 0.7), transparent 70%),
+    radial-gradient(60vmax 24vmax at 30% 70%, rgba(214, 226, 230, 0.35), transparent 72%);
+}
+
+:root[data-theme-tone='dark'] .cc-atmosphere {
+  background:
+    radial-gradient(30vmax 24vmax at 88% 12%, rgba(255, 226, 170, 0.12), transparent 70%),
+    radial-gradient(60vmax 30vmax at 74% 86%, rgba(255, 176, 90, 0.16), transparent 72%),
+    linear-gradient(180deg, rgba(30, 20, 14, 0.4), transparent 60%);
+}
+
+/* Stars and the crescent moon exist only at night. The crescent is the shadow of a transparent
+   disc, which a box shadow never paints inside. */
+.cc-stars {
+  display: none;
+  height: 42%;
+  fill: #f6e7c0;
+  opacity: 0.7;
+}
+
+.cc-moon {
+  display: none;
+  right: 10vw;
+  top: 8vh;
+  width: 4.4vmin;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  box-shadow: 1.1vmin -0.6vmin 0 0 #f4e2b2;
+  filter: drop-shadow(0 0 10px rgba(255, 220, 150, 0.45));
+}
+
+:root[data-theme-tone='dark'] .cc-stars,
+:root[data-theme-tone='dark'] .cc-moon {
+  display: block;
 }
 
 .cc-hills {
-  left: 0;
-  right: 0;
+  top: auto;
   bottom: 0;
-  height: 30vh;
+  height: 36%;
 }
 
-.cc-hill-far { fill: var(--cc-hill-far); }
-.cc-hill-near { fill: var(--cc-hill-near); }
+.cc-hill-far { fill: var(--cc-hill-far); opacity: 0.7; }
+.cc-hill-near { fill: var(--cc-hill-near); opacity: 0.85; }
 
 .cc-cottage {
-  right: 15vw;
-  bottom: 19vh;
-  width: 10vmin;
-  aspect-ratio: 100 / 90;
+  right: -1vw;
+  bottom: -3vh;
+  height: var(--cc-cottage);
+  aspect-ratio: 1448 / 1086;
 }
 
-.cc-chimney,
-.cc-door { fill: var(--cc-door); }
-.cc-roof { fill: var(--cc-roof); }
-.cc-wall { fill: var(--cc-wall); }
-.cc-window { fill: var(--cc-window); }
-
-:root[data-theme-tone='dark'] .cc-window {
-  filter: drop-shadow(0 0 3px #ffb347);
+/* The chimney of both cottage paintings sits 39% across and near the top of the art. */
+.cc-chimney {
+  position: absolute;
+  left: 39.5%;
+  top: 4%;
 }
 
 .cc-puff {
+  left: calc(var(--cc-cottage) * -0.06);
+  bottom: 0;
+  height: calc(var(--cc-cottage) * 0.24);
+  aspect-ratio: 169 / 180;
+  transform-origin: 50% 100%;
+  opacity: 0.4;
+}
+
+.cc-puff-b {
+  display: none;
+}
+
+/* The cream smoke reads as brown at low opacity on the night sky; lift it towards moonlit grey. */
+:root[data-theme-tone='dark'] .cc-puff {
+  opacity: 0.32;
+  filter: brightness(1.5) saturate(0.4);
+}
+
+.cc-stone-wall {
+  right: calc(var(--cc-cottage-w) - 9vh);
+  bottom: -1vh;
+  height: 13vh;
+  aspect-ratio: 485 / 168;
+}
+
+.cc-fence {
+  left: -1vw;
+  bottom: -1vh;
+  height: 24vh;
+  aspect-ratio: 314 / 199;
+}
+
+.cc-flowers {
+  transform-origin: 50% 100%;
+}
+
+.cc-flowers-a { left: 15vw; bottom: -2vh; height: 18vh; aspect-ratio: 279 / 175; }
+.cc-flowers-b { right: calc(var(--cc-cottage-w) - 3vh); bottom: -2vh; height: 15vh; aspect-ratio: 222 / 160; }
+
+/* The rose vine hangs from the top left corner and carries the lantern. */
+.cc-vine {
+  left: -1vw;
+  top: -2vh;
+  height: 26vh;
+  aspect-ratio: 219 / 190;
+  transform-origin: 0 0;
+}
+
+.cc-lantern {
+  left: 58%;
+  top: 52%;
+  height: 76%;
+  aspect-ratio: 122 / 205;
+  transform-origin: 50% 0;
+}
+
+.cc-lantern-glow {
+  display: none;
   position: absolute;
-  left: 62%;
-  top: -4%;
-  width: 26%;
-  aspect-ratio: 1;
-  border-radius: 50%;
-  background: radial-gradient(circle, var(--cc-smoke) 0 38%, transparent 70%);
-  opacity: 0;
+  inset: 20% -90% -20%;
+  background: radial-gradient(closest-side, rgba(255, 200, 110, 0.42), rgba(255, 200, 110, 0.12) 55%, transparent);
 }
 
-/* Without motion two puffs hang above the chimney. */
-.cc-puff:nth-child(2) { opacity: 0.6; transform: translate(10%, -60%) scale(1.1); }
-.cc-puff:nth-child(3) { opacity: 0.35; transform: translate(45%, -150%) scale(1.5); }
-
-.cc-vines {
-  left: 0;
-  top: 0;
-  height: 46vh;
-  aspect-ratio: 420 / 460;
+:root[data-theme-tone='dark'] .cc-lantern-glow {
+  display: block;
 }
 
-.cc-meadow {
-  left: 0;
-  bottom: 0;
-  height: 32vh;
-  aspect-ratio: 600 / 300;
+.cc-fireflies {
+  position: absolute;
+  inset: 0;
 }
-
-.cc-shrooms {
-  right: 3vw;
-  bottom: 0;
-  height: 18vh;
-  aspect-ratio: 300 / 200;
-}
-
-.cc-cap { transform-origin: 50% 100%; }
-.cc-cap-a { left: 29.3%; top: 33%; width: 36%; height: 30%; }
-.cc-cap-b { left: 65.3%; top: 60%; width: 19.3%; height: 17%; }
-.cc-cap-c { left: 16.7%; top: 75%; width: 14%; height: 11%; }
-
-.cc-grass { fill: var(--cc-grass); }
-.cc-stem { fill: var(--cc-grass); }
-.cc-leaf { fill: var(--cc-leaf); }
-.cc-vine { fill: var(--cc-vine); }
-.cc-rose { fill: #e79aa6; }
-.cc-butter { fill: #f0cf6c; }
-.cc-lavender { fill: #b39ad8; }
-.cc-eye { fill: #f7e6a6; }
-.cc-cap-fill { fill: var(--cc-cap); }
-.cc-cap-dot { fill: var(--cc-cap-dot); }
-.cc-stalk { fill: var(--cc-stalk); }
-.cc-moss { fill: var(--cc-grass); }
 
 @media (prefers-reduced-motion: no-preference) {
   :root[data-ambient-motion='enabled'] .cc-puff {
-    animation: cc-smoke var(--time, 10s) ease-out var(--delay, 0s) infinite;
+    opacity: 0;
+    animation: cc-smoke 16s linear infinite;
     will-change: transform, opacity;
+  }
+
+  :root[data-ambient-motion='enabled'] .cc-puff-b {
+    display: block;
+    animation-delay: -8s;
   }
 }
 
+/* A puff leaves the chimney small, swells and leans with the wind as it rises, and fades out. */
 @keyframes cc-smoke {
-  0% { transform: translate(0, 0) scale(0.5); opacity: 0; }
-  12% { opacity: 0.75; }
-  100% { transform: translate(70%, -280%) scale(1.9); opacity: 0; }
+  0% { opacity: 0; transform: translate(0, 0) scale(0.55); }
+  12% { opacity: var(--cc-smoke-peak, 0.55); }
+  100% { opacity: 0; transform: translate(4vh, -18vh) scale(1.35); }
 }
 
-/* ─── Garden ────────────────────────────────────────────────────────────────────────────────── */
+:root[data-theme-tone='dark'] .scene-cottagecore {
+  --cc-smoke-peak: 0.38;
+}
+
+/* ─── Garden ────────────────────────────────────────────────────────────────────────────────────
+   The stage is the tree's own box (1122×1402 art), anchored a little past the bottom right corner
+   so the roots and the bark run off the screen instead of ending on it. Every other layer is placed
+   in percentages of that box, so the composition holds together at any size. The branch bases are
+   at the right edge of their art; they sit behind the dense crown and pivot there, so a branch
+   turning by half a degree never shows a gap where it joins the tree. */
 
 .scene-garden {
-  --gd-wood: #8a6a50;
-  --gd-wood-light: #b39478;
-  --gd-wood-dark: #6a4f3b;
-  --gd-bark: rgba(74, 52, 36, 0.55);
-  --gd-leaf-deep: color-mix(in srgb, var(--accent) 88%, #2c4a2a);
-  --gd-leaf-mid: color-mix(in srgb, var(--accent) 72%, #b7c99a);
-  --gd-leaf-light: color-mix(in srgb, var(--accent) 38%, #dfe8c4);
-  --gd-mass: var(--gd-leaf-deep);
-  --gd-bloom: var(--accent-2);
-  --gd-bloom-eye: #f4e1b8;
-  --gd-ground: color-mix(in srgb, var(--accent) 38%, #d9d1b4);
-  --gd-ground-shadow: rgba(80, 64, 40, 0.18);
-  --gd-blade: color-mix(in srgb, var(--accent) 70%, #a8b98c);
+  --gd-height: 106%;
+  --firefly: #ffd36b;
+  --firefly-core: #fff6cf;
+  /* Twigs, falling leaves and fireflies fade out faster than the tree as the level drops, so at
+     40% the tree still reads while the small things have mostly gone. */
+  --gd-detail: clamp(0, calc((var(--scenery-level, 0.4) - 0.2) * 1.25), 1);
 }
 
 :root[data-theme-tone='dark'] .scene-garden {
   --scene-strength: 0.95;
-  --gd-wood: #2f2519;
-  --gd-wood-light: color-mix(in srgb, var(--accent-2) 30%, #4d4434);
-  --gd-wood-dark: #1f1810;
-  --gd-bark: rgba(0, 0, 0, 0.45);
-  --gd-leaf-deep: #173a22;
-  --gd-leaf-mid: #24602f;
-  --gd-leaf-light: color-mix(in srgb, var(--accent) 45%, #24602f);
-  --gd-mass: var(--gd-leaf-deep);
-  --gd-bloom: color-mix(in srgb, var(--accent-2) 70%, #e6fff4);
-  --gd-bloom-eye: color-mix(in srgb, var(--accent) 80%, white);
-  --gd-ground: #0f2618;
-  --gd-ground-shadow: rgba(0, 0, 0, 0.35);
-  --gd-blade: #1f5a2e;
 }
 
 .gd-atmosphere {
   position: absolute;
   inset: 0;
   background:
-    radial-gradient(42vmax 34vmax at 78% 8%, rgba(255, 240, 200, 0.55), transparent 70%),
-    radial-gradient(60vmax 22vmax at 85% 104%, color-mix(in srgb, var(--accent) 22%, transparent), transparent 72%);
+    radial-gradient(46vmax 30vmax at 82% 6%, rgba(255, 238, 196, 0.6), transparent 70%),
+    radial-gradient(54vmax 24vmax at 4% 100%, color-mix(in srgb, var(--accent) 16%, transparent), transparent 72%),
+    radial-gradient(60vmax 20vmax at 84% 104%, color-mix(in srgb, var(--accent) 18%, transparent), transparent 72%);
 }
 
 :root[data-theme-tone='dark'] .gd-atmosphere {
   background:
-    radial-gradient(18vmax 18vmax at 70% 12%, rgba(200, 255, 240, 0.12), transparent 70%),
-    radial-gradient(70vmax 26vmax at 80% 104%, color-mix(in srgb, var(--accent-2) 26%, transparent), transparent 72%);
+    radial-gradient(70vmax 46vmax at 40% 46%, rgba(22, 74, 66, 0.42), transparent 72%),
+    radial-gradient(40vmax 26vmax at 76% 10%, rgba(120, 200, 170, 0.1), transparent 70%),
+    radial-gradient(60vmax 20vmax at 84% 104%, rgba(16, 60, 44, 0.5), transparent 72%);
 }
 
 .gd-stage {
-  right: 0;
-  bottom: 0;
-  height: 100%;
-  aspect-ratio: 1100 / 1000;
+  right: -2.5%;
+  bottom: -3%;
+  height: var(--gd-height);
+  aspect-ratio: 1122 / 1402;
 }
 
-.gd-wood { fill: var(--gd-wood); }
-.gd-wood-light { fill: var(--gd-wood-light); opacity: 0.6; }
-.gd-wood-dark { fill: var(--gd-wood-dark); }
-.gd-bark { fill: none; stroke: var(--gd-bark); stroke-width: 3; stroke-linecap: round; }
-.gd-knot { fill: var(--gd-wood-dark); }
-.gd-knot-ring { fill: none; stroke: var(--gd-bark); stroke-width: 3; }
-.gd-leaf-vein { fill: var(--gd-leaf-light); opacity: 0.5; }
-.gd-ground { fill: var(--gd-ground); }
-.gd-ground-shadow { fill: var(--gd-ground-shadow); }
-.gd-blade { fill: var(--gd-blade); }
-.gd-mass { fill: var(--gd-mass); }
-.gd-leaf-deep { fill: var(--gd-leaf-deep); }
-.gd-leaf-mid { fill: var(--gd-leaf-mid); }
-.gd-leaf-light { fill: var(--gd-leaf-light); }
-.gd-bloom { fill: var(--gd-bloom); }
-.gd-bloom-eye { fill: var(--gd-bloom-eye); }
+.gd-stage div:not(.sc-fireflies):not(.sc-firefly) {
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: 100% 100%;
+}
 
-/* A loose leaf and a petal exist only while things move. */
+.gd-tree {
+  position: absolute;
+  inset: 0;
+  background-image: url('/themes/garden/tree-light.webp');
+}
+
+.gd-branch {
+  position: absolute;
+  aspect-ratio: 2172 / 724;
+}
+
+/* The long upper limb: its base hides in the crown at 62% across, 24% down the tree. */
+.gd-branch-high {
+  left: -81.75%;
+  top: -8.9%;
+  width: 143.75%;
+  transform-origin: 100% 86%;
+  background-image: url('/themes/garden/branch-light-01.webp');
+}
+
+/* The lower limb, shorter, rooted further into the crown. */
+.gd-branch-low {
+  left: -42.5%;
+  top: 4.3%;
+  width: 112.5%;
+  transform-origin: 100% 89%;
+  background-image: url('/themes/garden/branch-light-02.webp');
+}
+
+:root[data-theme-tone='dark'] .gd-tree { background-image: url('/themes/garden/tree-dark.webp'); }
+:root[data-theme-tone='dark'] .gd-branch-high { background-image: url('/themes/garden/branch-dark-01.webp'); transform-origin: 100% 78%; }
+:root[data-theme-tone='dark'] .gd-branch-low { background-image: url('/themes/garden/branch-dark-02.webp'); transform-origin: 100% 88%; }
+
+/* Blossom twigs: the wood end is at the lower right of each image, which is where they hang. */
+.gd-twig {
+  position: absolute;
+  aspect-ratio: 204 / 126;
+  transform-origin: 92% 86%;
+  opacity: var(--gd-detail);
+}
+
+.gd-twig-a {
+  left: 6.5%;
+  top: 36%;
+  width: 9%;
+  background-image: url('/themes/garden/blossom-twig-light-01.webp');
+}
+
+.gd-twig-b {
+  left: 19%;
+  top: 38%;
+  width: 11%;
+  transform: scaleX(-1);
+  background-image: url('/themes/garden/blossom-twig-light-03.webp');
+}
+
+.gd-twig-c {
+  left: 32%;
+  top: 22.5%;
+  width: 15%;
+  background-image: url('/themes/garden/blossom-twig-light-02.webp');
+}
+
+:root[data-theme-tone='dark'] .gd-twig-a { background-image: url('/themes/garden/blossom-twig-dark-01.webp'); }
+:root[data-theme-tone='dark'] .gd-twig-b { background-image: url('/themes/garden/blossom-twig-dark-03.webp'); }
+:root[data-theme-tone='dark'] .gd-twig-c { background-image: url('/themes/garden/blossom-twig-dark-02.webp'); }
+
+.gd-fireflies {
+  position: absolute;
+  inset: 0;
+  opacity: var(--gd-detail);
+}
+
+/* One leaf and one petal exist only while things move, on long clocks of different lengths so
+   they seldom fly together: each is in the air for about a third of its cycle and gone for the rest. */
 .gd-fall {
   display: none;
   position: absolute;
-  width: 2.2%;
-  aspect-ratio: 26 / 12;
+  width: 4.2%;
+  aspect-ratio: 1;
 }
 
-.gd-fall-a { left: 54%; top: 30%; }
-.gd-fall-b { left: 76%; top: 14%; }
+.gd-fall-leaf { left: 34%; top: 30%; }
+.gd-fall-petal { left: 8%; top: 20%; }
 
-.gd-fall > div,
-.gd-fall svg {
+.gd-fall > div {
   width: 100%;
   height: 100%;
 }
+
+.gd-fall-leaf > div { background-image: url('/themes/garden/falling-leaf-light-01.webp'); }
+.gd-fall-petal > div { background-image: url('/themes/garden/falling-petal-light-02.webp'); }
+:root[data-theme-tone='dark'] .gd-fall-leaf > div { background-image: url('/themes/garden/falling-leaf-dark-01.webp'); }
+:root[data-theme-tone='dark'] .gd-fall-petal > div { background-image: url('/themes/garden/falling-petal-dark-02.webp'); }
 
 @media (prefers-reduced-motion: no-preference) {
   :root[data-ambient-motion='enabled'] .gd-fall {
     display: block;
     opacity: 0;
-    animation: gd-fall-y 31s linear infinite;
+    animation: gd-fall-y 41s linear -6s infinite;
     will-change: transform, opacity;
   }
 
-  :root[data-ambient-motion='enabled'] .gd-fall-b {
-    animation-duration: 47s;
-    animation-delay: -19s;
+  :root[data-ambient-motion='enabled'] .gd-fall-petal {
+    animation-duration: 59s;
+    animation-delay: -36s;
   }
 
   :root[data-ambient-motion='enabled'] .gd-fall > div {
-    animation: gd-fall-x 4.6s ease-in-out infinite alternate;
+    animation: gd-fall-x 5.2s ease-in-out infinite alternate;
   }
 }
 
-/* A leaf comes loose, drifts down and to the left and fades out; most of the cycle it is gone. */
+/* A leaf comes loose, drifts down and to the left and fades out; most of the cycle it is gone.
+   The peak opacity is the detail level, so it follows the slider like the other small layers. */
 @keyframes gd-fall-y {
   0% { opacity: 0; transform: translate(0, 0); }
-  3% { opacity: 1; }
-  34% { opacity: 0.9; }
-  44% { opacity: 0; transform: translate(-9vw, 62vh); }
-  100% { opacity: 0; transform: translate(-9vw, 62vh); }
+  3% { opacity: var(--gd-detail); }
+  28% { opacity: calc(var(--gd-detail) * 0.9); }
+  36% { opacity: 0; transform: translate(-8vw, 58vh); }
+  100% { opacity: 0; transform: translate(-8vw, 58vh); }
 }
 
 @keyframes gd-fall-x {
-  0% { transform: translateX(-1.4vw) rotate(-35deg); }
-  100% { transform: translateX(1.4vw) rotate(55deg); }
+  0% { transform: translateX(-1.2vw) rotate(-30deg); }
+  100% { transform: translateX(1.2vw) rotate(50deg); }
+}
+
+/* Tablets and portrait windows: the tree is sized by the width so it never fills the screen, and
+   the lower limb and its twig are left out. */
+@media (max-width: 1024px), (max-aspect-ratio: 1 / 1) {
+  .scene-garden {
+    --gd-height: min(106%, 108vw);
+  }
+
+  .gd-branch-low,
+  .gd-twig-c {
+    display: none;
+  }
+}
+
+/* Phones: the tree is cropped to its right side (trunk, roots and the edge of the crown) and
+   kept low, so the top of the app stays clear; no branches, twigs, falling leaves or fireflies. */
+@media (max-width: 700px) {
+  .scene-garden {
+    --gd-height: 64%;
+  }
+
+  .gd-stage {
+    right: -14%;
+  }
+
+  .gd-branch,
+  .gd-twig,
+  .gd-fall,
+  .gd-fireflies {
+    display: none !important;
+  }
 }
 
 /* ─── Space ─────────────────────────────────────────────────────────────────────────────────── */
@@ -1025,16 +1199,11 @@
 .scene-space {
   --sp-star: #eef1ff;
   --sp-star-warm: #ffd9a8;
-  --sp-globe-light: color-mix(in srgb, var(--accent) 55%, white);
-  --sp-globe-dark: color-mix(in srgb, var(--accent-2) 55%, #140c38);
-  --sp-shadow: rgba(3, 4, 16, 0.6);
 }
 
 :root[data-theme-tone='light'] .scene-space {
   --sp-star: #4f5bd5;
   --sp-star-warm: #9b4dca;
-  --sp-shadow: rgba(80, 70, 150, 0.35);
-  --sp-globe-dark: color-mix(in srgb, var(--accent-2) 65%, #6a5acd);
   --scene-strength: 0.85;
 }
 
@@ -1063,127 +1232,112 @@
 }
 
 .sp-galaxy {
-  left: -12vmin;
-  bottom: -16vmin;
-  width: 60vmin;
-  aspect-ratio: 1;
-  transform: rotate(-28deg) scaleY(0.5);
+  right: -5vw;
+  top: -8vh;
+  width: 50vw;
+  aspect-ratio: 1536 / 1024;
 }
 
-.sp-galaxy-core {
-  position: absolute;
-  inset: 32%;
-  border-radius: 50%;
-  background: radial-gradient(circle, rgba(255, 240, 220, 0.9) 0 8%, color-mix(in srgb, var(--accent-2) 45%, transparent) 30%, transparent 70%);
+.sp-cloud {
+  right: -8vw;
+  bottom: -10vh;
+  width: 46vw;
+  aspect-ratio: 422 / 265;
+  opacity: 0.7;
 }
 
-.sp-galaxy-spin {
-  position: absolute;
-  inset: 0;
-}
-
-.sp-arm-glow { fill: none; stroke: color-mix(in srgb, var(--accent-2) 60%, var(--sp-star)); stroke-width: 18; stroke-linecap: round; opacity: 0.12; }
-.sp-arm-glow-core { stroke-width: 6; opacity: 0.2; }
-.sp-arm-bright { fill: var(--sp-star); }
-.sp-arm-dim { fill: color-mix(in srgb, var(--accent-2) 65%, var(--sp-star)); opacity: 0.55; }
-
-.sp-planet {
-  right: 5vw;
-  top: 5vh;
-  width: 32vmin;
+/* The ringed planet, close by in the bottom left. The light art is square and the dark art wider,
+   with the planet filling a different share of each, so each tone gets its own box to keep the
+   ring the same size on screen. */
+.sp-ringed {
+  left: -12vw;
+  bottom: -18vh;
+  width: 52vw;
   aspect-ratio: 1;
 }
 
-.sp-globe {
-  position: absolute;
-  inset: 27%;
-  border-radius: 50%;
-  overflow: hidden;
-  background: radial-gradient(circle at 34% 30%, var(--sp-globe-light) 0, var(--accent) 45%, var(--sp-globe-dark) 100%);
+:root[data-theme-tone='dark'] .sp-ringed {
+  left: -15.5vw;
+  bottom: -8vh;
+  width: 59vw;
+  aspect-ratio: 1536 / 1024;
 }
 
-.sp-bands {
-  position: absolute;
-  inset: 0 auto 0 0;
-  width: 200%;
-  background: repeating-linear-gradient(98deg, transparent 0 6%, rgba(255, 255, 255, 0.12) 6% 9%, transparent 9% 14%, rgba(0, 0, 0, 0.1) 14% 18%, transparent 18% 25%);
-  background-size: 50% 100%;
-}
+.sp-small { aspect-ratio: 1; }
+.sp-small-a { right: 30vw; top: 46vh; height: 7vh; }
+.sp-small-b { left: 40vw; top: 14vh; height: 4vh; }
 
-.sp-terminator {
-  position: absolute;
-  inset: 0;
-  border-radius: 50%;
-  background: radial-gradient(circle at 30% 28%, transparent 42%, var(--sp-shadow) 88%);
-}
-
-.sp-ring { fill: none; stroke: color-mix(in srgb, var(--accent-2) 55%, var(--sp-star)); stroke-width: 4; opacity: 0.7; }
-.sp-ring-inner { stroke-width: 2; opacity: 0.45; }
-
-.sp-orbit {
-  position: absolute;
-  inset: -4%;
-}
-
-.sp-moon {
-  position: absolute;
-  left: 50%;
-  top: 0;
-  width: 6%;
-  aspect-ratio: 1;
-  border-radius: 50%;
-  background: radial-gradient(circle at 35% 35%, #ffffff, #b8bfe0 60%, #6b7299);
-}
+.sp-spark { height: 6vh; aspect-ratio: 108 / 100; }
+.sp-spark-a { left: 28vw; top: 26vh; }
+.sp-spark-b { right: 14vw; top: 58vh; }
 
 .sp-shooting {
-  left: 66vw;
+  display: none;
+  left: 62vw;
   top: 10vh;
-  width: 14vw;
-  height: 2px;
-  opacity: 0;
-  background: linear-gradient(90deg, transparent, var(--sp-star));
+  width: 9vw;
+  aspect-ratio: 201 / 114;
 }
 
 @media (prefers-reduced-motion: no-preference) {
   :root[data-ambient-motion='enabled'] .sp-shooting {
-    animation: sp-shoot var(--time, 43s) linear var(--delay, 0s) infinite;
+    display: block;
+    opacity: 0;
+    animation: sp-shoot var(--time, 47s) linear var(--delay, 0s) infinite;
     will-change: transform, opacity;
   }
 }
 
-/* A shooting star crosses for about a second, once in each long cycle. */
+/* A shooting star crosses for about a second and a half, once in each long cycle. */
 @keyframes sp-shoot {
   0%,
-  96.8% { opacity: 0; transform: rotate(158deg) translateX(0); }
-  97% { opacity: 1; transform: rotate(158deg) translateX(0); }
-  99.4% { opacity: 0; transform: rotate(158deg) translateX(26vw); }
-  100% { opacity: 0; transform: rotate(158deg) translateX(26vw); }
+  96.4% { opacity: 0; transform: translate(0, 0); }
+  96.6% { opacity: 1; transform: translate(0, 0); }
+  99.6% { opacity: 0; transform: translate(-18vw, 11vh); }
+  100% { opacity: 0; transform: translate(-18vw, 11vh); }
 }
 
 /* ─── Smaller screens: simpler scenes that keep their signature object ─────────────────────── */
 
 @media (max-width: 960px) {
   .gd-stage { height: 82%; }
-  .gl-far,
-  .pa-far { display: none; }
   .ne-circuit { width: min(70vw, 520px); }
-  .cp-sun { left: 62vw; }
-  .sp-planet { width: 38vmin; right: 2vw; }
+  .gl-arc-b,
+  .pa-cloud-b { display: none; }
+  .scene-cyberpunk { --cp-sun: 40vh; }
+  .sp-galaxy { width: 64vw; }
 }
 
 @media (max-width: 700px) {
   .gd-stage { height: 74%; }
-  .gd-fall-b,
-  .gl-caustic-c,
   .ne-wave-b,
   .ne-sweep,
-  .cc-vines,
   .nm-dot-small,
-  .pa-sparkle:nth-of-type(2n) { display: none !important; }
-  .gl-liquid-a { width: 80vmax; }
+  .gl-caustic-b,
+  .gl-orb-c,
+  .pa-cloud-c,
+  .pa-sparkle-d,
+  .cc-stone-wall,
+  .cc-flowers-b,
+  .cc-fence,
+  .cc-fireflies,
+  .sp-cloud,
+  .sp-small-b,
+  .sp-spark-b { display: none !important; }
+  .gl-orb-a { height: 40vh; right: -14vh; top: -8vh; }
+  .gl-orb-b { left: 4vw; top: 56vh; height: 12vh; }
+  .gl-arc-a { width: 90vw; }
+  .pa-blob-a,
+  .pa-blob-b { width: 80vw; }
+  .pa-cloud-d { width: 90vw; left: 5vw; }
+  .pa-rainbow { width: 50vw; top: 40vh; }
+  .scene-cyberpunk { --cp-sun: 30vh; }
   .cp-sun { left: 50vw; }
-  .cc-cottage { right: 8vw; }
-  .cc-meadow { height: 24vh; }
-  .sp-planet { width: 46vmin; right: -6vw; }
-  .sp-galaxy { width: 80vmin; }
+  .cp-skyline { left: -50vw; width: 200vw; margin-top: calc(200vw / 3 * -0.906); }
+  .scene-cottagecore { --cc-cottage: 32vh; }
+  .cc-cottage { right: -14vw; }
+  .cc-vine { height: 17vh; }
+  .sp-ringed { width: 120vw; left: -40vw; bottom: -12vh; }
+  :root[data-theme-tone='dark'] .sp-ringed { width: 136vw; left: -48vw; bottom: -2vh; }
+  .sp-galaxy { width: 110vw; right: -36vw; top: -4vh; }
 }

@@ -5,11 +5,12 @@ All notable Data Workbench Console changes are tracked here.
 The in-app version is read from `package.json` and exposed through `/api/version`
 together with the current git commit and build information.
 
-## Unreleased
+## 1.8.0 - 2026-10-07
 
 Themes are now whole looks with a dark and a light mode, a living background scene whose
-visibility you choose, controls with their own material, and colours you can change; and the
-confirmation dialog can be resized.
+visibility you choose — painted environments for six of them — controls with their own
+material, and colours you can change; Update works again, and the confirmation dialog can be
+resized.
 
 ### Added
 
@@ -18,20 +19,25 @@ confirmation dialog can be resized.
   fonts, corner shapes, panel blur, shadows and the page background.
 - **Dark and light mode for every theme** (`Dark`, `Light` or `Match system`) in
   Settings → Appearance.
-- **A living scene for every theme**, behind the panels and towards the screen edges, drawn
-  separately for dark and light mode: a storybook tree rooted in the bottom-right corner whose
-  branches, twigs and leaves move in the wind while the trunk stays put, with fireflies at night
-  (Garden); glass bubbles at three depths and travelling caustic light (Liquid Glass); a nearly
-  empty sky with a hairline horizon (OLED Black); circuit traces with pulsing nodes and running
-  light (Matte Neon); one large circle and a dot grid (Minimal); objects sculpted from the page
-  material (Neomorphic); layered drifting clouds and sparkles (Pastel); a striped sun setting
-  behind a city skyline over a rolling grid, with a rare glitch (Cyberpunk); hills with a smoking
-  cottage, swaying wildflowers and mushrooms (Cottagecore); a drifting star field, a ringed
-  planet with an orbiting moon and a turning galaxy (Space).
+- **A living scene for every theme**, behind the panels and towards the screen edges, with its
+  own dark and light version. Six are painted environments: a flowering tree rooted in the
+  bottom-right corner whose canopy branches and blossom twigs move in the wind (Garden); a
+  rose-covered cottage with chimney smoke, a fence with a robin and wildflowers, and a moon,
+  lantern glow and fireflies at night (Cottagecore); a close ringed planet, a slowly turning
+  spiral galaxy and a rare shooting star over a drifting star field (Space); a synthwave sun
+  behind a city skyline over a rolling grid, with a rare hovercraft and glitch (Cyberpunk);
+  painted clouds at three depths, a rainbow, bubbles and sparkles (Pastel); clear glass orbs,
+  refractive arcs and caustic light (Liquid Glass). OLED Black, Matte Neon, Minimal and
+  Neomorphic keep scenes drawn in CSS and SVG: a hairline horizon, circuit traces with pulsing
+  nodes, one large circle and a dot grid, and objects sculpted from the page material.
   Motion is slow and out of step, runs only while ambient motion is on and the system does not
   ask for reduced motion, and is otherwise a still picture. The `Background scenery` slider sets
-  how visible the scene is; 0 turns it off, motion included. Scenes are drawn from theme
-  colours, so they follow your colour changes, and are simplified on narrow screens.
+  how visible the scene is — small details fade first, so the main picture still reads at 40% —
+  and 0 turns it off, motion and downloads included. Scenes are recomposed, not just shrunk, on
+  tablets and phones.
+- **Artwork loads only for what you see**: the painted layers ship as optimized WebP (about
+  14 MB in total, visually identical to the masters) and only the active theme's files for the
+  current mode are downloaded — typically 0.2 to 2.8 MB.
 - **Controls with each theme's material**: thin flat borders on OLED Black, hover-only neon glow
   on Matte Neon, controls that press in on Neomorphic, pill buttons that lift on Pastel, cut
   corners and sharp focus outlines on Cyberpunk, stitched paper panels on Cottagecore, leaf-cut
@@ -51,6 +57,8 @@ confirmation dialog can be resized.
   closest new theme (Midnight and Harbor → Liquid Glass, Ink → Matte Neon, Forge → Cyberpunk,
   Field → Cottagecore, Paper → Minimal in light mode).
 - Light-mode styling now follows the mode for every theme instead of being tied to Paper.
+- Garden's dark mode uses a deep teal forest with a softer lime accent, and its light-mode
+  builder controls a warm ochre, to sit with the painted tree.
 
 ### Fixed
 
@@ -96,6 +104,11 @@ confirmation dialog can be resized.
 - `server-unit.test.mjs` and `route-contract.test.mjs`: every theme id, per-mode theme
   colours, mode and scenery level validation, and Paper mapping to Minimal in light mode.
 - `responsive-audit.mjs`: every theme in both modes at 1200px (20 cases); 66 checks pass.
+- Artwork: every shipped WebP was checked against its master after compositing (lossy only
+  where 99.9% of pixels stay within 20/255; neon and fine-edged art near-lossless, within 2/255).
+  In a production build, all six artwork themes in dark and light, at slider 100 and 0, with
+  motion on and off and at 390px wide, requested exactly the shipped files and nothing else, all
+  served as WebP; the four CSS themes and slider 0 download no artwork.
 
 ## 1.7.0 - 2026-10-07
 

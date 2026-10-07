@@ -1949,7 +1949,7 @@ select {
   -webkit-backdrop-filter: none;
 }
 
-/* Garden / Botanical — organic greens with earth accents: calm cream and sage by day, moody forest with lime by night. */
+/* Garden / Botanical — organic greens with earth accents: calm cream and sage by day, deep teal forest with soft lime by night. */
 :root[data-theme='garden'] {
   --radius-xl: 26px;
   --radius-lg: 20px;
@@ -1968,31 +1968,31 @@ select {
 }
 
 :root[data-theme='garden'][data-theme-tone='dark'] {
-  --bg: #070d09;
-  --bg-soft: #0c1710;
-  --surface: rgba(14, 26, 18, 0.88);
-  --surface-strong: #102016;
-  --surface-soft: #17291d;
-  --surface-raised: rgba(18, 32, 22, 0.95);
-  --line: rgba(132, 255, 120, 0.12);
-  --line-strong: rgba(132, 255, 120, 0.24);
+  --bg: #06110e;
+  --bg-soft: #0b1a16;
+  --surface: rgba(12, 26, 21, 0.88);
+  --surface-strong: #0f1f1a;
+  --surface-soft: #162a23;
+  --surface-raised: rgba(16, 32, 26, 0.95);
+  --line: rgba(170, 225, 150, 0.12);
+  --line-strong: rgba(170, 225, 150, 0.24);
   --text: #e6f4e6;
   --muted: #8fa892;
-  --accent: #7cff5a;
+  --accent: #a6e06a;
   --accent-2: #2dd4a0;
-  --accent-soft: rgba(124, 255, 90, 0.14);
-  --success: #7cff5a;
+  --accent-soft: rgba(166, 224, 106, 0.14);
+  --success: #8fd86c;
   --warning: #e8d44d;
   --danger: #ff6b5b;
   --on-accent: #07160a;
   --panel-glow: 0 20px 48px rgba(0, 0, 0, 0.45);
   --theme-ambient: 0.4;
-  --tint-connection: #7cff5a;
+  --tint-connection: #a6e06a;
   --tint-explorer: #2dd4a0;
-  --tint-builder: #a3e635;
+  --tint-builder: #c2d870;
   --tint-results: #e8d44d;
   --tint-activity: #5eead4;
-  --page-background: radial-gradient(circle at 10% 90%, rgba(124, 255, 90, 0.1), transparent 36%), radial-gradient(circle at 90% 10%, rgba(45, 212, 160, 0.1), transparent 32%), linear-gradient(170deg, #070d09 0%, #0c1710 100%);
+  --page-background: radial-gradient(circle at 10% 90%, rgba(120, 190, 110, 0.08), transparent 36%), radial-gradient(circle at 90% 10%, rgba(45, 212, 160, 0.1), transparent 32%), linear-gradient(170deg, #06110e 0%, #0b1a16 100%);
 }
 
 :root[data-theme='garden'][data-theme-tone='light'] {
@@ -2017,7 +2017,7 @@ select {
   --shadow: 0 18px 44px rgba(60, 90, 60, 0.14);
   --tint-connection: #5a7d4f;
   --tint-explorer: #4f7d6b;
-  --tint-builder: #7d6b9a;
+  --tint-builder: #86703a;
   --tint-results: #c8745a;
   --tint-activity: #b86b84;
   --page-background: radial-gradient(circle at 10% 90%, rgba(90, 125, 79, 0.12), transparent 36%), radial-gradient(circle at 90% 10%, rgba(200, 116, 90, 0.1), transparent 32%), linear-gradient(170deg, #f6f4ec 0%, #eef1e6 100%);

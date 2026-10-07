@@ -102,6 +102,7 @@ public/
   console-app.js              Bootstraps console-core
   launcher-ready.svg          Readiness probe target for the launcher page
   favicon.ico, *.png          Assets
+  themes/<theme>/*.webp       Scenery artwork the app ships (see Living scenery)
 
 scripts/
   sql-classifier.test.mjs     Pure unit tests (no server)
@@ -885,9 +886,12 @@ danger, warning, disabled and focus states read the same in every theme. Themes 
 blur (OLED, Neon, Minimal) use solid panels so the scenery never sits behind text.
 
 **Living scenery.** `#themeScenery` holds one scene per theme from
-[theme-scenery.js](app/components/theme-scenery.js) — static JSX with no state, procedurally
-drawn at build time from a seeded random generator so every render is identical — styled and
-animated by [theme-scenery.css](app/theme-scenery.css). Rules that matter:
+[theme-scenery.js](app/components/theme-scenery.js) — static JSX with no state — styled and
+animated by [theme-scenery.css](app/theme-scenery.css). Six scenes (Garden, Cottagecore, Space,
+Cyberpunk, Pastel, Liquid Glass) are built from painted WebP layers in `public/themes/<theme>/`,
+catalogued in `public/themes/ASSET-MANIFEST.md`, with CSS for atmosphere, star fields and the
+Cyberpunk grid; OLED, Matte Neon, Minimal and Neomorphic are drawn in CSS and SVG. Rules that
+matter:
 
 - **Only the active scene renders.** `:root[data-theme='x'] .scene-x { display: block }`; the
   other nine are `display: none`, so their animations do not run at all. Slider level 0 sets
@@ -895,11 +899,15 @@ animated by [theme-scenery.css](app/theme-scenery.css). Rules that matter:
   reason.
 - **Moving parts are HTML boxes, not SVG elements.** Chrome composites transforms on HTML
   elements but repaints the whole `<svg>` when a shape inside it moves. Every independently
-  moving piece (a branch, a leaf cluster, a cloud, a pulse) is a `div` holding its own small SVG.
-  `Part` places pieces in a scene's shared design space: each piece's `viewBox` is its window into
-  that space and its box is converted to percentages of its parent, so nested parts (twig on
-  branch, leaves on twig) inherit their parent's motion and the whole stage scales as one.
-  Static art (the Garden trunk, the Cyberpunk skyline) stays a single SVG.
+  moving piece (a branch, a cloud, an orb, a pulse) is its own `div`; nested boxes inherit their
+  parent's motion (a twig on its branch, a lantern on its vine).
+- **Painted layers are CSS backgrounds, not `<img>`.** `Art` passes the light and dark file to
+  CSS as `--img-light`/`--img-dark` and `.sc-img` picks one by tone (Garden sets its URLs in
+  theme-scenery.css directly), so the browser fetches only the active tone's art and nothing for a
+  `display: none` scene or at level 0; an `<img>` would download whatever is in the markup. Each
+  layer is a box with its art's aspect ratio. Small layers sit in `.sc-detail` (Garden:
+  `--gd-detail`), which falls off faster than the slider, so at 40% the signature objects read
+  while sparkles, drops and fireflies have faded.
 - **Motion is transform and opacity only**, on `--time`/`--delay` per piece so nothing moves in
   step, and only under `@media (prefers-reduced-motion: no-preference)` plus
   `html[data-ambient-motion='enabled']`. `will-change` is set only inside those rules. Without
@@ -908,6 +916,14 @@ animated by [theme-scenery.css](app/theme-scenery.css). Rules that matter:
 - **Visibility** is `pow(--scenery-level, 0.6) × --scene-strength × --scene-small`: a gentler
   curve than the slider so the default 40% already reads as a picture, a per-scene, per-mode
   weight, and a calmer multiplier below 700px, where scenes also drop secondary pieces.
+- **Artwork has two steps.** `scripts/extract-theme-assets.mjs all` cuts the sheets in
+  `design/asset-sheets/` (plus the high-resolution files in `design/themes/signature-assets/`)
+  into the full PNG library `design/themes/extracted/`, which is git-ignored and always rebuilt.
+  `scripts/publish-theme-assets.mjs` then reads which layers the scenery code references and
+  writes only those to `public/themes/` as WebP, deleting the rest and regenerating the
+  manifest. To use a new asset, reference it in a scene and re-run the publish step; never copy
+  files into `public/themes/` by hand. Lossy q95 is used only where it measures as invisible once
+  composited; neon and fine-edged art ship near-lossless.
 - **Measured cost** with motion on (Chrome, 1600×900, five-second window): zero layouts, at most
   ~56 ms of main-thread time (Garden, the largest scene) — about 1% of one core.
 

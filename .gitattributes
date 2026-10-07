@@ -6,4 +6,5 @@
 
 # Treat binary assets as binary so they are never line-ending normalized.
 *.png binary
+*.webp binary
 *.ico binary
