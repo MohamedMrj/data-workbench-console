@@ -978,23 +978,36 @@ Saving:
 
 ### Themes
 
-Built-in themes:
+Themes are whole looks, not only colours: each sets fonts, corner shapes, panel blur, shadows,
+the page background and a background picture, and comes with a palette for dark mode and one
+for light mode.
 
-- `midnight`
-- `harbor`
-- `forge`
-- `field`
-- `ink`
-- `paper`
+| Theme | Look | Background scenery |
+| --- | --- | --- |
+| Liquid Glass (default) | frosted, translucent panels with glossy edges | glass bubbles and arcs |
+| OLED Black | true black (or pure white), quiet pastel accents, no blur | a thin horizon glow and a few dots |
+| Matte Neon | flat matte surfaces, neon lines and glow | neon wave lines |
+| Minimal | monochrome, no shadows or decoration | one thin circle and a dot grid |
+| Neomorphic | soft 3D: panels and buttons look raised, selections pressed in | soft embossed shapes |
+| Pastel | soft pastels, round shapes, pill buttons | clouds, sparkles and hearts |
+| Cyberpunk | neon pink and cyan, sharp corners, HUD headings | a synthwave sun and skyline over a neon grid |
+| Cottagecore | warm paper, sage and terracotta, serif headings | wildflower sprigs and mushrooms |
+| Garden | botanical greens with earth accents; forest and lime in dark mode | leafy branches and small blooms |
+| Space | deep night sky (a pale celestial sky in light mode) | stars, a ringed planet and a spiral galaxy |
 
-Theme and colours live in **Settings** (`Help & settings ▾` → `Settings`), under
-`Appearance`, together with every other configurable option.
+Everything lives in **Settings** (`Help & settings ▾` → `Settings`) → `Appearance`:
 
-Theme behavior:
-
-- theme selection applies immediately and is remembered in browser storage
-- dark themes and the light paper theme have separate visual tuning
-- results cell contrast is elevated for dark themes
+- `Theme`: pick one; it applies immediately and is remembered
+- `Mode`: `Dark`, `Light` or `Match system` (follows the operating system, including when it
+  changes); every theme has both palettes. The guides follow the same theme and mode
+- `Background scenery`: 0–100 slider for how visible the theme's background picture is; 0 turns
+  it off. The picture sits behind the panels and towards the edges, so it never covers controls
+- `Theme colours`: change any of a theme's main colours (page background, panels, text,
+  secondary text, borders, accent, second accent, success, warning, danger). Changes are kept for
+  each theme and mode separately; `Reset` puts the theme's own colours back
+- results cell contrast is elevated for dark mode
+- themes chosen before 1.8 (Midnight, Harbor, Ink, Forge, Field, Paper) open as the closest new
+  theme; Paper opens as Minimal in light mode
 
 Object list size:
 
@@ -1004,7 +1017,8 @@ Object list size:
 
 Appearance profiles:
 
-- a profile is a named theme plus button colours and object list size. `Save current as…` stores what you see now
+- a profile is a named theme with its mode, theme colours, background scenery level, button
+  colours and object list size. `Save current as…` stores what you see now
   (saving under an existing name updates it); pick one and `Apply` to switch to it
 - `Open with this profile` makes the selected profile the default: every time the app opens it
   starts with that theme and those colours, so nothing has to be set up again. `Stop opening with

@@ -5558,3 +5558,104 @@ body {
   align-items: flex-start;
   align-content: flex-start;
 }
+
+/* Confirmation dialog: larger by default and resizable from its bottom-right corner in both
+   directions. The card is a size container, and every text size inside is relative to one
+   font size set from the card's width, so dragging it wider makes the text larger. */
+#confirmModal .confirm-modal-card {
+  container-type: inline-size;
+  display: flex;
+  flex-direction: column;
+  width: min(820px, calc(100vw - 32px));
+  min-width: min(420px, calc(100vw - 24px));
+  min-height: 280px;
+  max-width: calc(100vw - 24px);
+  max-height: calc(100dvh - 24px);
+  overflow: auto;
+  resize: both;
+}
+
+#confirmModal .confirm-modal-scale {
+  font-size: clamp(14px, calc(0.35rem + 1.15cqi), 28px);
+  line-height: 1.5;
+}
+
+#confirmModal .confirm-modal-scale :is(p, span, strong, small, em, label, input, button, div, h3, li) {
+  font-size: inherit;
+}
+
+#confirmModal #modalTitle {
+  font-size: 1.4em;
+}
+
+#confirmModal .modal-review h3,
+#confirmModal .modal-preview-rows h3 {
+  font-size: 1.02em;
+}
+
+#confirmModal .confirm-modal-scale :is(code, .modal-preview-table) {
+  font-size: 0.9em;
+}
+
+#confirmModal .confirm-modal-scale :is(.tiny-note, small, .modal-review-grid span, .modal-preview-table th) {
+  font-size: 0.82em;
+}
+
+#confirmModal .modal-preview-scroll {
+  max-height: 45vh;
+}
+
+#confirmModal .confirm-modal-scale :is(.ghost-btn, .primary-btn) {
+  min-height: 2.5em;
+  padding-inline: 1em;
+}
+
+#confirmModal #secondConfirmInput {
+  min-height: 2.6em;
+}
+
+/* However the dialog is sized, its title and its Cancel / Execute row stay in view; only the
+   review content between them scrolls. */
+#confirmModal .confirm-modal-scale > .modal-header,
+#confirmModal .confirm-modal-scale > .modal-actions {
+  position: sticky;
+  z-index: 2;
+  margin-inline: -22px;
+  padding-inline: 22px;
+  /* Opaque: the dialog colour laid over the page colour, so scrolled text never shows through. */
+  background: linear-gradient(var(--surface-raised), var(--surface-raised)), var(--bg);
+}
+
+#confirmModal .confirm-modal-scale > .modal-header {
+  top: -22px;
+  margin-top: -22px;
+  padding-top: 22px;
+  padding-bottom: 8px;
+}
+
+#confirmModal .confirm-modal-scale > .modal-actions {
+  bottom: -22px;
+  margin-bottom: -22px;
+  padding-top: 12px;
+  padding-bottom: 22px;
+}
+
+@media (max-width: 540px) {
+  #confirmModal .confirm-modal-scale > .modal-header,
+  #confirmModal .confirm-modal-scale > .modal-actions {
+    margin-inline: -16px;
+    padding-inline: 16px;
+  }
+
+  #confirmModal .confirm-modal-scale > .modal-header {
+    top: -16px;
+    margin-top: -16px;
+    padding-top: 16px;
+  }
+
+  #confirmModal .confirm-modal-scale > .modal-actions {
+    bottom: -16px;
+    margin-bottom: -16px;
+    padding-bottom: 16px;
+  }
+}

@@ -311,13 +311,17 @@ try {
   // Appearance profiles round trip.
   const lookCreate = await request('/api/appearance', {
     method: 'POST',
-    body: { profile: { name: 'Contract look', theme: 'harbor', buttonColors: { results: '#123456' } }, makeDefault: true }
+    body: { profile: { name: 'Contract look', theme: 'garden', mode: 'light', sceneryLevel: 25, themeColors: { light: { accent: '#335533' } }, buttonColors: { results: '#123456' } }, makeDefault: true }
   });
   assert.equal(lookCreate.response.status, 200);
+  assert.equal(lookCreate.payload.profile.theme, 'garden');
+  assert.equal(lookCreate.payload.profile.mode, 'light');
+  assert.equal(lookCreate.payload.profile.sceneryLevel, 25);
+  assert.equal(lookCreate.payload.profile.themeColors.light.accent, '#335533');
   assert.equal(lookCreate.payload.defaultProfileId, lookCreate.payload.profile.id);
   const lookList = await request('/api/appearance');
   assert.equal(lookList.payload.defaultProfileId, lookCreate.payload.profile.id);
-  const lookBadTheme = await request('/api/appearance', { method: 'POST', body: { profile: { name: 'x', theme: 'neon' } } });
+  const lookBadTheme = await request('/api/appearance', { method: 'POST', body: { profile: { name: 'x', theme: 'disco' } } });
   assert.equal(lookBadTheme.response.status, 400);
   const lookEmpty = await request('/api/appearance', { method: 'POST', body: {} });
   assert.equal(lookEmpty.response.status, 400);

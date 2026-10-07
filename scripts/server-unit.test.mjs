@@ -337,11 +337,29 @@ assert.deepEqual(savedQueryDirEntries.filter((name) => name.endsWith('.tmp')), [
 
 const appearanceStore = await import('../lib/server/appearance-store.js');
 assert.deepEqual(await appearanceStore.getAppearance(), { profiles: [], defaultProfileId: '' });
-await assert.rejects(appearanceStore.saveAppearanceProfile({ name: 'Bad theme', theme: 'neon' }), (error) => error.httpStatus === 400);
+await assert.rejects(appearanceStore.saveAppearanceProfile({ name: 'Bad theme', theme: 'disco' }), (error) => error.httpStatus === 400);
+await assert.rejects(appearanceStore.saveAppearanceProfile({ name: 'Bad theme colour', theme: 'space', themeColors: { dark: { accent: 'blue' } } }), (error) => error.httpStatus === 400);
+await assert.rejects(appearanceStore.saveAppearanceProfile({ name: 'Bad theme token', theme: 'space', themeColors: { dark: { sidebar: '#112233' } } }), (error) => error.httpStatus === 400);
+await assert.rejects(appearanceStore.saveAppearanceProfile({ name: 'Colours without a mode', theme: 'space', themeColors: { accent: '#112233' } }), (error) => error.httpStatus === 400);
+await assert.rejects(appearanceStore.saveAppearanceProfile({ name: 'Bad mode', theme: 'space', mode: 'dim' }), (error) => error.httpStatus === 400);
+await assert.rejects(appearanceStore.saveAppearanceProfile({ name: 'Bad scenery', theme: 'space', sceneryLevel: 150 }), (error) => error.httpStatus === 400);
 await assert.rejects(appearanceStore.saveAppearanceProfile({ name: 'Bad colour', theme: 'paper', buttonColors: { explorer: 'red' } }), (error) => error.httpStatus === 400);
 await assert.rejects(appearanceStore.saveAppearanceProfile({ name: 'Bad section', theme: 'paper', buttonColors: { sidebar: '#112233' } }), (error) => error.httpStatus === 400);
 const look = await appearanceStore.saveAppearanceProfile({ name: 'Work', theme: 'paper', buttonColors: { explorer: '#FF3366' } }, { makeDefault: true });
 assert.equal(look.profile.buttonColors.explorer, '#ff3366');
+assert.equal(look.profile.theme, 'minimal', 'a colour-only theme from before 1.8 maps to its new look');
+assert.equal(look.profile.mode, 'light', 'the old light theme keeps opening in light mode');
+const spaced = await appearanceStore.saveAppearanceProfile({ name: 'Night sky', theme: 'space', mode: 'system', sceneryLevel: 70, themeColors: { dark: { accent: '#FF8800', panel: '#102030' }, light: { accent: '#3344aa' } } });
+assert.deepEqual(spaced.profile.themeColors, { dark: { accent: '#ff8800', panel: '#102030' }, light: { accent: '#3344aa' } });
+assert.equal(spaced.profile.mode, 'system');
+assert.equal(spaced.profile.sceneryLevel, 70);
+for (const theme of ['glass', 'oled', 'neon', 'minimal', 'neumorphic', 'pastel', 'cyberpunk', 'cottagecore', 'garden', 'space']) {
+  assert.equal((await appearanceStore.saveAppearanceProfile({ name: `Theme ${theme}`, theme })).profile.theme, theme);
+}
+for (const profile of (await appearanceStore.getAppearance()).profiles.filter((item) => item.name.startsWith('Theme '))) {
+  await appearanceStore.deleteAppearanceProfile(profile.id);
+}
+await appearanceStore.deleteAppearanceProfile(spaced.profile.id);
 assert.equal(look.defaultProfileId, look.profile.id);
 await assert.rejects(appearanceStore.saveAppearanceProfile({ name: 'Bad size', theme: 'paper', explorerSize: 'huge' }), (error) => error.httpStatus === 400);
 const sized = await appearanceStore.saveAppearanceProfile({ name: 'Big names', theme: 'midnight', explorerSize: 'Large' });

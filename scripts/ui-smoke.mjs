@@ -1121,8 +1121,9 @@ const legacyWindow = await createWindow(
 if (legacyWindow.sessionStorage.getItem('dataWorkbenchDefaultAppearanceAppliedV1') !== '1') {
   throw new Error('Opening the app should record that the default profile was applied for this session.');
 }
-if (legacyWindow.document.documentElement.getAttribute('data-theme') !== 'paper' || legacyWindow.document.documentElement.style.getPropertyValue('--tint-explorer') !== '#ff3366') {
-  throw new Error('The app should open with its default appearance profile (theme and button colours).');
+// The seeded profile uses 'paper', a colour-only theme from before 1.8: it opens as Minimal.
+if (legacyWindow.document.documentElement.getAttribute('data-theme') !== 'minimal' || legacyWindow.document.documentElement.getAttribute('data-theme-tone') !== 'light' || legacyWindow.document.documentElement.style.getPropertyValue('--tint-explorer') !== '#ff3366' || legacyWindow.localStorage.getItem('dataWorkbenchThemeModeV1') !== 'light') {
+  throw new Error('The app should open with its default appearance profile (theme and button colours), mapping an old theme id to its new look.');
 }
 if (legacyWindow.document.documentElement.style.getPropertyValue('--explorer-scale') !== '1.3') {
   throw new Error('The app should open with the default profile\'s object list size.');
@@ -1282,15 +1283,91 @@ if (sqlWindow.document.querySelector('.glow-next')) {
   }
   sqlWindow.document.getElementById('closeWorkbenchToolsBtn').click();
 }
-if (sqlWindow.document.querySelectorAll('#themeList .theme-chip').length !== 6) {
+if (sqlWindow.document.querySelectorAll('#themeList .theme-chip').length !== 10) {
   throw new Error('Theme chips did not render on the SQL page.');
 }
-['midnight', 'harbor', 'forge', 'field', 'ink', 'paper'].forEach((theme) => {
-  sqlWindow.document.querySelector(`[data-theme="${theme}"]`)?.click();
-  if (sqlWindow.document.documentElement.getAttribute('data-theme') !== theme) {
-    throw new Error(`Theme ${theme} did not apply to the document root.`);
+{
+  // Ten themes, each in dark and light mode; Match system follows the operating system.
+  const root = sqlWindow.document.documentElement;
+  const themes = ['glass', 'oled', 'neon', 'minimal', 'neumorphic', 'pastel', 'cyberpunk', 'cottagecore', 'garden', 'space'];
+  for (const mode of ['dark', 'light']) {
+    sqlWindow.document.querySelector(`#themeModeList [data-theme-mode="${mode}"]`).click();
+    for (const theme of themes) {
+      sqlWindow.document.querySelector(`#themeList [data-theme="${theme}"]`)?.click();
+      if (root.getAttribute('data-theme') !== theme || root.getAttribute('data-theme-tone') !== mode) {
+        throw new Error(`Theme ${theme} did not apply in ${mode} mode.`);
+      }
+    }
   }
-});
+  if (sqlWindow.localStorage.getItem('dataWorkbenchThemeModeV1') !== 'light' || sqlWindow.document.querySelector('#themeModeList [data-theme-mode="light"]').getAttribute('aria-pressed') !== 'true') {
+    throw new Error('The chosen mode should be remembered and shown as pressed.');
+  }
+  const originalMatchMedia = sqlWindow.matchMedia;
+  sqlWindow.matchMedia = () => ({ matches: true, addEventListener() {} });
+  sqlWindow.document.querySelector('#themeModeList [data-theme-mode="system"]').click();
+  if (root.getAttribute('data-theme-tone') !== 'dark') {
+    throw new Error('Match system should follow an operating system set to dark.');
+  }
+  sqlWindow.matchMedia = originalMatchMedia;
+  sqlWindow.document.querySelector('#themeModeList [data-theme-mode="dark"]').click();
+  // Background scenery: three layers behind the app, visibility from the slider (0 = off).
+  const scenery = sqlWindow.document.getElementById('themeScenery');
+  if (!scenery || scenery.querySelectorAll('span').length !== 3 || scenery.getAttribute('aria-hidden') !== 'true') {
+    throw new Error('The theme scenery layer should be present, decorative and hidden from screen readers.');
+  }
+  const slider = sqlWindow.document.getElementById('sceneryLevelInput');
+  slider.value = '70';
+  slider.dispatchEvent(new sqlWindow.Event('input', { bubbles: true }));
+  if (root.style.getPropertyValue('--scenery-level') !== '0.7' || sqlWindow.document.getElementById('sceneryLevelValue').textContent !== '70%' || sqlWindow.localStorage.getItem('dataWorkbenchSceneryLevelV1') !== '70') {
+    throw new Error('The scenery slider should set the scenery level and remember it.');
+  }
+  slider.value = '0';
+  slider.dispatchEvent(new sqlWindow.Event('input', { bubbles: true }));
+  if (root.style.getPropertyValue('--scenery-level') !== '0' || sqlWindow.document.getElementById('sceneryLevelValue').textContent !== 'Off') {
+    throw new Error('Scenery at 0 should be off.');
+  }
+  slider.value = '40';
+  slider.dispatchEvent(new sqlWindow.Event('input', { bubbles: true }));
+}
+{
+  // Theme colours: every theme's main colours can be changed, the change is kept for that theme
+  // only, and Reset puts the theme's own colours back.
+  const root = sqlWindow.document.documentElement;
+  sqlWindow.document.querySelector('#themeList [data-theme="space"]').click();
+  const accentPicker = sqlWindow.document.querySelector('#themeColorList [data-theme-color="accent"]');
+  if (sqlWindow.document.querySelectorAll('#themeColorList [data-theme-color]').length !== 10 || !accentPicker) {
+    throw new Error('Settings should offer ten theme colour pickers.');
+  }
+  accentPicker.value = '#ff8800';
+  accentPicker.dispatchEvent(new sqlWindow.Event('input', { bubbles: true }));
+  if (root.style.getPropertyValue('--accent') !== '#ff8800' || !root.style.getPropertyValue('--accent-soft').includes('#ff8800')) {
+    throw new Error('Changing the accent should set the accent and its soft variant.');
+  }
+  const panelPicker = sqlWindow.document.querySelector('#themeColorList [data-theme-color="panel"]');
+  panelPicker.value = '#102030';
+  panelPicker.dispatchEvent(new sqlWindow.Event('input', { bubbles: true }));
+  if (root.style.getPropertyValue('--surface-strong') !== '#102030' || !root.style.getPropertyValue('--surface').includes('transparent')) {
+    throw new Error('Changing the panel colour should keep translucent panels translucent.');
+  }
+  sqlWindow.document.querySelector('#themeModeList [data-theme-mode="light"]').click();
+  if (root.style.getPropertyValue('--accent')) {
+    throw new Error('Colour changes belong to the mode they were made in.');
+  }
+  sqlWindow.document.querySelector('#themeModeList [data-theme-mode="dark"]').click();
+  sqlWindow.document.querySelector('#themeList [data-theme="pastel"]').click();
+  if (root.style.getPropertyValue('--accent')) {
+    throw new Error('Colour changes belong to the theme they were made in.');
+  }
+  sqlWindow.document.querySelector('#themeList [data-theme="space"]').click();
+  if (root.style.getPropertyValue('--accent') !== '#ff8800') {
+    throw new Error('Returning to a theme should bring back its changed colours.');
+  }
+  sqlWindow.document.getElementById('resetThemeColorsBtn').click();
+  if (root.style.getPropertyValue('--accent') || root.style.getPropertyValue('--surface-strong') || JSON.parse(sqlWindow.localStorage.getItem('dataWorkbenchThemeColorsV1') || '{}')['space:dark']) {
+    throw new Error('Reset should put the theme\'s own colours back.');
+  }
+  sqlWindow.document.querySelector('#themeList [data-theme="glass"]').click();
+}
 assertVisibleAffordance(sqlWindow, '#serverInput', 'server input');
 assertVisibleAffordance(sqlWindow, '#testConnectionBtn', 'test connection button');
 assertVisibleAffordance(sqlWindow, '#queryEditor', 'SQL editor');
@@ -1721,6 +1798,9 @@ if (!sqlWindow.document.getElementById('loadTablesBtn').classList.contains('glow
   }
   if (sqlWindow.document.getElementById('appearanceProfileSelect').value !== savedLook.id) {
     throw new Error('The saved appearance profile should be selected after saving.');
+  }
+  if (savedLook.mode !== 'dark' || savedLook.sceneryLevel !== 40 || !savedLook.themeColors || typeof savedLook.themeColors.dark !== 'object') {
+    throw new Error(`An appearance profile should include the mode, scenery level and theme colours. Saved: ${JSON.stringify(savedLook)}`);
   }
   if (savedLook.explorerSize !== 'large') {
     throw new Error(`An appearance profile should include the object list size. Saved: ${JSON.stringify(savedLook)}`);
@@ -2634,6 +2714,19 @@ if (sqlWindow.__postedQueries.at(-1) !== 'SELECT 1 AS a;') {
   if (doc.getElementById('confirmModal').classList.contains('hidden') || !doc.getElementById('statusText').textContent.includes('RUN BATCH')) {
     throw new Error('Running the whole DECLARE script should go through the batch confirmation.');
   }
+  // The confirmation dialog opens at the size it was last dragged to, and its content sits in
+  // the wrapper whose text size follows the dialog's width.
+  const confirmCard = doc.getElementById('confirmModalCard');
+  if (!confirmCard?.querySelector('.confirm-modal-scale #modalTitle') || !confirmCard.querySelector('.confirm-modal-scale #confirmModalBtn')) {
+    throw new Error('The confirmation content should sit inside its scaling wrapper.');
+  }
+  doc.getElementById('cancelModalBtn').click();
+  await flush();
+  sqlWindow.localStorage.setItem('dataWorkbenchConfirmSizeV1', JSON.stringify({ width: 1040, height: 720 }));
+  await ctrlEnter(true);
+  if (confirmCard.style.width !== '1040px' || confirmCard.style.height !== '720px') {
+    throw new Error(`The confirmation dialog should reopen at its remembered size. Got ${confirmCard.style.width} x ${confirmCard.style.height}`);
+  }
   doc.getElementById('cancelModalBtn').click();
   await flush();
 
@@ -2991,7 +3084,7 @@ if (!sqlWindow.document.getElementById('savedConnections').textContent.includes(
 if (!sqlWindow.document.querySelector('[data-procedure="dbo.usp_ProcessAlert"]')) {
   throw new Error('Procedure catalog was not restored automatically on the procedure page.');
 }
-if (sqlWindow.document.querySelectorAll('#themeList .theme-chip').length !== 6) {
+if (sqlWindow.document.querySelectorAll('#themeList .theme-chip').length !== 10) {
   throw new Error('Theme chips did not render after switching to the procedure page.');
 }
 if (sqlWindow.document.getElementById('advancedOperationsContent').classList.contains('hidden')) {
@@ -3018,7 +3111,7 @@ if (sqlWindow.document.querySelector('.app-shell').style.getPropertyValue('--res
     ['procedures'],
     { width: 1680, height: 980 },
     (window) => {
-      window.localStorage.setItem('dataWorkbenchThemeV2', 'ink');
+      window.localStorage.setItem('dataWorkbenchThemeV2', 'cyberpunk');
       window.sessionStorage.setItem('dataWorkbenchDefaultAppearanceAppliedV1', '1');
       window.__appearanceStore = {
         profiles: [{ id: 'look-1', name: 'Paper look', theme: 'paper', buttonColors: {} }],
@@ -3026,7 +3119,7 @@ if (sqlWindow.document.querySelector('.app-shell').style.getPropertyValue('--res
       };
     }
   );
-  if (switchedWindow.document.documentElement.getAttribute('data-theme') !== 'ink') {
+  if (switchedWindow.document.documentElement.getAttribute('data-theme') !== 'cyberpunk') {
     throw new Error(`Switching between SQL Studio and Procedure Runner should keep the chosen theme, not re-apply the default profile. Got: ${switchedWindow.document.documentElement.getAttribute('data-theme')}`);
   }
   switchedWindow.close();
@@ -3042,7 +3135,7 @@ const procedureWindow = await createWindow(
     }));
   }
 );
-if (procedureWindow.document.querySelectorAll('#themeList .theme-chip').length !== 6) {
+if (procedureWindow.document.querySelectorAll('#themeList .theme-chip').length !== 10) {
   throw new Error('Theme chips did not render on the procedure page.');
 }
 ['saveConnectionBtn', 'testConnectionBtn', 'loadTablesBtn', 'runProcedureBtn', 'clearHistoryBtn', 'confirmModalBtn'].forEach((id) => {

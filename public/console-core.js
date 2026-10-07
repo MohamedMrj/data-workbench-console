@@ -33,6 +33,7 @@ window.createConsoleApp = function createConsoleApp() {
   const SCRATCHPADS_IMPORTED_KEY = 'dataWorkbenchScratchpadsImportedV1';
   const BUTTON_COLORS_KEY = 'dataWorkbenchButtonColorsV1';
   const EXPLORER_SIZE_KEY = 'dataWorkbenchExplorerSizeV1';
+  const CONFIRM_SIZE_KEY = 'dataWorkbenchConfirmSizeV1';
   const DEFAULT_APPEARANCE_APPLIED_KEY = 'dataWorkbenchDefaultAppearanceAppliedV1';
   const EXPLORER_SIZES = [
     { id: 'compact', label: 'Compact', scale: 0.9 },
@@ -112,6 +113,8 @@ window.createConsoleApp = function createConsoleApp() {
     countRowsBtn: 'Build a row count query for the active table or view.',
     resetBuilderBtn: 'Reset builder choices such as columns, filters, sorting, top rows, and distinct.',
     generateQueryBtn: 'Rebuild the SQL editor text from the current builder selections.',
+    sceneryLevelInput: 'How visible the theme\'s background picture is. 0 turns it off.',
+    resetThemeColorsBtn: 'Put back this theme\'s own colours.',
     popoutEditorBtn: 'Open the SQL editor in its own window, linked live to this one. Results still show here.',
     envSettingsSearch: 'Find a setting by its name, what it does, or its .env key.',
     runScopeRunAllBtn: 'Run the whole editor as one batch. Writes still go through preview and confirmation.',
@@ -235,7 +238,54 @@ window.createConsoleApp = function createConsoleApp() {
     closeEnvSettingsBtn: 'Close app settings.',
     closeWorkbenchToolsBtn: 'Close Workbench Tools.'
   };
-  const THEMES = ['midnight', 'harbor', 'forge', 'field', 'ink', 'paper'];
+  // Every theme has a dark and a light palette; the Mode setting picks which one shows.
+  const THEME_META = {
+    glass: { label: 'Liquid Glass', note: 'Frosted, translucent panels with depth' },
+    oled: { label: 'OLED Black', note: 'True black or pure white, quiet accents' },
+    neon: { label: 'Matte Neon', note: 'Matte surfaces with neon lines and glow' },
+    minimal: { label: 'Minimal', note: 'Monochrome, no decoration' },
+    neumorphic: { label: 'Neomorphic', note: 'Soft 3D, pressed and raised' },
+    pastel: { label: 'Pastel', note: 'Soft pastels, clouds and sparkles' },
+    cyberpunk: { label: 'Cyberpunk', note: 'Synthwave sun over a neon grid' },
+    cottagecore: { label: 'Cottagecore', note: 'Wildflowers, mushrooms, warm paper' },
+    garden: { label: 'Garden', note: 'Leaves and blooms, sage or forest' },
+    space: { label: 'Space', note: 'Stars, a ringed planet and a galaxy' }
+  };
+  const THEME_MODE_KEY = 'dataWorkbenchThemeModeV1';
+  const THEME_MODES = [
+    { id: 'dark', label: 'Dark' },
+    { id: 'light', label: 'Light' },
+    { id: 'system', label: 'Match system' }
+  ];
+  const SCENERY_LEVEL_KEY = 'dataWorkbenchSceneryLevelV1';
+  const DEFAULT_SCENERY_LEVEL = 40;
+  const THEMES = Object.keys(THEME_META);
+  const DEFAULT_THEME = 'glass';
+  // The colour-only themes before 1.8 map to the closest new look, so a stored choice or an
+  // appearance profile keeps working.
+  const LEGACY_THEMES = { midnight: 'glass', harbor: 'glass', ink: 'neon', forge: 'cyberpunk', field: 'cottagecore', paper: 'minimal' };
+  const THEME_COLORS_KEY = 'dataWorkbenchThemeColorsV1';
+  const APPEARANCE_SEARCH_TEXT = `appearance theme themes mode dark light system colour colours color colors button profile object list size text background scenery picture image stars panel accent ${Object.values(THEME_META).map((meta) => meta.label.toLowerCase()).join(' ')}`;
+  // Each picker reads one plain token and writes the related tokens, so a translucent theme
+  // stays translucent when its panel colour changes.
+  const THEME_COLOR_TOKENS = [
+    { id: 'background', label: 'Page background', token: '--bg', vars: (value) => ({ '--bg': value, '--bg-soft': `color-mix(in srgb, ${value} 90%, var(--text) 4%)` }) },
+    { id: 'panel', label: 'Panels', token: '--surface-strong', vars: (value) => ({
+      '--surface-strong': value,
+      '--surface': `color-mix(in srgb, ${value} 86%, transparent)`,
+      '--surface-raised': `color-mix(in srgb, ${value} 96%, transparent)`,
+      '--surface-soft': `color-mix(in srgb, ${value} 90%, var(--text) 8%)`
+    }) },
+    { id: 'text', label: 'Text', token: '--text', vars: (value) => ({ '--text': value }) },
+    { id: 'muted', label: 'Secondary text', token: '--muted', vars: (value) => ({ '--muted': value }) },
+    { id: 'line', label: 'Borders', token: '--line-strong', vars: (value) => ({ '--line': `color-mix(in srgb, ${value} 45%, transparent)`, '--line-strong': `color-mix(in srgb, ${value} 75%, transparent)` }) },
+    { id: 'accent', label: 'Accent', token: '--accent', vars: (value) => ({ '--accent': value, '--accent-soft': `color-mix(in srgb, ${value} 18%, transparent)` }) },
+    { id: 'accent2', label: 'Second accent', token: '--accent-2', vars: (value) => ({ '--accent-2': value }) },
+    { id: 'success', label: 'Success', token: '--success', vars: (value) => ({ '--success': value }) },
+    { id: 'warning', label: 'Warning', token: '--warning', vars: (value) => ({ '--warning': value }) },
+    { id: 'danger', label: 'Danger', token: '--danger', vars: (value) => ({ '--danger': value }) }
+  ];
+  const THEME_COLOR_VARS = [...new Set(THEME_COLOR_TOKENS.flatMap((token) => Object.keys(token.vars('#000000'))))];
   const CONNECTION_HISTORY_MAX = 12;
   const QUERY_HISTORY_MAX = 50;
   const QUERY_HISTORY_RETENTION_MS = 14 * 24 * 60 * 60 * 1000;
@@ -292,7 +342,8 @@ window.createConsoleApp = function createConsoleApp() {
     versionInfo: null,
     envSettings: null,
     updateInProgress: false,
-    currentTheme: 'midnight',
+    currentTheme: 'glass',
+    themeTone: '',
     editorTextSize: 0.95,
     resultsTextSize: 0.9,
     queryMode: 'select',
@@ -6176,7 +6227,7 @@ window.createConsoleApp = function createConsoleApp() {
       group.classList.toggle('hidden', Boolean(query) && !group.querySelector('[data-settings-search]:not(.hidden)'));
     });
     const appearance = $('appearanceSettings');
-    const appearanceMatch = !query || 'appearance theme colour color button profile object list size text dark light paper'.includes(query) || query.split(/\s+/).every((word) => 'appearance theme colour color button profile object list size text dark light paper'.includes(word));
+    const appearanceMatch = !query || APPEARANCE_SEARCH_TEXT.includes(query) || query.split(/\s+/).every((word) => APPEARANCE_SEARCH_TEXT.includes(word));
     appearance?.classList.toggle('hidden', !appearanceMatch);
     if (appearanceMatch && query) matches += 1;
     const advanced = $('advancedSettings');
@@ -6519,12 +6570,35 @@ window.createConsoleApp = function createConsoleApp() {
   // their look every launch. The default profile is applied each time the app opens.
 
   function currentAppearance() {
-    return { theme: state.currentTheme, buttonColors: readButtonColors(), explorerSize: readExplorerSize() };
+    return {
+      theme: state.currentTheme,
+      mode: readThemeMode(),
+      themeColors: { dark: readThemeColors(state.currentTheme, 'dark'), light: readThemeColors(state.currentTheme, 'light') },
+      sceneryLevel: readSceneryLevel(),
+      buttonColors: readButtonColors(),
+      explorerSize: readExplorerSize()
+    };
   }
 
   function applyAppearance(profile) {
     if (!profile) return;
-    applyTheme(profile.theme);
+    const theme = normalizeThemeId(profile.theme);
+    if (profile.themeColors && typeof profile.themeColors === 'object') {
+      ['dark', 'light'].forEach((tone) => {
+        if (profile.themeColors[tone] && typeof profile.themeColors[tone] === 'object') {
+          writeThemeColors(theme, profile.themeColors[tone], tone);
+        }
+      });
+    }
+    // Profiles from before modes existed: the old light theme opens in light mode.
+    const mode = profile.mode || (String(profile.theme || '').toLowerCase() === 'paper' ? 'light' : '');
+    if (mode) {
+      safeSet(THEME_MODE_KEY, normalizeThemeMode(mode));
+    }
+    if (profile.sceneryLevel !== undefined && profile.sceneryLevel !== null) {
+      applySceneryLevel(profile.sceneryLevel);
+    }
+    applyTheme(theme);
     safeSet(BUTTON_COLORS_KEY, JSON.stringify(profile.buttonColors || {}));
     applyButtonColors();
     renderButtonColors();
@@ -6581,7 +6655,7 @@ window.createConsoleApp = function createConsoleApp() {
 
   async function saveAppearanceProfile() {
     const selected = selectedAppearanceProfile();
-    const name = window.prompt('Save the current theme, button colours and object list size as', selected?.name || 'My look');
+    const name = window.prompt('Save the current theme, its colours, button colours and object list size as', selected?.name || 'My look');
     if (!name || !String(name).trim()) return;
     try {
       const payload = await api('/api/appearance', { method: 'POST', data: { profile: { name: String(name).trim(), ...currentAppearance() } } });
@@ -6646,10 +6720,45 @@ window.createConsoleApp = function createConsoleApp() {
     element.addEventListener('click', stop, { once: true });
   }
 
+  function normalizeThemeId(themeId) {
+    const id = String(themeId || '').toLowerCase();
+    if (THEME_META[id]) return id;
+    return LEGACY_THEMES[id] || DEFAULT_THEME;
+  }
+
+  function normalizeThemeMode(mode) {
+    return THEME_MODES.some((item) => item.id === mode) ? mode : 'dark';
+  }
+
+  function readThemeMode() {
+    return normalizeThemeMode(safeGet(THEME_MODE_KEY));
+  }
+
+  function systemPrefersDark() {
+    try {
+      return Boolean(window.matchMedia?.('(prefers-color-scheme: dark)')?.matches);
+    } catch {
+      return true;
+    }
+  }
+
+  // The tone actually shown: the chosen mode, or the operating system's for Match system.
+  function resolvedThemeTone() {
+    const mode = readThemeMode();
+    if (mode === 'system') return systemPrefersDark() ? 'dark' : 'light';
+    return mode;
+  }
+
   function applyTheme(themeId) {
-    state.currentTheme = THEMES.includes(themeId) ? themeId : 'midnight';
+    state.currentTheme = normalizeThemeId(themeId);
+    state.themeTone = resolvedThemeTone();
     document.documentElement.setAttribute('data-theme', state.currentTheme);
+    document.documentElement.setAttribute('data-theme-tone', state.themeTone);
     safeSet(THEME_KEY, state.currentTheme);
+    applyThemeColors();
+    renderThemeColors();
+    renderButtonColors();
+    renderThemeModes();
     const list = $('themeList');
     if (!list) {
       return;
@@ -6661,21 +6770,152 @@ window.createConsoleApp = function createConsoleApp() {
     });
   }
 
+  function setThemeMode(mode) {
+    safeSet(THEME_MODE_KEY, normalizeThemeMode(mode));
+    applyTheme(state.currentTheme);
+  }
+
+  function renderThemeModes() {
+    const list = $('themeModeList');
+    if (!list) return;
+    const mode = readThemeMode();
+    if (!list.querySelector('[data-theme-mode]')) {
+      list.innerHTML = THEME_MODES.map((item) => `<button class="segment-btn" type="button" data-theme-mode="${esc(item.id)}" aria-pressed="false">${esc(item.label)}</button>`).join('');
+      list.querySelectorAll('[data-theme-mode]').forEach((button) => {
+        button.onclick = () => {
+          setThemeMode(button.dataset.themeMode);
+          setStatus('success', `Mode set to ${button.textContent.toLowerCase()}.`);
+        };
+      });
+    }
+    list.querySelectorAll('[data-theme-mode]').forEach((button) => {
+      const active = button.dataset.themeMode === mode;
+      button.classList.toggle('active', active);
+      button.setAttribute('aria-pressed', active ? 'true' : 'false');
+    });
+  }
+
   function loadTheme() {
     const list = $('themeList');
-    state.currentTheme = THEMES.includes(safeGet(THEME_KEY)) ? safeGet(THEME_KEY) : 'midnight';
+    const stored = String(safeGet(THEME_KEY) || '').toLowerCase();
+    // The old light theme becomes Minimal in light mode, not Minimal in dark.
+    if (stored === 'paper' && !safeGet(THEME_MODE_KEY)) {
+      safeSet(THEME_MODE_KEY, 'light');
+    }
+    state.currentTheme = normalizeThemeId(stored);
     if (list) {
       list.innerHTML = THEMES.map((theme) => (
-        `<button class="theme-chip${theme === state.currentTheme ? ' active' : ''}" data-theme="${theme}" type="button" aria-pressed="${theme === state.currentTheme ? 'true' : 'false'}"><span class="theme-dot theme-dot-${theme}" aria-hidden="true"></span><span>${theme[0].toUpperCase() + theme.slice(1)}</span></button>`
+        `<button class="theme-chip${theme === state.currentTheme ? ' active' : ''}" data-theme="${esc(theme)}" type="button" aria-pressed="${theme === state.currentTheme ? 'true' : 'false'}"><span class="theme-dot theme-dot-${esc(theme)}" aria-hidden="true"></span><span class="theme-chip-text"><span>${esc(THEME_META[theme].label)}</span><small>${esc(THEME_META[theme].note)}</small></span></button>`
       )).join('');
       list.querySelectorAll('.theme-chip').forEach((button) => {
         button.onclick = () => {
           applyTheme(button.dataset.theme);
-          setStatus('success', `Theme changed to ${button.dataset.theme}.`);
+          setStatus('success', `Theme changed to ${THEME_META[state.currentTheme].label}.`);
         };
       });
     }
+    try {
+      const query = window.matchMedia?.('(prefers-color-scheme: dark)');
+      const follow = () => {
+        if (readThemeMode() === 'system') applyTheme(state.currentTheme);
+      };
+      query?.addEventListener?.('change', follow);
+    } catch {
+      // No media query support: Match system just stays on its first answer.
+    }
+    applySceneryLevel(readSceneryLevel());
     applyTheme(state.currentTheme);
+  }
+
+  // ─── Background scenery ───────────────────────────────────────────────────
+  // How visible the theme's background art is, 0 (off) to 100. CSS multiplies it by the
+  // theme's own strength, so the slider means the same in every theme.
+
+  function readSceneryLevel() {
+    const stored = safeGet(SCENERY_LEVEL_KEY);
+    const level = stored === null || stored === '' ? DEFAULT_SCENERY_LEVEL : Number(stored);
+    return Number.isFinite(level) ? Math.max(0, Math.min(100, Math.round(level))) : DEFAULT_SCENERY_LEVEL;
+  }
+
+  function applySceneryLevel(level) {
+    const value = Math.max(0, Math.min(100, Math.round(Number(level) || 0)));
+    safeSet(SCENERY_LEVEL_KEY, String(value));
+    document.documentElement.style.setProperty('--scenery-level', String(value / 100));
+    const input = $('sceneryLevelInput');
+    if (input && Number(input.value) !== value) input.value = String(value);
+    if ($('sceneryLevelValue')) $('sceneryLevelValue').textContent = value ? `${value}%` : 'Off';
+  }
+
+  // ─── Theme colours ────────────────────────────────────────────────────────
+  // Each theme brings a palette for dark and for light mode; any of its main colours can be
+  // changed. Changes are kept per theme and per mode.
+
+  function readAllThemeColors() {
+    try {
+      const parsed = JSON.parse(safeGet(THEME_COLORS_KEY) || '{}');
+      return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+    } catch {
+      return {};
+    }
+  }
+
+  function themeColorsKey(themeId, tone) {
+    return `${themeId}:${tone}`;
+  }
+
+  function readThemeColors(themeId = state.currentTheme, tone = state.themeTone || resolvedThemeTone()) {
+    const colors = readAllThemeColors()[themeColorsKey(themeId, tone)];
+    return colors && typeof colors === 'object' ? colors : {};
+  }
+
+  function writeThemeColors(themeId, colors, tone = state.themeTone || resolvedThemeTone()) {
+    const all = readAllThemeColors();
+    const key = themeColorsKey(themeId, tone);
+    if (colors && Object.keys(colors).length) {
+      all[key] = colors;
+    } else {
+      delete all[key];
+    }
+    safeSet(THEME_COLORS_KEY, JSON.stringify(all));
+  }
+
+  function applyThemeColors() {
+    const root = document.documentElement;
+    THEME_COLOR_VARS.forEach((name) => root.style.removeProperty(name));
+    const colors = readThemeColors();
+    THEME_COLOR_TOKENS.forEach((token) => {
+      const value = String(colors[token.id] || '');
+      if (!/^#[0-9a-f]{6}$/i.test(value)) return;
+      Object.entries(token.vars(value)).forEach(([name, cssValue]) => root.style.setProperty(name, cssValue));
+    });
+  }
+
+  function renderThemeColors() {
+    const list = $('themeColorList');
+    if (!list) return;
+    const styles = window.getComputedStyle(document.documentElement);
+    const saved = readThemeColors();
+    list.innerHTML = THEME_COLOR_TOKENS.map((token) => {
+      const value = saved[token.id] || cssColorToHex(styles.getPropertyValue(token.token));
+      return `<label class="button-color-item${saved[token.id] ? ' customized' : ''}"><input type="color" value="${esc(value)}" data-theme-color="${esc(token.id)}" aria-label="${esc(token.label)} colour" /><span>${esc(token.label)}</span></label>`;
+    }).join('');
+    list.querySelectorAll('[data-theme-color]').forEach((input) => {
+      input.oninput = () => {
+        writeThemeColors(state.currentTheme, { ...readThemeColors(), [input.dataset.themeColor]: input.value.toLowerCase() });
+        applyThemeColors();
+        input.closest('.button-color-item')?.classList.add('customized');
+      };
+    });
+    if ($('themeColorsScope')) {
+      $('themeColorsScope').textContent = `${THEME_META[state.currentTheme].label}, ${state.themeTone === 'light' ? 'light' : 'dark'} mode`;
+    }
+  }
+
+  function resetThemeColors() {
+    writeThemeColors(state.currentTheme, {});
+    applyThemeColors();
+    renderThemeColors();
+    setStatus('success', `${THEME_META[state.currentTheme].label} ${state.themeTone} colours reset to the theme's own.`);
   }
 
   function modeWarning() {
@@ -9720,7 +9960,31 @@ window.createConsoleApp = function createConsoleApp() {
     container.classList.remove('hidden');
   }
 
+  // The confirmation dialog resizes from its corner (CSS resize). The size someone drags it to
+  // is kept for the next confirmation; the text inside scales with its width in CSS.
+  function restoreConfirmSize() {
+    const card = $('confirmModalCard');
+    if (!card) return;
+    try {
+      const saved = JSON.parse(safeGet(CONFIRM_SIZE_KEY) || 'null');
+      if (saved && Number(saved.width) > 0) card.style.width = `${Math.round(Number(saved.width))}px`;
+      if (saved && Number(saved.height) > 0) card.style.height = `${Math.round(Number(saved.height))}px`;
+    } catch {
+      // A damaged value just means the default size.
+    }
+    if (card.__sizeObserver || typeof window.ResizeObserver !== 'function') return;
+    card.__sizeObserver = new window.ResizeObserver(() => {
+      // Only a size the user set: the inline width/height the browser writes while dragging.
+      if (!card.style.width && !card.style.height) return;
+      if ($('confirmModal')?.classList.contains('hidden')) return;
+      const rect = card.getBoundingClientRect();
+      safeSet(CONFIRM_SIZE_KEY, JSON.stringify({ width: Math.round(rect.width), height: Math.round(rect.height) }));
+    });
+    card.__sizeObserver.observe(card);
+  }
+
   function openConfirm(config) {
+    restoreConfirmSize();
     state.pendingAction = config;
     state.lastFocusedElement = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     const prod = normalizeEnvironmentTag(config.environment) === 'prod';
@@ -10441,6 +10705,12 @@ window.createConsoleApp = function createConsoleApp() {
     if ($('applyAuditFiltersBtn')) $('applyAuditFiltersBtn').onclick = () => loadAudit().catch((error) => setStatus('error', error.message));
     $('runQueryBtn').onclick = () => runQuery().catch((error) => setStatus('error', error.message));
     $('runAllQueryBtn').onclick = () => runQuery({ scope: 'all' }).catch((error) => setStatus('error', error.message));
+    if ($('resetThemeColorsBtn')) {
+      $('resetThemeColorsBtn').onclick = resetThemeColors;
+    }
+    if ($('sceneryLevelInput')) {
+      $('sceneryLevelInput').oninput = () => applySceneryLevel($('sceneryLevelInput').value);
+    }
     if ($('popoutEditorBtn')) {
       $('popoutEditorBtn').onclick = openPopoutEditor;
     }

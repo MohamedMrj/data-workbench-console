@@ -375,6 +375,12 @@ export default function WorkbenchShell({ pageMode = 'sql' }) {
         <div className="shell-orbit shell-orbit-b" />
         <div className="shell-grid" />
       </div>
+      {/* The theme's background picture; how visible it is comes from Settings. */}
+      <div id="themeScenery" className="theme-scenery" aria-hidden="true">
+        <span className="scenery-a" />
+        <span className="scenery-b" />
+        <span className="scenery-c" />
+      </div>
       <div className="app-shell" data-page-mode={pageMode}>
         <aside className="control-rail surface">
           <section className="brand-panel panel-section">
@@ -765,7 +771,8 @@ export default function WorkbenchShell({ pageMode = 'sql' }) {
       </div>
 
       <div id="confirmModal" className="modal-backdrop hidden" aria-hidden="true">
-        <div className="modal-card">
+        <div id="confirmModalCard" className="modal-card confirm-modal-card">
+          <div className="confirm-modal-scale">
           <div className="modal-header">
             <h2 id="modalTitle">Confirm action</h2>
             <button id="closeModalBtn" className="icon-btn" type="button" aria-label="Close">×</button>
@@ -784,6 +791,7 @@ export default function WorkbenchShell({ pageMode = 'sql' }) {
             <span id="modalCountdown" className="tiny-note modal-countdown" aria-live="polite" />
             <button id="cancelModalBtn" className="ghost-btn" type="button">Cancel</button>
             <button id="confirmModalBtn" className="primary-btn" type="button">Continue</button>
+          </div>
           </div>
         </div>
       </div>
@@ -982,6 +990,24 @@ export default function WorkbenchShell({ pageMode = 'sql' }) {
               <div className="appearance-subsection">
                 <h4>Theme</h4>
                 <div id="themeList" className="theme-list" />
+              </div>
+              <div className="appearance-subsection appearance-mode-scenery">
+                <div>
+                  <h4>Mode</h4>
+                  <div id="themeModeList" className="button-row wrap theme-mode-list" role="group" aria-label="Dark or light mode" />
+                </div>
+                <label className="field compact-field scenery-field">
+                  <span>Background scenery <output id="sceneryLevelValue" className="scenery-level-value" htmlFor="sceneryLevelInput">40%</output></span>
+                  <input id="sceneryLevelInput" type="range" min="0" max="100" step="5" defaultValue="40" />
+                </label>
+              </div>
+              <div className="appearance-subsection">
+                <div className="section-title-row tight button-colors-title">
+                  <h4>Theme colours <small id="themeColorsScope" className="tiny-note" /></h4>
+                  <button id="resetThemeColorsBtn" className="text-btn" type="button">Reset</button>
+                </div>
+                <div id="themeColorList" className="button-color-list" />
+                <p className="tiny-note">Every theme comes with its own colours for dark and light mode. Change any of them here; changes are kept for each theme and mode separately.</p>
               </div>
               <div className="appearance-subsection">
                 <h4>Object list size</h4>

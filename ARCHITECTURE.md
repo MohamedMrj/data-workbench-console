@@ -777,7 +777,11 @@ and nothing is lost on upgrade.
 | localStorage | `dataWorkbenchHistoryViewV1` | history panel view: `profileOnly`, `sort` (`recent`/`frequent`) |
 | localStorage | `dataWorkbenchProfileWorkspacesV1` | per-connection memory keyed by connection signature: active object/procedure, procedure values, builder snapshot (editor tabs, filters, sort). Never results. Last 12 connections |
 | localStorage | `dataWorkbenchProcedureHistoryV1` | procedure runs + parameter values |
-| localStorage | `dataWorkbenchThemeV2` | theme id |
+| localStorage | `dataWorkbenchThemeV2` | theme id (one of ten; ids from before 1.8 are mapped to the closest new theme on read) |
+| localStorage | `dataWorkbenchThemeModeV1` | `dark`, `light` or `system` |
+| localStorage | `dataWorkbenchThemeColorsV1` | Theme colours keyed `<theme>:<dark\|light>`, applied as inline tokens on `<html>` |
+| localStorage | `dataWorkbenchSceneryLevelV1` | background scenery visibility 0–100 (`--scenery-level`) |
+| localStorage | `dataWorkbenchConfirmSizeV1` | the size the confirmation dialog was last dragged to |
 | localStorage | `dataWorkbenchButtonColorsV1` | per-section Liquid Glass tints, applied as `--tint-<section>` on `<html>` |
 | localStorage | `dataWorkbenchExplorerSizeV1` | object list size (`compact`/`default`/`large`/`xlarge`), applied as `--explorer-scale` on `<html>` |
 | server file | `data/appearance.json` | appearance profiles and the default one applied at start-up |
@@ -861,6 +865,22 @@ Six themes — `midnight` (default), `harbor`, `forge`, `field`, `ink`, `paper` 
 custom-property overrides on `:root[data-theme='…']` in [app/theme.css](app/theme.css).
 Most themes change only accents; `ink` and `paper` also change surfaces, and `paper` flips
 `color-scheme` to light. `--results-cell-text` is elevated for dark themes.
+
+**Themes.** A theme is a full look: structure tokens (`--font-body`, `--font-heading`,
+`--heading-tracking`, `--heading-transform`, `--radius-*`, `--surface-blur`, `--orb-opacity`,
+`--page-background`), a dark and a light palette, and background scenery. `applyTheme()` sets
+`data-theme` and `data-theme-tone` (the resolved mode) on `<html>`; light-specific rules key off
+`data-theme-tone='light'`, never a theme name. The theme section at the end of `theme.css` is
+**generated** by `scripts/generate-theme-css.mjs`; change themes there and re-run it. Palette
+tokens are plain colours so the Theme colours pickers can read them; each picker writes the
+related tokens (the panel picker keeps translucent themes translucent). `--on-accent` is the text
+colour on primary buttons, for themes whose accent is light.
+
+**Background scenery.** `#themeScenery` holds three fixed, decorative layers behind the app.
+Each is filled with a theme colour and shaped by an SVG mask (`--scenery-a` … `-c`, with size,
+position and repeat tokens), so the art follows the mode and the user's colours. Its opacity is
+`--scenery-level` (the Settings slider, 0–1) × `--scenery-strength` (per theme). The art sits
+towards the edges and behind the panels.
 
 **Liquid Glass buttons.** Each section card sets `--btn-tint` from its own `--tint-<section>`
 token (`connection`, `header`, `explorer`, `builder`, `editor`, `results`, `activity`,

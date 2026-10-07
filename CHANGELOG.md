@@ -5,6 +5,48 @@ All notable Data Workbench Console changes are tracked here.
 The in-app version is read from `package.json` and exposed through `/api/version`
 together with the current git commit and build information.
 
+## Unreleased
+
+Themes are now whole looks with a dark and a light mode, a background picture whose visibility
+you choose, and colours you can change; and the confirmation dialog can be resized.
+
+### Added
+
+- **Ten themes, each a whole look**: Liquid Glass, OLED Black, Matte Neon, Minimal, Neomorphic
+  (soft 3D), Pastel, Cyberpunk, Cottagecore, Garden and Space. Besides colours, a theme sets
+  fonts, corner shapes, panel blur, shadows and the page background.
+- **Dark and light mode for every theme** (`Dark`, `Light` or `Match system`) in
+  Settings → Appearance.
+- **Background scenery**: each theme draws a picture behind the app (stars, a ringed planet and a
+  galaxy for Space; leafy branches for Garden; a synthwave sun and grid for Cyberpunk; clouds and
+  sparkles for Pastel; and so on), towards the edges and behind the panels. A `Background
+  scenery` slider sets how visible it is; 0 turns it off. It is drawn from theme colours, so it
+  follows the mode and your colour changes.
+- **Theme colours**: change any of a theme's ten main colours; changes are kept per theme and per
+  mode, and `Reset` restores the theme's own.
+- Appearance profiles also save the mode, the theme colours and the scenery level.
+- **Resizable confirmation dialog**: larger by default (about 820px), resizable from its
+  bottom-right corner in both directions, with text that grows and shrinks with its width. The
+  size is kept for the next confirmation, and Cancel / Execute stay in view while the details
+  scroll.
+
+### Changed
+
+- The six colour-only themes are replaced. A saved choice or profile that used one opens as the
+  closest new theme (Midnight and Harbor → Liquid Glass, Ink → Matte Neon, Forge → Cyberpunk,
+  Field → Cottagecore, Paper → Minimal in light mode).
+- Light-mode styling now follows the mode for every theme instead of being tied to Paper.
+
+### Verification
+
+- `ui-smoke.mjs`: all ten themes in dark and light mode, Match system following the operating
+  system, the scenery slider (level, label, off at 0, remembered), Theme colours kept per theme
+  and per mode with Reset, old theme ids mapping to new themes, profiles carrying mode, colours
+  and scenery level, and the confirmation dialog reopening at its remembered size.
+- `server-unit.test.mjs` and `route-contract.test.mjs`: every theme id, per-mode theme
+  colours, mode and scenery level validation, and Paper mapping to Minimal in light mode.
+- `responsive-audit.mjs`: every theme in both modes at 1200px (20 cases); 66 checks pass.
+
 ## 1.7.0 - 2026-10-07
 
 Valid T-SQL is no longer broken by the row cap or by running half a batch, and error hints
