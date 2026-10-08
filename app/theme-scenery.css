@@ -27,7 +27,8 @@
 :root[data-theme='cyberpunk'] .scene-cyberpunk,
 :root[data-theme='cottagecore'] .scene-cottagecore,
 :root[data-theme='garden'] .scene-garden,
-:root[data-theme='space'] .scene-space {
+:root[data-theme='space'] .scene-space,
+:root[data-theme='dracula'] .scene-dracula {
   display: block;
 }
 
@@ -1297,6 +1298,112 @@
   100% { opacity: 0; transform: translate(-18vw, 11vh); }
 }
 
+/* ─── Dracula ───────────────────────────────────────────────────────────────────────────────── */
+
+.scene-dracula {
+  --scene-strength: 0.9;
+  --dr-star: #f8f8f2;
+  --dr-moon: #f3f5d0;
+  --dr-silhouette: #14151c;
+  --dr-rim: color-mix(in srgb, var(--accent) 55%, transparent);
+  --dr-bat: #101118;
+  --dr-window: #ffb86c;
+  --dr-mist: color-mix(in srgb, var(--accent) 11%, transparent);
+}
+
+:root[data-theme-tone='light'] .scene-dracula {
+  --scene-strength: 0.75;
+  --dr-star: #644ac9;
+  --dr-moon: #c9bdf2;
+  --dr-silhouette: color-mix(in srgb, #644ac9 20%, #e7dfc4);
+  --dr-rim: color-mix(in srgb, #644ac9 40%, transparent);
+  --dr-bat: #6c664b;
+  --dr-window: #a34d14;
+  --dr-mist: color-mix(in srgb, #644ac9 8%, transparent);
+}
+
+.dr-stars { inset: 0; }
+.dr-star { fill: var(--dr-star); opacity: 0.42; }
+
+:root[data-theme-tone='light'] .dr-star { opacity: 0.22; }
+
+.dr-glint {
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: var(--dr-star);
+  box-shadow: 0 0 7px 1px color-mix(in srgb, var(--accent) 60%, transparent);
+}
+
+.dr-moon {
+  right: 9vw;
+  top: 8vh;
+  width: clamp(64px, 7.5vw, 124px);
+  aspect-ratio: 1;
+}
+
+.dr-moon-glow {
+  position: absolute;
+  inset: -70%;
+  border-radius: 50%;
+  background: radial-gradient(circle, color-mix(in srgb, var(--dr-moon) 24%, transparent) 0 22%, color-mix(in srgb, var(--accent) 10%, transparent) 40%, transparent 66%);
+}
+
+.dr-moon-shape { fill: var(--dr-moon); }
+
+.dr-bat { aspect-ratio: 60 / 24; }
+
+.dr-flap {
+  position: absolute;
+  inset: 0;
+  transform-origin: 50% 45%;
+}
+
+.dr-bat-shape { fill: var(--dr-bat); }
+
+.dr-mist {
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 20vh;
+  background: linear-gradient(0deg, var(--dr-mist), transparent);
+}
+
+.dr-castle {
+  left: 0;
+  bottom: 0;
+  width: min(48vw, 700px);
+  aspect-ratio: 600 / 220;
+}
+
+.dr-silhouette { fill: var(--dr-silhouette); }
+
+.dr-rim {
+  fill: none;
+  stroke: var(--dr-rim);
+  stroke-width: 1.2;
+  vector-effect: non-scaling-stroke;
+}
+
+.dr-window {
+  fill: var(--dr-window);
+  filter: drop-shadow(0 0 4px var(--dr-window));
+}
+
+/* Wings beat slowly; the drift itself is the shared sc-drift on the bat's box. */
+@media (prefers-reduced-motion: no-preference) {
+  :root[data-ambient-motion='enabled'] .dr-flap {
+    animation: dr-flap var(--flap, 1.8s) ease-in-out var(--flap-delay, 0s) infinite;
+    will-change: transform;
+  }
+}
+
+@keyframes dr-flap {
+  0%,
+  100% { transform: scaleY(1); }
+  50% { transform: scaleY(0.42); }
+}
+
 /* ─── Smaller screens: simpler scenes that keep their signature object ─────────────────────── */
 
 @media (max-width: 960px) {
@@ -1323,7 +1430,10 @@
   .cc-fireflies,
   .sp-cloud,
   .sp-small-b,
-  .sp-spark-b { display: none !important; }
+  .sp-spark-b,
+  .dr-glint { display: none !important; }
+  .dr-castle { width: 92vw; }
+  .dr-moon { right: 6vw; top: 4vh; }
   .gl-orb-a { height: 40vh; right: -14vh; top: -8vh; }
   .gl-orb-b { left: 4vw; top: 56vh; height: 12vh; }
   .gl-arc-a { width: 90vw; }

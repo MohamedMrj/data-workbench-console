@@ -4,7 +4,7 @@ import { useEffect } from 'react';
 
 const THEME_KEY = 'dataWorkbenchThemeV2';
 const THEME_MODE_KEY = 'dataWorkbenchThemeModeV1';
-const THEMES = ['glass', 'oled', 'neon', 'minimal', 'neumorphic', 'pastel', 'cyberpunk', 'cottagecore', 'garden', 'space'];
+const THEMES = ['glass', 'oled', 'neon', 'minimal', 'neumorphic', 'pastel', 'cyberpunk', 'cottagecore', 'garden', 'space', 'dracula'];
 // Same mapping as the app: an id saved before the themes became full looks still resolves.
 const LEGACY_THEMES = { midnight: 'glass', harbor: 'glass', ink: 'neon', forge: 'cyberpunk', field: 'cottagecore', paper: 'minimal' };
 

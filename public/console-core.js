@@ -249,7 +249,8 @@ window.createConsoleApp = function createConsoleApp() {
     cyberpunk: { label: 'Cyberpunk', note: 'Synthwave sun over a neon grid' },
     cottagecore: { label: 'Cottagecore', note: 'Wildflowers, mushrooms, warm paper' },
     garden: { label: 'Garden', note: 'Leaves and blooms, sage or forest' },
-    space: { label: 'Space', note: 'Stars, a ringed planet and a galaxy' }
+    space: { label: 'Space', note: 'Stars, a ringed planet and a galaxy' },
+    dracula: { label: 'Dracula', note: 'The classic purple editor palette, moonlit' }
   };
   const THEME_MODE_KEY = 'dataWorkbenchThemeModeV1';
   const THEME_MODES = [
@@ -733,6 +734,7 @@ window.createConsoleApp = function createConsoleApp() {
     }
     shell.style.setProperty('--sql-editor-font-size', `${state.editorTextSize}rem`);
     shell.style.setProperty('--results-font-size', `${state.resultsTextSize}rem`);
+    syncPopoutAppearance();
   }
 
   function changeEditorTextSize(delta) {
@@ -1388,6 +1390,7 @@ window.createConsoleApp = function createConsoleApp() {
     $('statusBadge').className = `status-badge ${kind}`;
     $('statusBadge').textContent = kind === 'success' ? 'Success' : kind === 'error' ? 'Error' : kind === 'loading' ? 'Working' : 'Idle';
     $('statusText').textContent = message;
+    syncPopoutStatus();
   }
 
   function renderVersionInfo(info = {}) {
@@ -4864,7 +4867,7 @@ window.createConsoleApp = function createConsoleApp() {
       state.objectColumnIndex[key] = (payload.columns || []).map((column) => column.name);
       persistCatalogState();
       if (state.suggest?.open || state.suggest?.pendingObject === key) {
-        updateSuggestions({ manual: Boolean(state.suggest?.manual) });
+        updateSuggestions({ manual: Boolean(state.suggest?.manual), host: state.suggestHost });
       }
     } catch {
       // Autocomplete is a convenience: a failed column lookup just means no suggestions.
@@ -5065,8 +5068,9 @@ window.createConsoleApp = function createConsoleApp() {
   }
 
   function caretOffset(editor, position) {
-    const style = window.getComputedStyle(editor);
-    const mirror = document.createElement('div');
+    const doc = editor.ownerDocument || document;
+    const style = (doc.defaultView || window).getComputedStyle(editor);
+    const mirror = doc.createElement('div');
     ['boxSizing', 'width', 'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft', 'borderTopWidth', 'borderRightWidth', 'borderBottomWidth', 'borderLeftWidth', 'fontFamily', 'fontSize', 'fontWeight', 'lineHeight', 'letterSpacing', 'tabSize'].forEach((prop) => {
       mirror.style[prop] = style[prop];
     });
@@ -5077,10 +5081,10 @@ window.createConsoleApp = function createConsoleApp() {
     mirror.style.top = '0';
     mirror.style.left = '-9999px';
     mirror.textContent = editor.value.slice(0, position);
-    const marker = document.createElement('span');
+    const marker = doc.createElement('span');
     marker.textContent = '​';
     mirror.appendChild(marker);
-    document.body.appendChild(mirror);
+    doc.body.appendChild(mirror);
     const lineHeight = parseFloat(style.lineHeight) || (parseFloat(style.fontSize) || 14) * 1.6;
     const offset = {
       top: marker.offsetTop - editor.scrollTop + lineHeight,
@@ -5090,33 +5094,45 @@ window.createConsoleApp = function createConsoleApp() {
     return offset;
   }
 
+  // Autocomplete serves whichever editor is being typed in: this page's or the pop-out's.
+  function suggestTarget() {
+    if (state.suggestHost === 'popout') {
+      const editor = popoutElement('popoutQuery');
+      if (editor) return { editor, list: popoutElement('popoutSuggest'), host: 'popout' };
+    }
+    return { editor: $('queryEditor'), list: $('editorSuggest'), host: 'main' };
+  }
+
   function closeSuggestions() {
     state.suggest = null;
-    const list = $('editorSuggest');
-    if (list) {
-      list.classList.add('hidden');
-      list.innerHTML = '';
-    }
-    $('queryEditor')?.removeAttribute('aria-activedescendant');
+    [[$('editorSuggest'), $('queryEditor')], [popoutElement('popoutSuggest'), popoutElement('popoutQuery')]].forEach(([list, editor]) => {
+      if (list) {
+        list.classList.add('hidden');
+        list.innerHTML = '';
+      }
+      editor?.removeAttribute('aria-activedescendant');
+    });
   }
 
   function renderSuggestions() {
-    const list = $('editorSuggest');
-    const editor = $('queryEditor');
+    const { list, editor } = suggestTarget();
     const suggest = state.suggest;
     if (!list || !editor || !suggest?.open || !suggest.items.length) {
       if (list) list.classList.add('hidden');
       return;
     }
     list.innerHTML = suggest.items.map((item, index) => (
-      `<div class="editor-suggest-item${index === suggest.index ? ' active' : ''}" id="editorSuggestItem${index}" role="option" aria-selected="${index === suggest.index}" data-suggest-index="${index}"><span class="editor-suggest-label">${esc(item.label)}</span><span class="editor-suggest-kind">${esc(item.detail ? `${item.kind} · ${item.detail}` : item.kind)}</span></div>`
+      `<div class="editor-suggest-item${index === suggest.index ? ' active' : ''}" id="editorSuggestItem${index}" role="option" aria-selected="${index === suggest.index}" data-suggest-index="${index}" title="${esc(item.detail ? `${item.label} (${item.kind} · ${item.detail})` : item.label)}"><span class="editor-suggest-label">${esc(item.label)}</span><span class="editor-suggest-kind">${esc(item.detail ? `${item.kind} · ${item.detail}` : item.kind)}</span></div>`
     )).join('');
     const offset = caretOffset(editor, suggest.anchor);
-    const maxLeft = Math.max(0, editor.clientWidth - 260);
-    list.style.left = `${Math.min(maxLeft, Math.max(0, editor.offsetLeft + offset.left))}px`;
+    list.style.left = '0px';
     list.classList.remove('hidden');
+    // Measured after it is shown: the list is as wide as its longest name, so it shifts left
+    // rather than being cut off at the editor's right edge.
+    const maxLeft = Math.max(0, editor.offsetLeft + editor.clientWidth - list.offsetWidth - 4);
+    list.style.left = `${Math.min(maxLeft, Math.max(0, editor.offsetLeft + offset.left))}px`;
     // The editor container clips overflow, so near the bottom the list opens above the line.
-    const lineHeight = parseFloat(window.getComputedStyle(editor).lineHeight) || 22;
+    const lineHeight = parseFloat((editor.ownerDocument.defaultView || window).getComputedStyle(editor).lineHeight) || 22;
     const below = editor.offsetTop + offset.top;
     const containerHeight = list.parentElement?.clientHeight || 0;
     const fitsBelow = !containerHeight || below + list.offsetHeight <= containerHeight;
@@ -5132,13 +5148,15 @@ window.createConsoleApp = function createConsoleApp() {
     list.querySelector('.editor-suggest-item.active')?.scrollIntoView?.({ block: 'nearest' });
   }
 
-  function updateSuggestions({ manual = false } = {}) {
-    if (!autocompleteEnabled() || editorAdapter().kind !== 'textarea') {
+  function updateSuggestions({ manual = false, host = 'main' } = {}) {
+    state.suggestHost = host;
+    const { editor } = suggestTarget();
+    if (!autocompleteEnabled() || !editor || (host === 'main' && editorAdapter().kind !== 'textarea')) {
       closeSuggestions();
       return;
     }
-    const text = getQuery();
-    const selection = editorAdapter().getSelection();
+    const text = editor.value;
+    const selection = { start: editor.selectionStart, end: editor.selectionEnd };
     if (selection.end !== selection.start) {
       closeSuggestions();
       return;
@@ -5172,50 +5190,52 @@ window.createConsoleApp = function createConsoleApp() {
   function acceptSuggestion(index = state.suggest?.index ?? 0) {
     const suggest = state.suggest;
     const item = suggest?.items?.[index];
-    if (!item) return;
-    const adapter = editorAdapter();
-    const text = adapter.getValue();
-    const next = `${text.slice(0, suggest.replaceStart)}${item.insert}${text.slice(suggest.replaceEnd)}`;
-    const cursor = suggest.replaceStart + item.insert.length;
+    const { editor } = suggestTarget();
+    if (!item || !editor) return;
     closeSuggestions();
-    adapter.setValue(next);
-    adapter.setSelection(cursor, cursor);
-    adapter.focus();
-    syncEditorBackdrop();
-    updateEditorStats();
-    persistWorkspaceState('sql');
+    // The edit raises an input event; the list just accepted must not reopen from it.
+    state.suggestSuppressed = true;
+    try {
+      replaceEditorText(editor, suggest.replaceStart, suggest.replaceEnd, item.insert);
+    } finally {
+      state.suggestSuppressed = false;
+    }
   }
 
-  function handleEditorKeydown(event) {
+  function handleEditorKeydown(event, host = 'main') {
+    const editor = host === 'popout' ? popoutElement('popoutQuery') : $('queryEditor');
     if ((event.ctrlKey || event.metaKey) && (event.key === ' ' || event.code === 'Space')) {
       event.preventDefault();
-      updateSuggestions({ manual: true });
+      updateSuggestions({ manual: true, host });
       return;
     }
     const suggest = state.suggest;
-    if (!suggest?.open) return;
-    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
-      event.preventDefault();
-      const step = event.key === 'ArrowDown' ? 1 : -1;
-      suggest.index = (suggest.index + step + suggest.items.length) % suggest.items.length;
-      renderSuggestions();
-      return;
+    if (suggest?.open && state.suggestHost === host) {
+      if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+        event.preventDefault();
+        const step = event.key === 'ArrowDown' ? 1 : -1;
+        suggest.index = (suggest.index + step + suggest.items.length) % suggest.items.length;
+        renderSuggestions();
+        return;
+      }
+      if ((event.key === 'Enter' || event.key === 'Tab') && !event.ctrlKey && !event.metaKey && !event.shiftKey && !event.altKey) {
+        event.preventDefault();
+        acceptSuggestion();
+        return;
+      }
+      if (['ArrowLeft', 'ArrowRight', 'Home', 'End', 'PageUp', 'PageDown'].includes(event.key)) {
+        closeSuggestions();
+        return;
+      }
+      if (event.key === 'Escape') {
+        // Stop here so Escape closes the list without also closing a dialog behind it.
+        event.preventDefault();
+        event.stopPropagation();
+        closeSuggestions();
+        return;
+      }
     }
-    if ((event.key === 'Enter' || event.key === 'Tab') && !event.ctrlKey && !event.metaKey && !event.shiftKey && !event.altKey) {
-      event.preventDefault();
-      acceptSuggestion();
-      return;
-    }
-    if (['ArrowLeft', 'ArrowRight', 'Home', 'End', 'PageUp', 'PageDown'].includes(event.key)) {
-      closeSuggestions();
-      return;
-    }
-    if (event.key === 'Escape') {
-      // Stop here so Escape closes the list without also closing a dialog behind it.
-      event.preventDefault();
-      event.stopPropagation();
-      closeSuggestions();
-    }
+    if (host === 'popout' || editorAdapter().kind === 'textarea') handleSqlEditingKeys(editor, event);
   }
 
   // What Ctrl+Enter runs: the selection if there is one, otherwise the statement under the
@@ -5240,72 +5260,1017 @@ window.createConsoleApp = function createConsoleApp() {
     return { query: text.slice(range.start, range.end).trim(), start: range.start, end: range.end, partial: true, index: chosen, count: ranges.length, scope: 'statement' };
   }
 
-  function highlightSql(text) {
-    if (!text) return '';
-    
-    const upper = text.toUpperCase();
-    const isUpdateOrDelete = upper.includes('UPDATE ') || upper.includes('DELETE FROM ') || upper.includes('DELETE ');
-    const hasWhere = upper.includes('WHERE ');
-    const isMissingWhere = isUpdateOrDelete && !hasWhere;
-    const hasDanger = upper.includes('DROP ') || upper.includes('TRUNCATE ');
+  // ─── SQL lexer, highlighter and formatter ─────────────────────────────────
+  // One lexer feeds both. Tokens keep their exact text, so joining them gives back the input:
+  // the highlighter relies on that to keep the coloured layer in line with the textarea above
+  // it, and the formatter relies on it to prove it changed nothing but whitespace and case.
 
-    let html = '';
-    let inString = false;
-    let currentString = '';
-    let currentCode = '';
+  const SQL_RESERVED_WORDS = new Set(('ADD ALL ALTER AND ANY AS ASC AUTHORIZATION BACKUP BEGIN BETWEEN BREAK BROWSE BULK BY CASCADE CASE '
+    + 'CHECK CHECKPOINT CLOSE CLUSTERED COALESCE COLLATE COLUMN COMMIT COMPUTE CONSTRAINT CONTAINS CONTAINSTABLE CONTINUE CONVERT '
+    + 'CREATE CROSS CURRENT CURRENT_DATE CURRENT_TIME CURRENT_TIMESTAMP CURRENT_USER CURSOR DATABASE DBCC DEALLOCATE DECLARE DEFAULT '
+    + 'DELETE DENY DESC DISK DISTINCT DISTRIBUTED DOUBLE DROP DUMP ELSE END ERRLVL ESCAPE EXCEPT EXEC EXECUTE EXISTS EXIT EXTERNAL '
+    + 'FETCH FILE FILLFACTOR FOR FOREIGN FREETEXT FREETEXTTABLE FROM FULL FUNCTION GOTO GRANT GROUP HAVING HOLDLOCK IDENTITY '
+    + 'IDENTITY_INSERT IDENTITYCOL IF IN INDEX INNER INSERT INTERSECT INTO IS JOIN KEY KILL LEFT LIKE LINENO LOAD MERGE NATIONAL '
+    + 'NOCHECK NONCLUSTERED NOT NULL NULLIF OF OFF OFFSETS ON OPEN OPENDATASOURCE OPENQUERY OPENROWSET OPENXML OPTION OR ORDER OUTER '
+    + 'OVER PERCENT PIVOT PLAN PRECISION PRIMARY PRINT PROC PROCEDURE PUBLIC RAISERROR READ READTEXT RECONFIGURE REFERENCES '
+    + 'REPLICATION RESTORE RESTRICT RETURN REVERT REVOKE RIGHT ROLLBACK ROWCOUNT ROWGUIDCOL RULE SAVE SCHEMA SELECT SESSION_USER SET '
+    + 'SETUSER SHUTDOWN SOME STATISTICS SYSTEM_USER TABLE TABLESAMPLE TEXTSIZE THEN TO TOP TRAN TRANSACTION TRIGGER TRUNCATE '
+    + 'TRY_CONVERT TSEQUAL UNION UNIQUE UNPIVOT UPDATE UPDATETEXT USE USER VALUES VARYING VIEW WAITFOR WHEN WHERE WHILE WITH WITHIN '
+    + 'WRITETEXT').split(' '));
 
-    const flushCode = () => {
-      if (!currentCode) return '';
-      let codeHtml = esc(currentCode);
-      
-      codeHtml = codeHtml.replace(/\b(\d+(?:\.\d+)?)\b/g, '<span class="sql-number">$1</span>');
-      
-      const keywords = ['SELECT', 'FROM', 'WHERE', 'INSERT', 'INTO', 'VALUES', 'UPDATE', 'SET', 'DELETE', 'JOIN', 'INNER', 'LEFT', 'RIGHT', 'OUTER', 'ON', 'AS', 'AND', 'OR', 'NOT', 'NULL', 'IS', 'ORDER', 'BY', 'GROUP', 'HAVING', 'LIMIT', 'TOP', 'DISTINCT', 'MERGE', 'DROP', 'TRUNCATE', 'CREATE', 'ALTER', 'EXEC', 'EXECUTE', 'WITH', 'THEN', 'WHEN', 'MATCHED', 'USING', 'ASC', 'DESC'];
-      const keywordRegex = new RegExp(`\\b(${keywords.join('|')})\\b`, 'gi');
-      codeHtml = codeHtml.replace(keywordRegex, '<span class="sql-keyword">$&</span>');
-      
-      const functions = ['COUNT', 'SUM', 'AVG', 'MIN', 'MAX', 'CAST', 'CONVERT', 'TRY_CONVERT', 'ISNULL', 'COALESCE', 'NULLIF', 'CONCAT', 'REPLACE', 'TRIM', 'LTRIM', 'RTRIM', 'DATEADD', 'DATEDIFF', 'HASHBYTES', 'UPPER', 'LOWER', 'LEFT', 'RIGHT', 'SUBSTRING'];
-      const funcRegex = new RegExp(`\\b(${functions.join('|')})\\b(?=\\s*\\()`, 'gi');
-      codeHtml = codeHtml.replace(funcRegex, '<span class="sql-function">$&</span>');
+  const SQL_FUNCTION_WORDS = new Set(('ABS ACOS APP_NAME APPROX_COUNT_DISTINCT ASCII ASIN ATAN ATN2 AVG BINARY_CHECKSUM CAST CEILING CHAR '
+    + 'CHARINDEX CHECKSUM CHECKSUM_AGG CHOOSE COL_LENGTH COL_NAME COLUMNPROPERTY COMPRESS CONCAT CONCAT_WS COS COT COUNT COUNT_BIG '
+    + 'CRYPT_GEN_RANDOM CUME_DIST CURSOR_STATUS DATALENGTH DATE_BUCKET DATEADD DATEDIFF DATEDIFF_BIG DATEFROMPARTS DATENAME DATEPART '
+    + 'DATETIME2FROMPARTS DATETIMEFROMPARTS DATETIMEOFFSETFROMPARTS DATETRUNC DAY DB_ID DB_NAME DECOMPRESS DEGREES DENSE_RANK DIFFERENCE '
+    + 'EOMONTH ERROR_LINE ERROR_MESSAGE ERROR_NUMBER ERROR_PROCEDURE ERROR_SEVERITY ERROR_STATE EXP FIRST_VALUE FLOOR FORMAT '
+    + 'FORMATMESSAGE GENERATE_SERIES GETDATE GETUTCDATE GREATEST GROUPING GROUPING_ID HASHBYTES HOST_NAME IDENT_CURRENT IIF ISDATE '
+    + 'ISJSON ISNULL ISNUMERIC JSON_ARRAY JSON_MODIFY JSON_OBJECT JSON_QUERY JSON_VALUE LAG LAST_VALUE LEAD LEAST LEN LOG LOG10 LOWER '
+    + 'LTRIM MAX MIN MONTH NCHAR NEWID NEWSEQUENTIALID NTILE OBJECT_ID OBJECT_NAME OBJECT_SCHEMA_NAME OBJECTPROPERTY OPENJSON '
+    + 'ORIGINAL_LOGIN PARSE PARSENAME PATINDEX PERCENT_RANK PERCENTILE_CONT PERCENTILE_DISC PI POWER QUOTENAME RADIANS RAND RANK '
+    + 'REPLACE REPLICATE REVERSE ROUND ROW_NUMBER RTRIM SCHEMA_ID SCHEMA_NAME SCOPE_IDENTITY SERVERPROPERTY SESSION_CONTEXT SIGN SIN '
+    + 'SMALLDATETIMEFROMPARTS SOUNDEX SPACE SQL_VARIANT_PROPERTY SQRT SQUARE STDEV STDEVP STR STRING_AGG STRING_ESCAPE STRING_SPLIT '
+    + 'STUFF SUBSTRING SUM SUSER_NAME SUSER_SNAME SWITCHOFFSET SYSDATETIME SYSDATETIMEOFFSET SYSUTCDATETIME TAN TIMEFROMPARTS '
+    + 'TODATETIMEOFFSET TRANSLATE TRIM TRY_CAST TRY_PARSE TYPE_NAME UNICODE UPPER USER_ID USER_NAME VAR VARP XACT_STATE YEAR').split(' '));
 
-      return codeHtml;
+  // Reserved words that are called like functions: coloured as functions, no space before "(".
+  const SQL_CALLABLE_RESERVED = new Set(['COALESCE', 'CONTAINS', 'CONTAINSTABLE', 'CONVERT', 'FREETEXT', 'FREETEXTTABLE', 'IDENTITY', 'LEFT', 'NULLIF', 'OPENDATASOURCE', 'OPENQUERY', 'OPENROWSET', 'OPENXML', 'RIGHT', 'TRY_CONVERT', 'UPDATE']);
+
+  // Not reserved, so they can be column names. The formatter only upper-cases them where the
+  // neighbours prove they are keywords (sqlContextKeyword): in a case-sensitive database,
+  // turning a column called "rows" into ROWS would break the query.
+  const SQL_CONTEXT_WORDS = new Set(['ANSI_NULLS', 'ANSI_WARNINGS', 'APPLY', 'ARITHABORT', 'AUTO', 'CATCH', 'FIRST', 'FOLLOWING', 'GO', 'JSON', 'MATCHED', 'NEXT', 'NOCOUNT', 'NOLOCK', 'OFFSET', 'ONLY', 'OUTPUT', 'PARTITION', 'PATH', 'PRECEDING', 'QUOTED_IDENTIFIER', 'RANGE', 'RAW', 'READPAST', 'READUNCOMMITTED', 'ROW', 'ROWLOCK', 'ROWS', 'SOURCE', 'TABLOCK', 'TABLOCKX', 'TARGET', 'THROW', 'TIES', 'TRY', 'UNBOUNDED', 'UPDLOCK', 'USING', 'XACT_ABORT', 'XML']);
+
+  const SQL_TYPE_WORDS = new Set(['BIGINT', 'BINARY', 'BIT', 'CHAR', 'DATE', 'DATETIME', 'DATETIME2', 'DATETIMEOFFSET', 'DECIMAL', 'FLOAT', 'GEOGRAPHY', 'GEOMETRY', 'HIERARCHYID', 'IMAGE', 'INT', 'MONEY', 'NCHAR', 'NTEXT', 'NUMERIC', 'NVARCHAR', 'REAL', 'ROWVERSION', 'SMALLDATETIME', 'SMALLINT', 'SMALLMONEY', 'SQL_VARIANT', 'SYSNAME', 'TEXT', 'TIME', 'TIMESTAMP', 'TINYINT', 'UNIQUEIDENTIFIER', 'VARBINARY', 'VARCHAR', 'XML']);
+
+  const SQL_OPERATORS = ['<=', '>=', '<>', '!=', '!<', '!>', '+=', '-=', '*=', '/=', '%=', '&=', '|=', '^=', '::'];
+
+  function sqlLex(text) {
+    const sql = String(text || '');
+    const tokens = [];
+    const wordChar = /[\p{L}\p{N}_@#$]/u;
+    let index = 0;
+    const push = (type, end) => {
+      tokens.push({ type, text: sql.slice(index, end), start: index });
+      index = end;
     };
-
-    for (let i = 0; i < text.length; i++) {
-      if (text[i] === "'") {
-        if (!inString) {
-          html += flushCode();
-          currentCode = '';
-          inString = true;
-          currentString = "'";
-        } else {
-          if (i + 1 < text.length && text[i + 1] === "'") {
-            currentString += "''";
-            i++;
+    const quoted = (start, close) => {
+      let end = start + 1;
+      while (end < sql.length) {
+        if (sql[end] === close) {
+          if (sql[end + 1] === close) {
+            end += 2;
+            continue;
+          }
+          return end + 1;
+        }
+        end += 1;
+      }
+      return end;
+    };
+    while (index < sql.length) {
+      const char = sql[index];
+      const next = sql[index + 1] || '';
+      if (/\s/.test(char)) {
+        let end = index + 1;
+        while (end < sql.length && /\s/.test(sql[end])) end += 1;
+        push('space', end);
+      } else if (char === '-' && next === '-') {
+        let end = index;
+        while (end < sql.length && sql[end] !== '\n') end += 1;
+        push('line-comment', end);
+      } else if (char === '/' && next === '*') {
+        let end = index + 2;
+        let depth = 1;
+        while (end < sql.length && depth > 0) {
+          if (sql[end] === '/' && sql[end + 1] === '*') {
+            depth += 1;
+            end += 2;
+          } else if (sql[end] === '*' && sql[end + 1] === '/') {
+            depth -= 1;
+            end += 2;
           } else {
-            currentString += "'";
-            html += '<span class="sql-string">' + esc(currentString) + '</span>';
-            currentString = '';
-            inString = false;
+            end += 1;
           }
         }
+        push('block-comment', end);
+      } else if (char === "'") {
+        push('string', quoted(index, "'"));
+      } else if ((char === 'N' || char === 'n') && next === "'") {
+        push('string', quoted(index + 1, "'"));
+      } else if (char === '[') {
+        push('quoted', quoted(index, ']'));
+      } else if (char === '"') {
+        push('quoted', quoted(index, '"'));
+      } else if (/[0-9]/.test(char) || (char === '.' && /[0-9]/.test(next))) {
+        const match = sql.slice(index).match(/^(?:0x[0-9a-f]*|(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?)/i);
+        push('number', index + match[0].length);
+      } else if (/[\p{L}_@#]/u.test(char) || (char === '$' && /\p{L}/u.test(next))) {
+        let end = index + 1;
+        while (end < sql.length && wordChar.test(sql[end])) end += 1;
+        push('word', end);
+      } else if ('(),;.'.includes(char)) {
+        push('punct', index + 1);
       } else {
-        if (inString) currentString += text[i];
-        else currentCode += text[i];
+        const operator = SQL_OPERATORS.find((item) => sql.startsWith(item, index));
+        if (operator) push('operator', index + operator.length);
+        else push(/[=<>+\-*/%&|^~!]/.test(char) ? 'operator' : 'other', index + 1);
       }
     }
-    
-    if (inString) html += '<span class="sql-string">' + esc(currentString) + '</span>';
-    else html += flushCode();
+    return tokens;
+  }
 
-    if (isMissingWhere) {
-      html = html.replace(/(UPDATE |DELETE FROM |DELETE )/i, '<span class="sql-error-underline" title="Missing WHERE clause">$&</span>');
-    }
-    if (hasDanger) {
-      html = html.replace(/(DROP |TRUNCATE )/i, '<span class="sql-error-underline" title="Destructive command detected">$&</span>');
-    }
+  function sqlIsCode(token) {
+    return token && token.type !== 'space' && token.type !== 'line-comment' && token.type !== 'block-comment';
+  }
 
-    return html;
+  // Uppercased text of the code tokens either side of tokens[index], skipping space and comments.
+  function sqlNeighbours(tokens, index) {
+    const around = { prev: '', prev2: '', next: '', next2: '', next3: '' };
+    const before = [];
+    for (let cursor = index - 1; cursor >= 0 && before.length < 2; cursor -= 1) {
+      if (sqlIsCode(tokens[cursor])) before.push(tokens[cursor]);
+    }
+    const after = [];
+    for (let cursor = index + 1; cursor < tokens.length && after.length < 3; cursor += 1) {
+      if (sqlIsCode(tokens[cursor])) after.push(tokens[cursor]);
+    }
+    around.prev = String(before[0]?.text || '').toUpperCase();
+    around.prev2 = String(before[1]?.text || '').toUpperCase();
+    around.next = String(after[0]?.text || '').toUpperCase();
+    around.next2 = String(after[1]?.text || '').toUpperCase();
+    around.next3 = String(after[2]?.text || '').toUpperCase();
+    around.prevToken = before[0] || null;
+    around.nextToken = after[0] || null;
+    return around;
+  }
+
+  function sqlContextKeyword(upper, around) {
+    const { prev, prev2, next, next2, next3 } = around;
+    const numberish = (token) => token && (token.type === 'number' || /^@/.test(token.text));
+    switch (upper) {
+      case 'APPLY': return prev === 'CROSS' || prev === 'OUTER';
+      case 'TRY':
+      case 'CATCH': return prev === 'BEGIN' || prev === 'END';
+      case 'MATCHED': return prev === 'WHEN' || (prev === 'NOT' && prev2 === 'WHEN');
+      case 'TARGET':
+      case 'SOURCE': return prev === 'BY' && (prev2 === 'MATCHED' || prev2 === 'NOT');
+      case 'PARTITION': return next === 'BY';
+      case 'OFFSET': return [next2, next3].includes('ROWS') || [next2, next3].includes('ROW');
+      case 'NEXT':
+      case 'FIRST': return prev === 'FETCH';
+      case 'ROW':
+      case 'ROWS': return next === 'ONLY' || next === 'FETCH' || next === 'BETWEEN' || next === 'UNBOUNDED' || prev === 'CURRENT' || (prev2 === 'OFFSET' && numberish(around.prevToken)) || ['NEXT', 'FIRST'].includes(prev2);
+      case 'RANGE': return next === 'BETWEEN' || next === 'UNBOUNDED';
+      case 'ONLY': return prev === 'ROW' || prev === 'ROWS';
+      case 'UNBOUNDED': return next === 'PRECEDING' || next === 'FOLLOWING';
+      case 'PRECEDING':
+      case 'FOLLOWING': return prev === 'UNBOUNDED' || numberish(around.prevToken);
+      case 'TIES': return prev === 'WITH';
+      case 'NOCOUNT':
+      case 'XACT_ABORT':
+      case 'ANSI_NULLS':
+      case 'ANSI_WARNINGS':
+      case 'ARITHABORT':
+      case 'QUOTED_IDENTIFIER': return prev === 'SET';
+      case 'THROW': return ['', ';', 'BEGIN', 'TRY', 'CATCH', 'ELSE', 'END'].includes(prev) && (next === '' || next === ';' || numberish(around.nextToken) || next === 'END');
+      case 'NOLOCK':
+      case 'READPAST':
+      case 'READUNCOMMITTED':
+      case 'ROWLOCK':
+      case 'TABLOCK':
+      case 'TABLOCKX':
+      case 'UPDLOCK': return prev === '(' && prev2 === 'WITH';
+      case 'XML':
+      case 'JSON': return prev === 'FOR';
+      case 'PATH':
+      case 'AUTO':
+      case 'RAW': return prev === 'XML' || prev === 'JSON';
+      case 'OUTPUT': return ['INSERTED', 'DELETED', '$ACTION'].includes(next) || /^@/.test(prev) || (/^@/.test(prev2) && [',', ')', 'AS', ''].includes(next));
+      default: return false;
+    }
+  }
+
+  function sqlTokenClass(tokens, index, depthAs) {
+    const token = tokens[index];
+    switch (token.type) {
+      case 'line-comment':
+      case 'block-comment': return 'sql-comment';
+      case 'string': return 'sql-string';
+      case 'quoted': return 'sql-identifier';
+      case 'number': return 'sql-number';
+      case 'operator': return 'sql-operator';
+      case 'word': break;
+      default: return '';
+    }
+    if (/^@/.test(token.text)) return 'sql-variable';
+    const around = sqlNeighbours(tokens, index);
+    if (around.prev === '.' || around.next === '.') return '';
+    const upper = token.text.toUpperCase();
+    const called = around.next === '(';
+    if (SQL_TYPE_WORDS.has(upper) && (/^@/.test(around.prev) || (around.prev === 'AS' && depthAs) || (called && /^\d/.test(around.next2)) || (called && around.next2 === 'MAX'))) {
+      return 'sql-type';
+    }
+    if (called && (SQL_FUNCTION_WORDS.has(upper) || SQL_CALLABLE_RESERVED.has(upper))) return 'sql-function';
+    if (SQL_RESERVED_WORDS.has(upper) || (SQL_CONTEXT_WORDS.has(upper) && upper !== 'GO' && sqlContextKeyword(upper, around))) return 'sql-keyword';
+    if (upper === 'GO' && around.prev === '' && around.next === '') return 'sql-keyword';
+    return '';
+  }
+
+  // Positions worth a wavy underline: DROP/TRUNCATE anywhere, and an UPDATE or DELETE whose
+  // statement has no WHERE of its own. A hint only; the server's classifier decides what runs.
+  function sqlDangerTokens(tokens) {
+    const flags = new Map();
+    const code = [];
+    tokens.forEach((token, index) => {
+      if (sqlIsCode(token)) code.push(index);
+    });
+    const upperAt = (position) => (position >= 0 && position < code.length ? tokens[code[position]].text.toUpperCase() : '');
+    const ends = new Set(['INSERT', 'UPDATE', 'DELETE', 'MERGE', 'CREATE', 'ALTER', 'DROP', 'TRUNCATE', 'EXEC', 'EXECUTE', 'DECLARE', 'GO', 'BEGIN', 'END', 'IF', 'ELSE', 'WHILE', 'PRINT', 'RETURN', 'SELECT', 'WITH', 'SET']);
+    let depth = 0;
+    code.forEach((tokenIndex, position) => {
+      const token = tokens[tokenIndex];
+      if (token.text === '(') depth += 1;
+      if (token.text === ')') depth = Math.max(0, depth - 1);
+      if (token.type !== 'word') return;
+      const upper = token.text.toUpperCase();
+      const prev = upperAt(position - 1);
+      if (prev === '.' || upperAt(position + 1) === '.') return;
+      if (upper === 'DROP' || upper === 'TRUNCATE') {
+        flags.set(tokenIndex, 'Destructive command detected');
+        return;
+      }
+      if ((upper !== 'UPDATE' && upper !== 'DELETE') || depth > 0) return;
+      if (['ON', 'FOR', 'AFTER', 'OF', 'THEN', ',', 'INSTEAD', 'GRANT', 'DENY', 'REVOKE'].includes(prev)) return;
+      if (upperAt(position + 1) === 'STATISTICS' || upperAt(position + 1) === '(') return;
+      let level = 0;
+      for (let cursor = position + 1; cursor < code.length; cursor += 1) {
+        const next = upperAt(cursor);
+        if (next === '(') level += 1;
+        else if (next === ')') {
+          if (level === 0) break;
+          level -= 1;
+        } else if (level === 0) {
+          if (next === 'WHERE') return;
+          if (next === ';' || (ends.has(next) && !(next === 'SET' && upper === 'UPDATE'))) break;
+        }
+      }
+      flags.set(tokenIndex, 'Missing WHERE clause');
+    });
+    return flags;
+  }
+
+  function highlightSql(text) {
+    if (!text) return '';
+    const tokens = sqlLex(text);
+    const danger = sqlDangerTokens(tokens);
+    let depth = 0;
+    return tokens.map((token, index) => {
+      if (token.text === '(') depth += 1;
+      if (token.text === ')') depth = Math.max(0, depth - 1);
+      const className = sqlTokenClass(tokens, index, depth > 0);
+      let html = esc(token.text);
+      if (className) html = `<span class="${className}">${html}</span>`;
+      if (danger.has(index)) html = `<span class="sql-error-underline" title="${esc(danger.get(index))}">${html}</span>`;
+      return html;
+    }).join('');
+  }
+
+  // Everything the formatter is allowed to change is whitespace and the case of known keywords
+  // and built-in function names. This is the token stream with exactly those differences
+  // normalised away: if it is not identical before and after, the format is thrown away.
+  function sqlFormatSignature(text) {
+    return sqlLex(text).filter((token) => token.type !== 'space').map((token) => {
+      if (token.type === 'line-comment') return `c:${token.text.trimEnd()}`;
+      if (token.type !== 'word') return `${token.type}:${token.text}`;
+      const upper = token.text.toUpperCase();
+      return SQL_RESERVED_WORDS.has(upper) || SQL_FUNCTION_WORDS.has(upper) || SQL_CONTEXT_WORDS.has(upper) ? `w:${upper}` : `w:${token.text}`;
+    }).join('\u0001');
+  }
+
+  // GO is only a batch separator alone on its line; moving one onto or off its own line would
+  // change how a client tool splits the script.
+  function sqlGoLines(text) {
+    return String(text || '').split('\n').filter((line) => /^\s*go(?:\s+\d+)?\s*(?:--.*)?$/i.test(line)).length;
+  }
+
+  function formatSqlText(input) {
+    const source = String(input || '').replace(/\r\n?/g, '\n');
+    const INDENT = '    ';
+    const STATEMENT_WORDS = new Set(['SELECT', 'INSERT', 'UPDATE', 'DELETE', 'MERGE', 'DECLARE', 'SET', 'IF', 'WHILE', 'EXEC', 'EXECUTE', 'CREATE', 'ALTER', 'DROP', 'TRUNCATE', 'PRINT', 'RETURN', 'THROW', 'RAISERROR', 'USE', 'COMMIT', 'ROLLBACK', 'SAVE', 'BREAK', 'CONTINUE', 'GRANT', 'REVOKE', 'DENY', 'OPEN', 'CLOSE', 'FETCH', 'DEALLOCATE', 'WAITFOR', 'GOTO', 'DBCC', 'KILL', 'BACKUP', 'RESTORE', 'CHECKPOINT', 'RECONFIGURE', 'BULK']);
+    const INLINE_AFTER = new Set(['ON', 'FOR', 'AFTER', 'OF', ',', 'INSTEAD', 'OR', '(', '.', 'INNER', 'LEFT', 'RIGHT', 'FULL', 'OUTER', 'CROSS', 'NOT', 'IS', 'TO', 'GRANT', 'REVOKE', 'DENY', '=']);
+    const DROP_IF_OBJECTS = new Set(['TABLE', 'VIEW', 'PROCEDURE', 'PROC', 'FUNCTION', 'INDEX', 'SCHEMA', 'DATABASE', 'TRIGGER', 'TYPE', 'SEQUENCE', 'SYNONYM', 'COLUMN', 'CONSTRAINT', 'USER', 'ROLE', 'STATISTICS', 'ASSEMBLY', 'DEFAULT', 'RULE']);
+    const SELECT_ENDS = new Set(['FROM', 'INTO', 'WHERE', 'GROUP', 'HAVING', 'ORDER', 'UNION', 'EXCEPT', 'INTERSECT', 'OPTION', 'FOR', 'WINDOW', ';']);
+    const LIST_ENDS = new Set(['FROM', 'WHERE', 'GROUP', 'HAVING', 'ORDER', 'UNION', 'EXCEPT', 'INTERSECT', 'OPTION', 'OUTPUT', 'OFFSET', 'FOR', 'WHEN', ';', 'SELECT', 'INSERT', 'UPDATE', 'DELETE', 'MERGE', 'DECLARE', 'IF', 'ELSE', 'WHILE', 'BEGIN', 'END', 'EXEC', 'EXECUTE', 'PRINT', 'RETURN', 'GO']);
+
+    const items = [];
+    let breaks = 0;
+    sqlLex(source).forEach((token) => {
+      if (token.type === 'space') {
+        breaks += (token.text.match(/\n/g) || []).length;
+        return;
+      }
+      items.push({ ...token, upper: token.text.toUpperCase(), breaksBefore: breaks, index: items.length });
+      breaks = 0;
+    });
+    items.forEach((item, index) => {
+      item.breaksAfter = index + 1 < items.length ? items[index + 1].breaksBefore : 1;
+    });
+    const isCode = (item) => item && item.type !== 'line-comment' && item.type !== 'block-comment';
+    const codeAt = (index, step) => {
+      for (let cursor = index + step; cursor >= 0 && cursor < items.length; cursor += step) {
+        if (isCode(items[cursor])) return cursor;
+      }
+      return -1;
+    };
+    const upperAt = (index) => (index >= 0 && index < items.length ? items[index].upper : '');
+    const nextCode = (index, count = 1) => {
+      let cursor = index;
+      for (let step = 0; step < count && cursor !== -1; step += 1) cursor = codeAt(cursor, 1);
+      return cursor;
+    };
+    const matching = new Map();
+    const openers = [];
+    items.forEach((item, index) => {
+      if (item.type !== 'punct') return;
+      if (item.text === '(') openers.push(index);
+      if (item.text === ')' && openers.length) matching.set(openers.pop(), index);
+    });
+
+    // The flat width of items [from, to], for "does this fit on one line" decisions.
+    const flatWidth = (from, to) => {
+      let width = 0;
+      for (let cursor = from; cursor <= to && cursor < items.length; cursor += 1) {
+        width += items[cursor].text.length + 1;
+      }
+      return width;
+    };
+    const hasComment = (from, to) => items.slice(from, to + 1).some((item) => !isCode(item));
+
+    // Counts the top-level comma-separated items from `from` until a word in `ends` (or a
+    // closing parenthesis) at the same depth; CASE … END is skipped as one unit.
+    const scanList = (from, ends) => {
+      let depth = 0;
+      let cases = 0;
+      let count = 1;
+      let cursor = from;
+      for (; cursor < items.length; cursor += 1) {
+        const item = items[cursor];
+        if (!isCode(item)) continue;
+        if (item.text === '(') depth += 1;
+        else if (item.text === ')') {
+          if (depth === 0) break;
+          depth -= 1;
+        } else if (depth === 0) {
+          if (item.upper === 'CASE') cases += 1;
+          else if (item.upper === 'END' && cases > 0) cases -= 1;
+          else if (cases === 0 && ends.has(item.upper) && item.type !== 'string') break;
+          else if (cases === 0 && item.text === ',') count += 1;
+        }
+      }
+      return { count, end: cursor - 1 };
+    };
+
+    const isIdentifierItem = (item) => item && (item.type === 'quoted' || (item.type === 'word' && !SQL_RESERVED_WORDS.has(item.upper)) || item.text === '.');
+    // The word before a run of name parts ending just before `index`: INTO in "INTO dbo.T (".
+    const wordBeforeName = (index) => {
+      let cursor = codeAt(index, -1);
+      if (cursor === -1 || !isIdentifierItem(items[cursor]) || items[cursor].text === '.') return { word: '', start: -1 };
+      while (cursor !== -1 && isIdentifierItem(items[cursor])) {
+        const before = codeAt(cursor, -1);
+        if (before === -1 || !isIdentifierItem(items[before])) break;
+        if (items[before].text !== '.' && items[cursor].text !== '.') break;
+        cursor = before;
+      }
+      return { word: upperAt(codeAt(cursor, -1)), start: cursor };
+    };
+    const isCteStart = (index) => {
+      let cursor = nextCode(index);
+      if (cursor === -1 || !isIdentifierItem(items[cursor])) return false;
+      cursor = nextCode(cursor);
+      if (items[cursor]?.text === '(' && matching.has(cursor)) cursor = nextCode(matching.get(cursor));
+      return upperAt(cursor) === 'AS' && items[nextCode(cursor)]?.text === '(';
+    };
+
+    const lines = [];
+    let line = '';
+    let lineIndent = 0;
+    let pendingBreak = null;
+    let pendingComments = [];
+    let last = null;
+    let lastCode = null;
+    let started = false;
+
+    const requestBreak = (indent, blank = false) => {
+      pendingBreak = { indent: Math.max(0, indent), blank: Boolean(pendingBreak?.blank || blank) };
+    };
+    const newLine = (indent, blank = false) => {
+      if (started) {
+        lines.push(line.replace(/[ \t]+$/, ''));
+        if (blank && lines[lines.length - 1] !== '') lines.push('');
+      }
+      line = INDENT.repeat(Math.max(0, indent));
+      lineIndent = Math.max(0, indent);
+      started = true;
+    };
+
+    const spaceBetween = (prev, item) => {
+      if (!prev || !line.trim()) return false;
+      const a = prev.text;
+      const b = item.text;
+      if (`${a.slice(-1)}${b[0]}` === '--' || `${a.slice(-1)}${b[0]}` === '/*' || `${a.slice(-1)}${b[0]}` === '*/') return true;
+      if (!isCode(item)) return true;
+      if (b === ',' || b === ')' || b === ';') return false;
+      if (!isCode(prev)) return true;
+      if (b === ',' || b === ')' || b === ';' || b === '.' || a === '.' || a === '(') return false;
+      if (a === '::' || b === '::' || b === '}' || a === '{') return false;
+      if (a === '$' && item.type === 'number') return false;
+      if (prev.unary) return false;
+      if (b === ':' && prev.type === 'word') return false;
+      if (b === '(') {
+        if (item.spaceBefore !== undefined) return item.spaceBefore;
+        if (prev.type === 'word') {
+          if (/^@/.test(a)) return true;
+          if ((SQL_RESERVED_WORDS.has(prev.upper) || (prev.keyword && !['PATH', 'RAW', 'AUTO'].includes(prev.upper))) && !SQL_CALLABLE_RESERVED.has(prev.upper)) return true;
+          return false;
+        }
+        if (prev.type === 'quoted') return false;
+        return true;
+      }
+      return true;
+    };
+
+    const place = (item, text) => {
+      if (pendingBreak || !started) {
+        const request = pendingBreak || { indent: lineIndent, blank: false };
+        pendingBreak = null;
+        if (!started || line.trim()) newLine(request.indent, request.blank);
+        else {
+          line = INDENT.repeat(request.indent);
+          lineIndent = request.indent;
+        }
+      } else if (spaceBetween(last, item)) {
+        line += ' ';
+      }
+      line += text;
+      last = item;
+    };
+
+    const flushComments = (fallbackIndent) => {
+      if (!pendingComments.length) return;
+      const indent = pendingBreak ? pendingBreak.indent : fallbackIndent;
+      const blankFirst = Boolean(pendingBreak?.blank);
+      pendingComments.forEach((comment, position) => {
+        pendingBreak = { indent, blank: (position === 0 && blankFirst) || (comment.breaksBefore >= 2 && started) };
+        place(comment, comment.text.replace(/[ \t]+$/, ''));
+      });
+      pendingComments = [];
+      requestBreak(indent);
+    };
+
+    // Frames: 'query' (the root, a BEGIN … END block or a subquery), 'single' (the one
+    // statement an IF/WHILE/ELSE runs without BEGIN), 'paren' (inline brackets), 'list'
+    // (one item per line, as in CREATE TABLE) and 'case' (a CASE spread over lines).
+    const newQueryFrame = (base, extra = {}) => ({ type: 'query', base, stmtIndent: base, stmt: '', clause: '', ...extra });
+    const frames = [newQueryFrame(0)];
+    const top = () => frames[frames.length - 1];
+    const queryFrame = () => {
+      for (let cursor = frames.length - 1; cursor >= 0; cursor -= 1) {
+        if (frames[cursor].type === 'query' || frames[cursor].type === 'single') return frames[cursor];
+      }
+      return frames[0];
+    };
+    const inStatementLevel = () => top().type === 'query' || top().type === 'single';
+
+    const startClause = (frame, clause, indent = frame.stmtIndent) => {
+      requestBreak(indent);
+      frame.clause = clause;
+      frame.clauseIndent = indent;
+      frame.listBreak = false;
+      frame.listIndent = indent + 1;
+      frame.condIndent = indent + 1;
+      frame.betweenPending = false;
+      frame.selectState = '';
+    };
+
+    const resetStatement = (frame, upper) => {
+      frame.stmt = upper;
+      frame.clause = upper;
+      frame.clauseIndent = frame.base;
+      frame.stmtIndent = frame.base;
+      frame.listBreak = false;
+      frame.expectQuery = upper === 'INSERT';
+      frame.deleteHead = upper === 'DELETE';
+      frame.betweenPending = false;
+      frame.awaitingBody = upper === 'IF' || upper === 'WHILE';
+      frame.procHeader = false;
+      frame.objectKind = '';
+      frame.selectState = '';
+    };
+
+    // A new statement: closes finished single-statement bodies, and when an IF/WHILE/ELSE is
+    // waiting for its body, indents that body one level (a BEGIN stays level with the IF).
+    const beginStatement = (item) => {
+      while (top().type === 'single' && !top().awaitingBody) frames.pop();
+      let frame = queryFrame();
+      const bodyStart = Boolean(frame.awaitingBody);
+      if (frame.awaitingBody) {
+        frame.awaitingBody = false;
+        if (item.upper !== 'BEGIN') {
+          frames.push(newQueryFrame(frame.base + 1, { type: 'single' }));
+          frame = top();
+        }
+      }
+      if (lastCode?.upper !== 'ELSE' || item.upper !== 'IF') {
+        // A statement that took several lines gets a blank line after it, so scripts read in paragraphs.
+        const tryCatch = item.upper === 'BEGIN' && lastCode?.upper === 'TRY';
+        const afterLong = !bodyStart && !tryCatch && frame.type === 'query' && frame.stmtLine !== undefined && lines.length > frame.stmtLine;
+        requestBreak(frame.base, item.breaksBefore >= 2 || afterLong);
+        frame.stmtLine = lines.length + (line.trim() ? 1 : 0);
+      }
+      resetStatement(frame, item.upper);
+      return frame;
+    };
+
+    const isStatementStart = (item, index, frame) => {
+      const upper = item.upper;
+      const prev = lastCode?.upper || '';
+      if (item.type !== 'word') return false;
+      if (upper === 'WITH') return isCteStart(index) && !frame.expectQuery;
+      if (!STATEMENT_WORDS.has(upper)) return false;
+      if (codeAt(index, 1) !== -1 && upperAt(codeAt(index, 1)) === '.') return false;
+      if (lastCode && (lastCode.text === '.' || upperAt(codeAt(index, 1)) === '.')) return false;
+      if (upper === 'UPDATE' && upperAt(codeAt(index, 1)) === '(') return false;
+      if (upper === 'IF' && (DROP_IF_OBJECTS.has(prev) || prev === 'ELSE')) return upper === 'IF' && prev === 'ELSE';
+      if (INLINE_AFTER.has(prev) && !(upper === 'SELECT' && prev === '(')) return false;
+      if (['GRANT', 'REVOKE', 'DENY'].includes(frame.stmt) && prev !== ';') return false;
+      if (frame.stmt === 'ALTER' && ['ALTER', 'DROP'].includes(upper) && prev !== ';') return false;
+      if (frame.stmt === 'CREATE' && frame.objectKind === 'TABLE' && prev !== ';' && upper !== 'SELECT') return false;
+      if (upper === 'SET' && ['UPDATE', 'MERGE'].includes(frame.stmt) && prev !== ';') return false;
+      if (upper === 'FETCH' && frame.clause === 'OFFSET') return false;
+      if (upper === 'SELECT' && frame.expectQuery) return false;
+      if (['INSERT', 'UPDATE', 'DELETE', 'MERGE', 'EXEC', 'EXECUTE'].includes(upper) && frame.expectQuery) return false;
+      if (['INSERT', 'UPDATE', 'DELETE'].includes(upper) && frame.stmt === 'MERGE' && prev === 'THEN') return false;
+      if (upper === 'SELECT' && ['FOR', 'AS'].includes(prev)) return false;
+      if (upper === 'OPEN' && prev && prev !== ';' && !['BEGIN', 'TRY', 'CATCH', 'END', 'ELSE'].includes(prev) && frame.clause !== 'OPEN') {
+        return !lastCode || lastCode.type !== 'word' || STATEMENT_WORDS.has(prev) ? false : true;
+      }
+      return true;
+    };
+
+    const wordText = (item, index) => {
+      if (item.type !== 'word' || /^[@#]/.test(item.text)) return item.text;
+      const prevIndex = codeAt(index, -1);
+      const nextIndex = codeAt(index, 1);
+      if (upperAt(prevIndex) === '.' || upperAt(nextIndex) === '.') return item.text;
+      const upper = item.upper;
+      if (SQL_RESERVED_WORDS.has(upper)) return upper;
+      if (upper === 'USING' && queryFrame().stmt === 'MERGE') {
+        item.keyword = true;
+        return upper;
+      }
+      if (SQL_FUNCTION_WORDS.has(upper) && upperAt(nextIndex) === '(') return upper;
+      if (SQL_CONTEXT_WORDS.has(upper) && upper !== 'GO') {
+        const around = {
+          prev: upperAt(prevIndex),
+          prev2: upperAt(codeAt(prevIndex, -1)),
+          next: upperAt(nextIndex),
+          next2: upperAt(nextCode(index, 2)),
+          next3: upperAt(nextCode(index, 3)),
+          prevToken: items[prevIndex] || null,
+          nextToken: items[nextIndex] || null
+        };
+        if (sqlContextKeyword(upper, around)) {
+          item.keyword = true;
+          return upper;
+        }
+      }
+      return item.text;
+    };
+
+    const isGoLine = (item, index) => item.upper === 'GO' && (item.breaksBefore > 0 || index === 0)
+      && (item.breaksAfter > 0 || (items[index + 1]?.type === 'number' && (items[index + 1].breaksAfter > 0)) || items[index + 1]?.type === 'line-comment');
+
+    for (let index = 0; index < items.length; index += 1) {
+      const item = items[index];
+
+      if (!isCode(item)) {
+        const trailing = started && item.breaksBefore === 0 && line.trim();
+        if (trailing) {
+          // Kept on the line it was written on; whatever break was due still follows it.
+          const due = pendingBreak;
+          pendingBreak = null;
+          line += ` ${item.text.replace(/[ \t]+$/, '')}`;
+          last = item;
+          if (item.type === 'line-comment' || item.breaksAfter > 0) {
+            requestBreak(due ? due.indent : lineIndent, Boolean(due?.blank));
+            if (!due && item.type === 'line-comment') pendingBreak.continuation = true;
+          } else if (due) {
+            pendingBreak = due;
+          }
+        } else {
+          pendingComments.push(item);
+        }
+        continue;
+      }
+
+      const frame = queryFrame();
+      const upper = item.upper;
+      let text = item.type === 'word' ? wordText(item, index) : item.text;
+      const prevUpper = lastCode?.upper || '';
+      // A break forced only by a trailing line comment continues the expression one level in.
+      if (pendingBreak?.continuation) pendingBreak.indent = lineIndent + (lineIndent === (top().type === 'paren' ? lineIndent : frame.stmtIndent) ? 1 : 0);
+
+      if (isGoLine(item, index)) {
+        while (frames.length > 1) frames.pop();
+        resetStatement(frames[0], '');
+        requestBreak(0, item.breaksBefore >= 2);
+        flushComments(0);
+        place(item, 'GO');
+        lastCode = item;
+        if (items[index + 1]?.type === 'number' && items[index + 1].breaksBefore === 0) {
+          index += 1;
+          place(items[index], items[index].text);
+          lastCode = items[index];
+        }
+        requestBreak(0, true);
+        continue;
+      }
+
+      let handled = false;
+      if (item.type === 'word' && inStatementLevel()) {
+        const current = queryFrame();
+        if (upper === 'END' && !frames.some((entry) => entry.type === 'case')) {
+          let block = null;
+          for (let cursor = frames.length - 1; cursor > 0; cursor -= 1) {
+            if (frames[cursor].type === 'paren' || frames[cursor].type === 'list') break;
+            if (frames[cursor].block) {
+              block = cursor;
+              break;
+            }
+          }
+          let indent = current.base;
+          if (block !== null) {
+            indent = frames[block].openIndent;
+            frames.length = block;
+          }
+          requestBreak(indent);
+          flushComments(indent);
+          place(item, text);
+          lastCode = item;
+          const after = codeAt(index, 1);
+          if (['TRY', 'CATCH'].includes(upperAt(after)) && !hasComment(index + 1, after)) {
+            index = after;
+            place(items[index], items[index].upper);
+            lastCode = items[index];
+          }
+          const parent = queryFrame();
+          resetStatement(parent, 'END');
+          requestBreak(parent.base);
+          continue;
+        }
+        if (upper === 'ELSE' && !frames.some((entry) => entry.type === 'case')) {
+          if (top().type === 'single') frames.pop();
+          const parent = queryFrame();
+          requestBreak(parent.base);
+          flushComments(parent.base);
+          place(item, text);
+          lastCode = item;
+          resetStatement(parent, 'ELSE');
+          parent.awaitingBody = upperAt(codeAt(index, 1)) !== 'IF';
+          continue;
+        }
+        if (upper === 'BEGIN') {
+          const after = upperAt(codeAt(index, 1));
+          if (!['TRAN', 'TRANSACTION', 'DISTRIBUTED', 'DIALOG', 'CONVERSATION'].includes(after) && !(after === ';' || after === '')) {
+            const owner = beginStatement(item);
+            flushComments(owner.base);
+            const openIndent = pendingBreak ? pendingBreak.indent : lineIndent;
+            place(item, text);
+            lastCode = item;
+            const next = codeAt(index, 1);
+            if (['TRY', 'CATCH'].includes(upperAt(next)) && !hasComment(index + 1, next)) {
+              index = next;
+              place(items[index], items[index].upper);
+              lastCode = items[index];
+            }
+            owner.stmt = '';
+            frames.push(newQueryFrame(openIndent + 1, { block: true, openIndent }));
+            requestBreak(openIndent + 1);
+            continue;
+          }
+        }
+        if (isStatementStart(item, index, current)) {
+          beginStatement(item);
+          handled = true;
+        }
+      }
+
+      const qf = queryFrame();
+      const atStatementLevel = inStatementLevel();
+
+      if (item.type === 'word' && atStatementLevel) {
+        const next = upperAt(codeAt(index, 1));
+        if (qf.stmt === 'CREATE' || qf.stmt === 'ALTER') {
+          if (!qf.objectKind && ['TABLE', 'VIEW', 'PROCEDURE', 'PROC', 'FUNCTION', 'TRIGGER', 'INDEX', 'SCHEMA', 'TYPE'].includes(upper)) {
+            qf.objectKind = upper === 'PROC' ? 'PROCEDURE' : upper;
+            qf.procHeader = upper === 'PROC' || upper === 'PROCEDURE';
+          } else if (upper === 'AS' && ['PROCEDURE', 'FUNCTION', 'TRIGGER', 'VIEW'].includes(qf.objectKind) && qf.procHeader !== 'done') {
+            if (qf.objectKind === 'PROCEDURE') requestBreak(qf.base);
+            qf.procHeader = 'done';
+            qf.expectQuery = qf.objectKind === 'VIEW';
+            flushComments(qf.base);
+            place(item, text);
+            lastCode = item;
+            if (qf.objectKind !== 'VIEW') resetStatement(qf, '');
+            continue;
+          } else if (upper === 'RETURNS' && qf.objectKind === 'FUNCTION') {
+            requestBreak(qf.base);
+          } else if (qf.procHeader === true && /^@/.test(item.text) && (prevUpper === ',' || !/^@/.test(prevUpper))) {
+            requestBreak(qf.base + 1);
+          }
+        }
+        if (upper === 'SELECT') {
+          if (!handled && lastCode && prevUpper !== '(') {
+            if (qf.expectQuery) requestBreak(qf.stmtIndent);
+            else if (['FOR', 'AS'].includes(prevUpper)) requestBreak(qf.stmtIndent);
+          }
+          qf.expectQuery = false;
+          qf.stmt = qf.stmt || 'SELECT';
+          qf.clause = 'SELECT';
+          qf.clauseIndent = pendingBreak ? pendingBreak.indent : lineIndent;
+          const list = scanList(nextCode(index), SELECT_ENDS);
+          qf.listBreak = list.count > 1;
+          qf.listIndent = qf.clauseIndent + 1;
+          qf.selectState = 'mods';
+          qf.betweenPending = false;
+        } else if (['INSERT', 'UPDATE', 'DELETE', 'MERGE', 'EXEC', 'EXECUTE'].includes(upper) && !handled && (qf.expectQuery || (qf.stmt === 'MERGE' && prevUpper === 'THEN'))) {
+          if (prevUpper !== 'THEN') requestBreak(qf.stmtIndent);
+          qf.expectQuery = upper === 'INSERT';
+          qf.clause = upper;
+          if (prevUpper !== 'THEN') qf.stmt = upper;
+          qf.deleteHead = upper === 'DELETE';
+        } else if (handled) {
+          // A statement keyword: beginStatement already placed it.
+        } else if (upper === 'FROM' && !(qf.deleteHead || ['DELETE', 'NEXT', 'PRIOR', 'FIRST', 'LAST', 'ABSOLUTE', 'RELATIVE'].includes(prevUpper) || (prevUpper === 'DISTINCT' && ['IS', 'NOT'].includes(upperAt(codeAt(codeAt(index, -1), -1)))))) {
+          startClause(qf, 'FROM');
+        } else if (upper === 'FROM') {
+          qf.deleteHead = false;
+        } else if (upper === 'INTO' && qf.clause === 'SELECT') {
+          startClause(qf, 'INTO');
+        } else if (upper === 'WHERE' || upper === 'HAVING') {
+          startClause(qf, upper);
+        } else if ((upper === 'GROUP' || upper === 'ORDER') && next === 'BY' && prevUpper !== 'WITHIN') {
+          startClause(qf, `${upper} BY`);
+          const list = scanList(nextCode(index, 2), LIST_ENDS);
+          qf.listBreak = flatWidth(index, list.end) > 72 && list.count > 1;
+          qf.pendingListBreak = qf.listBreak ? nextCode(index, 2) : -1;
+        } else if (['UNION', 'EXCEPT', 'INTERSECT'].includes(upper)) {
+          startClause(qf, upper);
+          qf.expectQuery = true;
+        } else if (upper === 'JOIN' && !['INNER', 'LEFT', 'RIGHT', 'FULL', 'OUTER', 'CROSS', 'HASH', 'LOOP', 'MERGE', 'REMOTE'].includes(prevUpper)) {
+          startClause(qf, 'JOIN');
+        } else if (['INNER', 'CROSS'].includes(upper) || (['LEFT', 'RIGHT', 'FULL'].includes(upper) && ['JOIN', 'OUTER', 'HASH', 'LOOP', 'MERGE'].includes(next)) || (upper === 'OUTER' && next === 'APPLY' && !['LEFT', 'RIGHT', 'FULL'].includes(prevUpper))) {
+          if (!(['LEFT', 'RIGHT', 'FULL'].includes(prevUpper) && upper === 'OUTER')) startClause(qf, 'JOIN');
+        } else if (upper === 'ON' && (qf.clause === 'JOIN' || qf.clause === 'USING')) {
+          startClause(qf, 'ON', qf.stmtIndent + 1);
+          qf.condIndent = qf.stmtIndent + 1;
+        } else if (upper === 'USING' && qf.stmt === 'MERGE') {
+          startClause(qf, 'USING');
+        } else if (upper === 'WHEN' && qf.stmt === 'MERGE') {
+          qf.stmtIndent = qf.base;
+          startClause(qf, 'WHEN', qf.base);
+        } else if (upper === 'SET' && ['UPDATE', 'MERGE'].includes(qf.stmt) && prevUpper !== ';') {
+          if (prevUpper !== 'UPDATE') startClause(qf, 'SET');
+          else qf.clause = 'SET';
+          qf.clauseIndent = pendingBreak ? pendingBreak.indent : lineIndent;
+          const list = scanList(nextCode(index), LIST_ENDS);
+          qf.listBreak = list.count > 1;
+          qf.listIndent = qf.clauseIndent + 1;
+          qf.pendingListBreak = qf.listBreak ? nextCode(index) : -1;
+        } else if (upper === 'VALUES' && lastCode && prevUpper !== '(') {
+          startClause(qf, 'VALUES');
+          const list = scanList(nextCode(index), LIST_ENDS);
+          qf.listBreak = list.count > 1;
+          qf.pendingListBreak = qf.listBreak ? nextCode(index) : -1;
+          qf.expectQuery = false;
+        } else if (upper === 'VALUES') {
+          qf.clause = 'VALUES';
+          const list = scanList(nextCode(index), LIST_ENDS);
+          qf.listBreak = list.count > 1;
+          qf.listIndent = (pendingBreak ? pendingBreak.indent : lineIndent) + 1;
+          qf.pendingListBreak = qf.listBreak ? nextCode(index) : -1;
+        } else if (upper === 'OUTPUT' && ['INSERT', 'UPDATE', 'DELETE', 'MERGE'].includes(qf.stmt) && text === 'OUTPUT') {
+          if (qf.stmt === 'MERGE') qf.stmtIndent = qf.base;
+          startClause(qf, 'OUTPUT');
+        } else if (upper === 'OPTION' && next === '(' && qf.stmt) {
+          startClause(qf, 'OPTION');
+        } else if (upper === 'OFFSET' && text === 'OFFSET' && qf.clause === 'ORDER BY') {
+          startClause(qf, 'OFFSET');
+        } else if (upper === 'FETCH' && qf.clause === 'OFFSET') {
+          startClause(qf, 'FETCH');
+        } else if (upper === 'FOR' && ['XML', 'JSON', 'BROWSE'].includes(next) && qf.clause) {
+          startClause(qf, 'FOR');
+        } else if (upper === 'THEN' && qf.stmt === 'MERGE') {
+          qf.clause = 'THEN';
+          qf.stmtIndent = qf.base + 1;
+          flushComments(lineIndent);
+          place(item, text);
+          lastCode = item;
+          requestBreak(qf.base + 1);
+          continue;
+        } else if ((upper === 'AND' || upper === 'OR') && ['WHERE', 'HAVING', 'ON', 'WHEN'].includes(qf.clause) && qf.clause !== 'WHEN') {
+          if (upper === 'AND' && qf.betweenPending) qf.betweenPending = false;
+          else requestBreak(qf.condIndent);
+        } else if (upper === 'BETWEEN') {
+          qf.betweenPending = true;
+        } else if (upper === 'CASE') {
+          const end = (() => {
+            let depth = 0;
+            for (let cursor = index; cursor < items.length; cursor += 1) {
+              if (!isCode(items[cursor])) continue;
+              if (items[cursor].upper === 'CASE') depth += 1;
+              if (items[cursor].upper === 'END') {
+                depth -= 1;
+                if (depth === 0) return cursor;
+              }
+            }
+            return items.length - 1;
+          })();
+          let whens = 0;
+          for (let cursor = index; cursor <= end; cursor += 1) {
+            if (items[cursor].upper === 'WHEN') whens += 1;
+          }
+          const multi = whens > 1 || flatWidth(index, end) > 64 || hasComment(index, end);
+          if (qf.selectState === 'mods') {
+            qf.selectState = 'items';
+            if (qf.listBreak || multi) requestBreak(qf.listIndent);
+          }
+          flushComments(lineIndent + 1);
+          const caseIndent = pendingBreak ? pendingBreak.indent : lineIndent;
+          place(item, text);
+          lastCode = item;
+          frames.push({ type: 'case', multi, indent: caseIndent });
+          continue;
+        }
+      }
+
+      // SELECT [DISTINCT] [TOP (n) [PERCENT] [WITH TIES]] stay on the SELECT line; the first
+      // column after them starts the one-per-line list.
+      if (atStatementLevel && qf.clause === 'SELECT' && qf.selectState && upper !== 'SELECT') {
+        if (qf.selectState === 'mods') {
+          if (['DISTINCT', 'ALL', 'PERCENT'].includes(upper) || (upper === 'WITH' && upperAt(codeAt(index, 1)) === 'TIES') || (upper === 'TIES' && prevUpper === 'WITH')) {
+            // stays on the line
+          } else if (upper === 'TOP') {
+            qf.selectState = 'top';
+          } else {
+            qf.selectState = 'items';
+            if (qf.listBreak) requestBreak(qf.listIndent);
+          }
+        } else if (qf.selectState === 'top') {
+          qf.selectState = item.text === '(' ? 'top-paren' : 'mods';
+        }
+      } else if (atStatementLevel && qf.pendingListBreak === index) {
+        qf.pendingListBreak = -1;
+        requestBreak(qf.listIndent);
+      }
+
+      if (item.type === 'word' && top().type === 'case') {
+        const caseFrame = top();
+        if (caseFrame.multi && (upper === 'WHEN' || upper === 'ELSE')) requestBreak(caseFrame.indent + 1);
+        if (upper === 'END') {
+          frames.pop();
+          if (caseFrame.multi) requestBreak(caseFrame.indent);
+        }
+      }
+
+      if (item.type === 'operator' && ['-', '+', '~'].includes(item.text)) {
+        const prev = lastCode;
+        item.unary = !prev || prev.type === 'operator' || ['(', ',', '='].includes(prev.text)
+          || (prev.type === 'word' && SQL_RESERVED_WORDS.has(prev.upper) && !['END', 'NULL'].includes(prev.upper) && !SQL_CALLABLE_RESERVED.has(prev.upper));
+      }
+
+      if (item.text === '(') {
+        const prevIndex = codeAt(index, -1);
+        const named = wordBeforeName(index);
+        const close = matching.has(index) ? matching.get(index) : items.length - 1;
+        const inner = upperAt(codeAt(index, 1));
+        const cteBody = prevUpper === 'AS' && qf.clause === 'WITH';
+        const objectList = ['INTO', 'TABLE', 'ON', 'REFERENCES', 'INSERT', 'VIEW', 'EXISTS'].includes(named.word) || (named.word === 'WITH' && qf.clause === 'WITH') || (named.word === ',' && qf.clause === 'WITH');
+        if (named.start !== -1 && objectList) item.spaceBefore = true;
+        const tableDefinition = (named.word === 'TABLE' && named.start !== -1 && ['CREATE', 'ALTER', 'DECLARE'].includes(qf.stmt)) || (prevUpper === 'TABLE' && /^@/.test(upperAt(codeAt(prevIndex, -1))));
+        const insertColumns = ['INTO', 'INSERT'].includes(named.word) && named.start !== -1 && qf.stmt !== 'MERGE';
+        const subquery = ['SELECT', 'WITH', 'VALUES'].includes(inner) && (inner !== 'WITH' || isCteStart(codeAt(index, 1)));
+        const inline = flatWidth(index, close) <= 64 && !hasComment(index, close);
+        if (qf.selectState === 'top') qf.selectState = 'top-paren';
+        flushComments(lineIndent + 1);
+        if (cteBody || (subquery && !inline)) {
+          const openIndent = pendingBreak ? pendingBreak.indent : lineIndent;
+          place(item, text);
+          lastCode = item;
+          frames.push(newQueryFrame(openIndent + 1, { opener: index, closeIndent: openIndent }));
+          requestBreak(openIndent + 1);
+          continue;
+        }
+        if (tableDefinition || (insertColumns && flatWidth(index, close) > 80)) {
+          const openIndent = pendingBreak ? pendingBreak.indent : lineIndent;
+          place(item, text);
+          lastCode = item;
+          frames.push({ type: 'list', opener: index, base: openIndent });
+          requestBreak(openIndent + 1);
+          continue;
+        }
+        place(item, text);
+        lastCode = item;
+        frames.push({ type: 'paren', opener: index, base: lineIndent });
+        continue;
+      }
+
+      if (item.text === ')') {
+        let opened = -1;
+        for (let cursor = frames.length - 1; cursor > 0; cursor -= 1) {
+          if (frames[cursor].opener !== undefined && matching.get(frames[cursor].opener) === index) {
+            opened = cursor;
+            break;
+          }
+        }
+        if (opened !== -1) {
+          const frameClosed = frames[opened];
+          frames.length = opened;
+          if (frameClosed.type === 'query') requestBreak(frameClosed.closeIndent);
+          if (frameClosed.type === 'list') requestBreak(frameClosed.base);
+          flushComments(lineIndent);
+          place(item, text);
+          lastCode = item;
+          const parent = queryFrame();
+          if (parent.selectState === 'top-paren' && inStatementLevel()) parent.selectState = 'mods';
+          if (frameClosed.type === 'query' && parent.clause === 'WITH') parent.expectQuery = true;
+          continue;
+        }
+      }
+
+      if (item.text === ',') {
+        flushComments(lineIndent);
+        place(item, text);
+        lastCode = item;
+        const holder = top();
+        if (holder.type === 'list') requestBreak(holder.base + 1);
+        else if (inStatementLevel()) {
+          if (qf.procHeader === true) requestBreak(qf.base + 1);
+          else if (qf.clause === 'WITH') requestBreak(qf.stmtIndent);
+          else if (qf.listBreak && ['SELECT', 'SET', 'VALUES', 'GROUP BY', 'ORDER BY'].includes(qf.clause)) requestBreak(qf.listIndent);
+        }
+        continue;
+      }
+
+      if (item.text === ';') {
+        flushComments(lineIndent);
+        place(item, text);
+        lastCode = item;
+        if (inStatementLevel()) {
+          if (top().type === 'single') frames.pop();
+          const owner = queryFrame();
+          resetStatement(owner, '');
+          requestBreak(owner.base);
+        }
+        continue;
+      }
+
+      flushComments(pendingBreak ? pendingBreak.indent : lineIndent + 1);
+      place(item, text);
+      lastCode = item;
+      if (item.type === 'word' && qf.deleteHead && atStatementLevel && !SQL_RESERVED_WORDS.has(upper) && upper !== 'DELETE') qf.deleteHead = false;
+    }
+    if (pendingComments.length) {
+      flushComments(pendingBreak ? pendingBreak.indent : lineIndent);
+    }
+    if (started) lines.push(line.replace(/[ \t]+$/, ''));
+    return lines.join('\n').replace(/^\n+/, '').replace(/\n+$/, '');
+  }
+
+  // Formats, then proves the result is the same SQL. Returns null when it cannot.
+  function formatSqlSafely(input) {
+    const source = String(input || '').replace(/\r\n?/g, '\n');
+    let formatted;
+    try {
+      formatted = formatSqlText(source);
+    } catch (error) {
+      console.warn('SQL format failed.', error);
+      return null;
+    }
+    if (sqlFormatSignature(formatted) !== sqlFormatSignature(source) || sqlGoLines(formatted) !== sqlGoLines(source)) {
+      console.warn('SQL format would have changed more than layout; left unchanged.');
+      return null;
+    }
+    return formatted;
+  }
+
+  function editorBackdropHtml(text) {
+    const mark = state.runHighlight;
+    // The trailing break lets the last line scroll fully into view, as the textarea's does.
+    if (mark && mark.end <= text.length && text.slice(mark.start, mark.end) === mark.text) {
+      return `${highlightSql(text.slice(0, mark.start))}<span class="sql-run-range">${highlightSql(text.slice(mark.start, mark.end))}</span>${highlightSql(text.slice(mark.end))}<br/>`;
+    }
+    return `${highlightSql(text)}<br/>`;
   }
 
   function syncEditorBackdrop() {
@@ -5314,13 +6279,7 @@ window.createConsoleApp = function createConsoleApp() {
     const editor = $('queryEditor');
     const backdrop = $('queryEditorBackdrop');
     if (!editor || !backdrop) return;
-    const text = editor.value;
-    const mark = state.runHighlight;
-    if (mark && mark.end <= text.length && text.slice(mark.start, mark.end) === mark.text) {
-      backdrop.innerHTML = `${highlightSql(text.slice(0, mark.start))}<span class="sql-run-range">${highlightSql(text.slice(mark.start, mark.end))}</span>${highlightSql(text.slice(mark.end))}<br/>`;
-    } else {
-      backdrop.innerHTML = highlightSql(text) + '<br/>'; // Extra break for final newline scroll
-    }
+    backdrop.innerHTML = editorBackdropHtml(editor.value);
     backdrop.scrollTop = editor.scrollTop;
     backdrop.scrollLeft = editor.scrollLeft;
   }
@@ -5407,6 +6366,24 @@ window.createConsoleApp = function createConsoleApp() {
     return null;
   }
 
+  function popoutElement(id) {
+    return popoutWindow()?.document.getElementById(id) || null;
+  }
+
+  // The pop-out carries copies of this page's stylesheets, and its <html> mirrors this page's
+  // theme attributes and colour variables, so it follows every theme, mode and colour change.
+  function syncPopoutAppearance() {
+    const popout = popoutWindow();
+    if (!popout) return;
+    const source = document.documentElement;
+    const target = popout.document.documentElement;
+    Array.from(target.attributes).forEach((attribute) => {
+      if (!source.hasAttribute(attribute.name)) target.removeAttribute(attribute.name);
+    });
+    Array.from(source.attributes).forEach((attribute) => target.setAttribute(attribute.name, attribute.value));
+    target.style.setProperty('--sql-editor-font-size', `${state.editorTextSize}rem`);
+  }
+
   function syncPopoutEditor() {
     const popout = popoutWindow();
     const area = popout?.document.getElementById('popoutQuery');
@@ -5417,9 +6394,69 @@ window.createConsoleApp = function createConsoleApp() {
       area.value = text;
       area.setSelectionRange(Math.min(selectionStart, text.length), Math.min(selectionEnd, text.length));
     }
+    const backdrop = popout.document.getElementById('popoutBackdrop');
+    if (backdrop) {
+      backdrop.innerHTML = editorBackdropHtml(text);
+      backdrop.scrollTop = area.scrollTop;
+      backdrop.scrollLeft = area.scrollLeft;
+    }
     const title = popout.document.getElementById('popoutTitle');
     if (title) title.textContent = activeEditorTab()?.title || 'SQL editor';
+    const stats = popout.document.getElementById('popoutStats');
+    if (stats) stats.textContent = editorStatsText(text);
   }
+
+  function renderPopoutTabs() {
+    const container = popoutElement('popoutTabs');
+    if (!container) return;
+    ensureEditorTabs();
+    container.innerHTML = editorTabStripHtml('popoutNewEditorTabBtn');
+    wireEditorTabStrip(container, popoutWindow());
+  }
+
+  // The pop-out's status line repeats this page's, and its Run/Cancel follow this page's.
+  function syncPopoutStatus() {
+    const status = popoutElement('popoutStatus');
+    if (!status) return;
+    status.textContent = $('statusText')?.textContent || '';
+    status.dataset.kind = String($('statusBadge')?.className || '').replace('status-badge', '').trim();
+    const cancel = popoutElement('popoutCancelBtn');
+    if (cancel) cancel.classList.toggle('hidden', $('cancelQueryBtn')?.classList.contains('hidden') ?? true);
+    const run = popoutElement('popoutRunBtn');
+    if (run) run.disabled = Boolean($('runQueryBtn')?.disabled);
+  }
+
+  // Static markup: nothing user-supplied is interpolated here.
+  const POPOUT_EDITOR_HTML = `
+    <main class="popout-editor">
+      <header class="popout-editor-header">
+        <div class="popout-editor-heading">
+          <div class="eyebrow">Execute · linked to the main window</div>
+          <h2 id="popoutTitle">SQL editor</h2>
+        </div>
+        <div class="button-row wrap right">
+          <button id="popoutDecreaseTextBtn" class="ghost-btn small" type="button" title="Smaller editor text">A-</button>
+          <button id="popoutIncreaseTextBtn" class="ghost-btn small" type="button" title="Larger editor text">A+</button>
+          <button id="popoutFormatBtn" class="ghost-btn small" type="button" title="Format the selection, or all SQL (Ctrl+Shift+F)">Format</button>
+          <button id="popoutCopyBtn" class="ghost-btn small" type="button" title="Copy the SQL">Copy</button>
+          <button id="popoutClearBtn" class="ghost-btn small" type="button" title="Clear the editor (Ctrl+Z brings it back)">Clear</button>
+          <button id="popoutRunAllBtn" class="ghost-btn small" type="button" title="Run everything (Ctrl+Shift+Enter)">Run all</button>
+          <button id="popoutCancelBtn" class="ghost-btn small cancel-query-btn hidden" type="button">Cancel</button>
+          <button id="popoutRunBtn" class="primary-btn" type="button" title="Run the selection or the statement under the cursor (Ctrl+Enter)">Run query</button>
+        </div>
+      </header>
+      <div id="popoutTabs" class="editor-tabs" role="tablist" aria-label="SQL editor tabs"></div>
+      <div id="popoutEditorContainer" class="editor-container">
+        <div id="popoutBackdrop" class="editor-backdrop" aria-hidden="true"></div>
+        <textarea id="popoutQuery" spellcheck="false" aria-label="SQL editor" aria-autocomplete="list" aria-controls="popoutSuggest"></textarea>
+        <div id="popoutSuggest" class="editor-suggest hidden" role="listbox" aria-label="SQL suggestions"></div>
+      </div>
+      <div class="helper-row">
+        <span>Ctrl+Enter runs the selection or statement, Ctrl+Shift+Enter runs all, Ctrl+Space suggests names, Tab indents (Esc then Tab leaves the editor). Results, previews and confirmations appear in the main window.</span>
+        <span id="popoutStats">0 lines • 0 chars</span>
+      </div>
+      <div id="popoutStatus" class="popout-status" role="status" aria-live="polite"></div>
+    </main>`;
 
   function openPopoutEditor() {
     const existing = popoutWindow();
@@ -5427,49 +6464,35 @@ window.createConsoleApp = function createConsoleApp() {
       existing.focus();
       return;
     }
-    const popout = window.open('', 'dataWorkbenchSqlEditor', 'popup,width=960,height=640');
+    const popout = window.open('', 'dataWorkbenchSqlEditor', 'popup,width=1120,height=760');
     if (!popout) {
       setStatus('error', 'The browser blocked the pop-out window. Allow pop-ups for this app and try again.');
       return;
     }
     const doc = popout.document;
-    const styles = window.getComputedStyle(document.documentElement);
-    const bodyFont = window.getComputedStyle(document.body).fontFamily;
-    const token = (name, fallback) => styles.getPropertyValue(name).trim() || fallback;
     doc.title = 'SQL editor · Data Workbench';
-    doc.body.textContent = '';
-    const style = doc.createElement('style');
-    style.textContent = `
-      html, body { height: 100%; margin: 0; }
-      body { display: flex; flex-direction: column; gap: 8px; padding: 12px; box-sizing: border-box;
-        background: ${token('--bg', '#0b1620')}; color: ${token('--text', '#e6f0f3')};
-        font-family: ${bodyFont || 'system-ui, sans-serif'}; }
-      header { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
-      header strong { flex: 1 1 auto; }
-      button { min-height: 34px; padding: 4px 12px; border-radius: 10px; cursor: pointer;
-        border: 1px solid ${token('--line-strong', '#3b5560')}; background: transparent; color: inherit; font: inherit; }
-      textarea { flex: 1 1 auto; width: 100%; box-sizing: border-box; resize: none; padding: 12px;
-        border: 1px solid ${token('--input-border', '#3b5560')}; border-radius: 8px;
-        background: ${token('--input-bg', '#0f1f29')}; color: inherit;
-        font: 0.95rem/1.6 'IBM Plex Mono', Consolas, monospace; tab-size: 4; }
-      p { margin: 0; font-size: 0.8rem; opacity: 0.75; }`;
-    doc.head.appendChild(style);
-    const header = doc.createElement('header');
-    const title = doc.createElement('strong');
-    title.id = 'popoutTitle';
-    const runButton = doc.createElement('button');
-    runButton.textContent = 'Run (Ctrl+Enter)';
-    const runAllButton = doc.createElement('button');
-    runAllButton.textContent = 'Run All (Ctrl+Shift+Enter)';
-    header.append(title, runButton, runAllButton);
-    const area = doc.createElement('textarea');
-    area.id = 'popoutQuery';
-    area.spellcheck = false;
-    const note = doc.createElement('p');
-    note.textContent = 'Linked to the editor in the main window: changes show there as you type, and results appear there.';
-    doc.body.append(header, area, note);
+    doc.head.querySelectorAll('[data-popout-style]').forEach((node) => node.remove());
+    document.querySelectorAll('link[rel="stylesheet"], style').forEach((node) => {
+      const copy = doc.importNode(node, true);
+      // The pop-out starts as about:blank, so relative stylesheet links need this page's URL.
+      if (node.tagName === 'LINK') copy.setAttribute('href', node.href);
+      copy.setAttribute('data-popout-style', '');
+      doc.head.appendChild(copy);
+    });
+    doc.body.className = 'popout-editor-body';
+    doc.body.innerHTML = POPOUT_EDITOR_HTML;
     state.popoutEditor = popout;
+    syncPopoutAppearance();
+    state.popoutObserver?.disconnect();
+    if (window.MutationObserver) {
+      state.popoutObserver = new window.MutationObserver(() => {
+        if (popoutWindow()) syncPopoutAppearance();
+        else state.popoutObserver?.disconnect();
+      });
+      state.popoutObserver.observe(document.documentElement, { attributes: true });
+    }
 
+    const area = doc.getElementById('popoutQuery');
     const pushToMain = () => {
       const adapter = editorAdapter();
       adapter.setValue(area.value);
@@ -5485,15 +6508,54 @@ window.createConsoleApp = function createConsoleApp() {
       pushToMain();
       runQuery(scope === 'all' ? { scope: 'all' } : {}).catch((error) => setStatus('error', error.message));
     };
-    area.addEventListener('input', pushToMain);
+    area.addEventListener('input', () => {
+      pushToMain();
+      if (!state.suggestSuppressed) updateSuggestions({ host: 'popout' });
+    });
     area.addEventListener('keydown', (event) => {
       if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
         event.preventDefault();
         run(event.shiftKey ? 'all' : 'auto');
+        return;
+      }
+      if ((event.ctrlKey || event.metaKey) && event.shiftKey && String(event.key).toLowerCase() === 'f') {
+        event.preventDefault();
+        formatSql(area);
+        return;
+      }
+      handleEditorKeydown(event, 'popout');
+    });
+    area.addEventListener('scroll', () => {
+      closeSuggestions();
+      const backdrop = doc.getElementById('popoutBackdrop');
+      if (backdrop) {
+        backdrop.scrollTop = area.scrollTop;
+        backdrop.scrollLeft = area.scrollLeft;
       }
     });
-    runButton.addEventListener('click', () => run('auto'));
-    runAllButton.addEventListener('click', () => run('all'));
+    area.addEventListener('blur', closeSuggestions);
+    area.addEventListener('click', closeSuggestions);
+    doc.getElementById('popoutRunBtn').addEventListener('click', () => run('auto'));
+    doc.getElementById('popoutRunAllBtn').addEventListener('click', () => run('all'));
+    doc.getElementById('popoutCancelBtn').addEventListener('click', () => $('cancelQueryBtn')?.click());
+    doc.getElementById('popoutFormatBtn').addEventListener('click', () => formatSql(area));
+    doc.getElementById('popoutClearBtn').addEventListener('click', () => replaceEditorText(area, 0, area.value.length, ''));
+    doc.getElementById('popoutDecreaseTextBtn').addEventListener('click', () => changeEditorTextSize(-0.05));
+    doc.getElementById('popoutIncreaseTextBtn').addEventListener('click', () => changeEditorTextSize(0.05));
+    doc.getElementById('popoutCopyBtn').addEventListener('click', () => {
+      // The pop-out has focus, so it is the window allowed to write the clipboard.
+      Promise.resolve()
+        .then(() => popout.navigator.clipboard.writeText(area.value))
+        .then(() => setStatus('success', 'SQL copied to clipboard.'))
+        .catch(() => setStatus('error', 'The browser did not allow copying. Select the text and press Ctrl+C.'));
+    });
+    popout.addEventListener('pagehide', () => {
+      if (state.suggestHost === 'popout') {
+        state.suggest = null;
+        state.suggestHost = 'main';
+      }
+    });
+    renderPopoutTabs();
     syncPopoutEditor();
     area.focus();
     setStatus('success', 'Opened the editor in its own window. It stays linked to this one.');
@@ -5530,12 +6592,12 @@ window.createConsoleApp = function createConsoleApp() {
     activateEditorTab(tab.id);
   }
 
-  function closeEditorTab(id = state.activeEditorTabId) {
+  function closeEditorTab(id = state.activeEditorTabId, host = window) {
     const index = state.editorTabs.findIndex((tab) => tab.id === id);
     if (index < 0 || state.editorTabs.length <= 1) return;
     syncActiveEditorTab();
     const tab = state.editorTabs[index];
-    if (tab.query.trim() && !window.confirm(`Close ${tab.title}? Its SQL will be discarded.`)) {
+    if (tab.query.trim() && !host.confirm(`Close ${tab.title}? Its SQL will be discarded.`)) {
       return;
     }
     const wasActive = tab.id === state.activeEditorTabId;
@@ -5555,10 +6617,10 @@ window.createConsoleApp = function createConsoleApp() {
     persistWorkspaceState('sql');
   }
 
-  function renameEditorTab(id) {
+  function renameEditorTab(id, host = window) {
     const tab = state.editorTabs.find((item) => item.id === id);
     if (!tab) return;
-    const name = window.prompt('Tab name', tab.title);
+    const name = host.prompt('Tab name', tab.title);
     if (name === null) return;
     tab.title = String(name).trim().slice(0, 40) || tab.title;
     renderEditorTabs();
@@ -5572,23 +6634,42 @@ window.createConsoleApp = function createConsoleApp() {
     activateEditorTab(next.id);
   }
 
-  function renderEditorTabs() {
-    const container = $('editorTabs');
-    if (!container) return;
-    ensureEditorTabs();
+  function editorTabStripHtml(newButtonId) {
     const closable = state.editorTabs.length > 1;
-    container.innerHTML = `${state.editorTabs.map((tab) => {
+    return `${state.editorTabs.map((tab) => {
       const active = tab.id === state.activeEditorTabId;
       return `<div class="editor-tab${active ? ' active' : ''}"><button class="editor-tab-main" type="button" role="tab" aria-selected="${active}" data-editor-tab="${esc(tab.id)}" data-tooltip="Double-click to rename.">${esc(tab.title)}</button>${closable ? `<button class="editor-tab-close" type="button" data-close-editor-tab="${esc(tab.id)}" aria-label="Close ${esc(tab.title)}">×</button>` : ''}</div>`;
-    }).join('')}<button id="newEditorTabBtn" class="editor-tab-new" type="button" aria-label="New editor tab"${state.editorTabs.length >= EDITOR_TABS_MAX ? ' disabled' : ''}>+</button>`;
+    }).join('')}<button id="${newButtonId}" class="editor-tab-new" type="button" aria-label="New editor tab"${state.editorTabs.length >= EDITOR_TABS_MAX ? ' disabled' : ''}>+</button>`;
+  }
+
+  function wireEditorTabStrip(container, host = window) {
+    const refocus = () => {
+      if (host !== window) popoutElement('popoutQuery')?.focus();
+    };
     container.querySelectorAll('[data-editor-tab]').forEach((button) => {
-      button.onclick = () => activateEditorTab(button.dataset.editorTab);
-      button.ondblclick = () => renameEditorTab(button.dataset.editorTab);
+      button.onclick = () => {
+        activateEditorTab(button.dataset.editorTab);
+        refocus();
+      };
+      button.ondblclick = () => renameEditorTab(button.dataset.editorTab, host);
     });
     container.querySelectorAll('[data-close-editor-tab]').forEach((button) => {
-      button.onclick = () => closeEditorTab(button.dataset.closeEditorTab);
+      button.onclick = () => closeEditorTab(button.dataset.closeEditorTab, host);
     });
-    $('newEditorTabBtn').onclick = () => newEditorTab();
+    container.querySelector('.editor-tab-new').onclick = () => {
+      newEditorTab();
+      refocus();
+    };
+  }
+
+  function renderEditorTabs() {
+    const container = $('editorTabs');
+    if (container) {
+      ensureEditorTabs();
+      container.innerHTML = editorTabStripHtml('newEditorTabBtn');
+      wireEditorTabStrip(container);
+    }
+    renderPopoutTabs();
   }
 
   function setQuery(query) {
@@ -6012,8 +7093,10 @@ window.createConsoleApp = function createConsoleApp() {
       ...(procedure ? [] : [
         { group: 'Run', keys: 'Ctrl+Shift+Enter', label: 'Run the whole editor as one request' },
         { group: 'Editor', keys: 'Ctrl+Space', label: 'Show table and column suggestions' },
-        { group: 'Editor', keys: 'Tab / Enter', label: 'Accept the highlighted suggestion' },
-        { group: 'Editor', keys: 'Ctrl+Shift+F', label: 'Format SQL' },
+        { group: 'Editor', keys: 'Tab / Enter', label: 'Accept the highlighted suggestion (when the list is open)' },
+        { group: 'Editor', keys: 'Ctrl+Shift+F', label: 'Format the selection, or all SQL (Ctrl+Z undoes it)' },
+        { group: 'Editor', keys: 'Tab / Shift+Tab', label: 'Indent / outdent the line or the selected lines' },
+        { group: 'Editor', keys: 'Esc, then Tab', label: 'Move focus out of the editor' },
         { group: 'Editor', keys: 'Ctrl+S', label: 'Save the SQL to the query library' },
         { group: 'Editor tabs', keys: 'Ctrl+Alt+N', label: 'New editor tab' },
         { group: 'Editor tabs', keys: 'Ctrl+Alt+W', label: 'Close the editor tab' },
@@ -6986,187 +8069,151 @@ window.createConsoleApp = function createConsoleApp() {
     setStatus('success', `${state.queryMode.toUpperCase()} query generated${readyFilters.length ? ` with ${readyFilters.length} filter${readyFilters.length === 1 ? '' : 's'}` : ''}.`);
   }
 
-  function formatSql() {
-    const raw = getQuery().trim();
-    if (!raw) return;
-
-    const normalized = raw.replace(/\r\n/g, '\n');
-    const tokens = [];
-    const punct = new Set([',', '(', ')', ';']);
-
-    for (let index = 0; index < normalized.length; index += 1) {
-      const char = normalized[index];
-      const next = normalized[index + 1];
-
-      if (/\s/.test(char)) {
-        continue;
-      }
-
-      if (char === '-' && next === '-') {
-        let comment = char + next;
-        index += 2;
-        while (index < normalized.length && normalized[index] !== '\n') {
-          comment += normalized[index];
-          index += 1;
-        }
-        index -= 1;
-        tokens.push({ type: 'comment', value: comment.trimEnd() });
-        continue;
-      }
-
-      if (char === "'") {
-        let value = char;
-        index += 1;
-        while (index < normalized.length) {
-          value += normalized[index];
-          if (normalized[index] === "'" && normalized[index + 1] === "'") {
-            value += normalized[index + 1];
-            index += 2;
-            continue;
-          }
-          if (normalized[index] === "'") {
-            break;
-          }
-          index += 1;
-        }
-        tokens.push({ type: 'string', value });
-        continue;
-      }
-
-      if (char === '[') {
-        let value = char;
-        index += 1;
-        while (index < normalized.length) {
-          value += normalized[index];
-          if (normalized[index] === ']') {
-            break;
-          }
-          index += 1;
-        }
-        tokens.push({ type: 'identifier', value });
-        continue;
-      }
-
-      if (punct.has(char)) {
-        tokens.push({ type: 'punct', value: char });
-        continue;
-      }
-
-      let value = char;
-      while (index + 1 < normalized.length) {
-        const peek = normalized[index + 1];
-        if (/\s/.test(peek) || punct.has(peek) || peek === "'" || peek === '[' || (peek === '-' && normalized[index + 2] === '-')) {
-          break;
-        }
-        value += peek;
-        index += 1;
-      }
-      tokens.push({ type: 'word', value });
-    }
-
-    const merged = [];
-    for (let index = 0; index < tokens.length; index += 1) {
-      const current = tokens[index];
-      const next = tokens[index + 1];
-      const upper = String(current?.value || '').toUpperCase();
-      const nextUpper = String(next?.value || '').toUpperCase();
-      if (current?.type === 'word' && next?.type === 'word') {
-        const pair = `${upper} ${nextUpper}`;
-        if (['ORDER BY', 'GROUP BY', 'INNER JOIN', 'LEFT JOIN', 'RIGHT JOIN'].includes(pair)) {
-          merged.push({ type: 'keyword', value: pair });
-          index += 1;
-          continue;
-        }
-      }
-      if (current?.type === 'word') {
-        merged.push({ type: 'keyword', value: upper });
-      } else {
-        merged.push(current);
+  // Formats the selection when there is one, otherwise the whole editor. The edit goes through
+  // replaceEditorText, so a single Ctrl+Z restores the original layout.
+  function formatSql(target) {
+    const procedure = !target && document.activeElement?.id === 'procedureScriptEditor';
+    const editor = target || (procedure ? $('procedureScriptEditor') : (editorAdapter().kind === 'textarea' ? $('queryEditor') : null));
+    const value = editor ? editor.value : getQuery();
+    const selected = Boolean(editor) && editor.selectionEnd > editor.selectionStart && value.slice(editor.selectionStart, editor.selectionEnd).trim() !== '';
+    let from = selected ? editor.selectionStart : 0;
+    let to = selected ? editor.selectionEnd : value.length;
+    // Leading and trailing whitespace stay where they are, so the formatted part cannot run
+    // into the SQL either side of a selection.
+    while (from < to && /\s/.test(value[from])) from += 1;
+    while (to > from && /\s/.test(value[to - 1])) to -= 1;
+    if (from === to) return;
+    if (selected) {
+      // A selection that starts or ends inside a string, quoted name or comment would be
+      // formatted as code; whitespace inside a string is data.
+      const splits = sqlLex(value).some((token) => token.type !== 'space' && token.type !== 'word' && token.type !== 'number'
+        && ((from > token.start && from < token.start + token.text.length) || (to > token.start && to < token.start + token.text.length)));
+      if (splits) {
+        setStatus('error', 'The selection starts or ends inside a string, quoted name or comment. Select whole statements to format them.');
+        return;
       }
     }
-
-    let formatted = '';
-    let clause = '';
-    const append = (text, { newline = false, space = false } = {}) => {
-      if (!text) return;
-      if (newline) {
-        formatted = formatted.replace(/[ \t]+$/g, '');
-        if (formatted && !formatted.endsWith('\n')) {
-          formatted += '\n';
-        }
-      } else if (space) {
-        if (formatted && !formatted.endsWith('\n') && !formatted.endsWith('(') && !formatted.endsWith(' ')) {
-          formatted += ' ';
-        }
-      }
-      formatted += text;
-    };
-
-    for (const token of merged) {
-      if (!token) continue;
-      if (token.type === 'comment') {
-        append(token.value, { newline: true });
-        continue;
-      }
-
-      if (token.type === 'keyword') {
-        const upper = token.value;
-        if (upper === 'SELECT') {
-          clause = 'SELECT';
-          append('SELECT', { newline: true });
-          continue;
-        }
-        if (['FROM', 'WHERE', 'GROUP BY', 'ORDER BY', 'HAVING', 'VALUES', 'SET', 'INNER JOIN', 'LEFT JOIN', 'RIGHT JOIN'].includes(upper)) {
-          clause = upper;
-          append(upper, { newline: true });
-          continue;
-        }
-        if (upper === 'AND') {
-          append('  AND', { newline: true });
-          continue;
-        }
-        append(upper, { space: true });
-        continue;
-      }
-
-      if (token.type === 'punct') {
-        if (token.value === ',') {
-          if (clause === 'SELECT') {
-            formatted += ',\n       ';
-          } else if (clause === 'SET' || clause === 'VALUES') {
-            formatted += ',\n    ';
-          } else {
-            formatted += ', ';
-          }
-          continue;
-        }
-        if (token.value === '(') {
-          append('(', {});
-          continue;
-        }
-        if (token.value === ')') {
-          formatted = formatted.replace(/[ \t]+$/g, '');
-          formatted += ')';
-          continue;
-        }
-        if (token.value === ';') {
-          formatted = formatted.replace(/[ \t]+$/g, '');
-          formatted += ';';
-          continue;
-        }
-      }
-
-      append(token.value, { space: true });
+    const original = value.slice(from, to);
+    const formatted = formatSqlSafely(original);
+    if (formatted === null) {
+      setStatus('error', 'This SQL could not be formatted without risking a change to what it does, so it was left as it was.');
+      return;
     }
+    if (formatted === original) {
+      setStatus('neutral', selected ? 'The selection is already formatted.' : 'The SQL is already formatted.');
+      return;
+    }
+    if (editor) {
+      replaceEditorText(editor, from, to, formatted, selected ? from : from + formatted.length, from + formatted.length);
+    } else {
+      setQuery(`${value.slice(0, from)}${formatted}${value.slice(to)}`);
+    }
+    setStatus('success', selected ? 'Selection formatted.' : 'SQL formatted.');
+  }
 
-    setQuery(formatted.replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim());
-    setStatus('success', 'SQL formatted.');
+  // ─── Editing keys shared by every SQL textarea ────────────────────────────
+  // The main editor, the procedure script editor and the pop-out all indent with four spaces:
+  // Tab indents (the selected lines, or to the next tab stop), Shift+Tab outdents, Enter keeps
+  // the line's indentation. Escape then Tab moves focus on, so the keyboard is never trapped.
+
+  const SQL_INDENT = '    ';
+
+  // Edits through the browser's own editing command where it exists, so Ctrl+Z undoes a Tab,
+  // an indent or a whole Format as one step. The fallback sets the value and raises the input
+  // event the command would have raised.
+  function replaceEditorText(editor, start, end, text, selectStart, selectEnd) {
+    const doc = editor.ownerDocument || document;
+    const view = doc.defaultView || window;
+    const expected = `${editor.value.slice(0, start)}${text}${editor.value.slice(end)}`;
+    editor.focus();
+    editor.setSelectionRange(start, end);
+    let done = false;
+    try {
+      done = typeof doc.execCommand === 'function' && doc.execCommand('insertText', false, text) && editor.value === expected;
+    } catch {
+      done = false;
+    }
+    if (!done && editor.value !== expected) {
+      editor.value = expected;
+      editor.dispatchEvent(new view.Event('input', { bubbles: true }));
+    }
+    const caret = start + text.length;
+    const anchor = selectStart ?? caret;
+    editor.setSelectionRange(anchor, selectEnd ?? anchor);
+  }
+
+  function indentEditorLines(editor, direction) {
+    const value = editor.value;
+    const start = editor.selectionStart;
+    const end = editor.selectionEnd;
+    const lineStart = value.lastIndexOf('\n', start - 1) + 1;
+    const multiLine = value.slice(start, end).includes('\n');
+    if (direction > 0 && !multiLine) {
+      const column = start - lineStart;
+      replaceEditorText(editor, start, end, ' '.repeat(SQL_INDENT.length - (column % SQL_INDENT.length)));
+      return;
+    }
+    // A selection that ends at the very start of a line does not take that line with it.
+    const lastChar = end > start && value[end - 1] === '\n' ? end - 1 : end;
+    const nextBreak = value.indexOf('\n', lastChar);
+    const blockEnd = nextBreak === -1 ? value.length : nextBreak;
+    const lines = value.slice(lineStart, blockEnd).split('\n');
+    const deltas = lines.map((line) => {
+      if (direction > 0) return multiLine && !line.trim() ? 0 : SQL_INDENT.length;
+      return -((line.match(/^(?: {1,4}|\t)/) || [''])[0].length);
+    });
+    if (deltas.every((delta) => delta === 0)) return;
+    const changed = lines.map((line, index) => (deltas[index] > 0 ? `${SQL_INDENT}${line}` : line.slice(-deltas[index]))).join('\n');
+    const total = deltas.reduce((sum, delta) => sum + delta, 0);
+    const firstLeading = (lines[0].match(/^[ \t]*/) || [''])[0].length;
+    const startShift = deltas[0] >= 0 ? deltas[0] : -Math.min(-deltas[0], Math.max(0, Math.min(start - lineStart, firstLeading)));
+    const newStart = Math.max(lineStart, start + startShift);
+    const newEnd = end === start ? newStart : Math.max(newStart, end + total);
+    replaceEditorText(editor, lineStart, blockEnd, changed, newStart, newEnd);
+  }
+
+  function insertIndentedNewline(editor) {
+    const value = editor.value;
+    const start = editor.selectionStart;
+    const lineStart = value.lastIndexOf('\n', start - 1) + 1;
+    const before = value.slice(lineStart, start);
+    let indent = (before.match(/^[ \t]*/) || [''])[0];
+    if (/(?:^|[^\w@#$])BEGIN\s*$/i.test(before) || /\(\s*$/.test(before)) indent += SQL_INDENT;
+    replaceEditorText(editor, start, editor.selectionEnd, `\n${indent}`);
+  }
+
+  // Returns true when it handled the key.
+  function handleSqlEditingKeys(editor, event) {
+    if (!editor || event.defaultPrevented || event.isComposing || event.ctrlKey || event.metaKey || event.altKey) return false;
+    if (event.key === 'Escape') {
+      editor.dataset.tabReleases = 'true';
+      return false;
+    }
+    const releases = editor.dataset.tabReleases === 'true';
+    delete editor.dataset.tabReleases;
+    if (event.key === 'Tab') {
+      if (releases) return false;
+      event.preventDefault();
+      indentEditorLines(editor, event.shiftKey ? -1 : 1);
+      return true;
+    }
+    if (event.key === 'Enter' && !event.shiftKey) {
+      event.preventDefault();
+      insertIndentedNewline(editor);
+      return true;
+    }
+    return false;
+  }
+
+  function editorStatsText(query) {
+    const lines = query ? query.split('\n').length : 0;
+    return `${lines} line${lines === 1 ? '' : 's'} • ${query.length} chars`;
   }
 
   function updateEditorStats() {
-    const query = getQuery();
-    const lines = query ? query.split('\n').length : 0;
-    $('editorStats').textContent = `${lines} line${lines === 1 ? '' : 's'} • ${query.length} chars`;
+    $('editorStats').textContent = editorStatsText(getQuery());
+    const popoutStats = popoutElement('popoutStats');
+    if (popoutStats) popoutStats.textContent = $('editorStats').textContent;
   }
 
   function insertAtCursor(text) {
@@ -10737,7 +11784,7 @@ window.createConsoleApp = function createConsoleApp() {
     }
     $('decreaseEditorTextBtn').onclick = () => changeEditorTextSize(-0.05);
     $('increaseEditorTextBtn').onclick = () => changeEditorTextSize(0.05);
-    $('formatQueryBtn').onclick = formatSql;
+    $('formatQueryBtn').onclick = () => formatSql();
     $('copyQueryBtn').onclick = () => copyText(getQuery(), 'SQL copied to clipboard.');
     $('clearQueryBtn').onclick = () => setQuery('');
     $('generateQueryBtn').onclick = generateQuery;
@@ -10836,6 +11883,7 @@ window.createConsoleApp = function createConsoleApp() {
         syncProcedureScriptBackdrop();
         updateProcedureScriptStats();
       };
+      $('procedureScriptEditor').onkeydown = (event) => handleSqlEditingKeys($('procedureScriptEditor'), event);
       $('procedureScriptEditor').onscroll = () => {
         const backdrop = $('procedureScriptEditorBackdrop');
         const editor = $('procedureScriptEditor');
@@ -11034,9 +12082,9 @@ window.createConsoleApp = function createConsoleApp() {
         updateEditorStats();
         syncEditorBackdrop();
         persistWorkspaceState('sql');
-        updateSuggestions();
+        if (!state.suggestSuppressed) updateSuggestions();
       };
-      editor.onkeydown = handleEditorKeydown;
+      editor.onkeydown = (event) => handleEditorKeydown(event);
       editor.onblur = closeSuggestions;
       editor.onclick = closeSuggestions;
       editor.onscroll = () => {
@@ -11239,6 +12287,8 @@ window.createConsoleApp = function createConsoleApp() {
       window.removeEventListener('beforeunload', window.__dataWorkbenchPagehideHandler);
     }
     window.__dataWorkbenchPagehideHandler = () => {
+      // Its editor is bound to this page; once this page goes it would edit nothing.
+      popoutWindow()?.close();
       persistWorkspaceState(state.workspace);
       persistCatalogState();
       sendLifecycleCloseBeacon();

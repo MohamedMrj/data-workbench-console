@@ -76,7 +76,7 @@ app/                          Next.js App Router
   page.js                     Renders <WorkbenchShell pageMode="sql" />
   layout.js                   Root layout, metadata, favicon, Google Fonts
   globals.css                 @imports theme.css + theme-scenery.css + workbench.css
-  theme.css                   Design tokens, 10 themes, shared control primitives
+  theme.css                   Design tokens, 11 themes, shared control primitives
   theme-scenery.css           Scene placement, colours and motion
   workbench.css               Layout engine, all component styling (~4.2k lines)
 
@@ -864,8 +864,8 @@ toggling does.
 
 ## 15. Theming and appearance
 
-Ten themes — `glass` (default), `oled`, `neon`, `minimal`, `neumorphic`, `pastel`, `cyberpunk`,
-`cottagecore`, `garden`, `space` — each with a dark and a light palette, defined as
+Eleven themes — `glass` (default), `oled`, `neon`, `minimal`, `neumorphic`, `pastel`, `cyberpunk`,
+`cottagecore`, `garden`, `space`, `dracula` — each with a dark and a light palette, defined as
 custom-property overrides on `:root[data-theme='…']` in [app/theme.css](app/theme.css).
 `--results-cell-text` is elevated for dark mode.
 
@@ -1111,7 +1111,7 @@ success line and exiting non-zero on failure.
 | `route-contract.test.mjs` | yes (`next start`, port 3120) | no | HTTP status/shape for validation-only requests, secret redaction, local-only guards, favicon |
 | `smoke-test.mjs` | yes (port 3100) | no | Health, page render, batch confirmation contract, audit availability |
 | `ui-smoke.mjs` | no (jsdom) | no | The real `console-core.js` against built HTML with mocked `fetch` — wiring, dialogs, templates, history restore, panel resize, tooltips, auto-hide |
-| `responsive-audit.mjs` | yes (Playwright, port 3210) | no | 16 widths × 2 routes, 10 themes × dark/light, hidden-panel and wide-rail scenarios, docs pages; asserts no offscreen elements, no own-overflow, no weak affordances, no layout regressions; writes screenshots + JSON |
+| `responsive-audit.mjs` | yes (Playwright, port 3210) | no | 16 widths × 2 routes, 11 themes × dark/light, hidden-panel and wide-rail scenarios, docs pages; asserts no offscreen elements, no own-overflow, no weak affordances, no layout regressions; writes screenshots + JSON |
 | `release-diagnostics.mjs` | no | no | Node version, `package-lock` root version/deps match `package.json`, required files and routes exist, no tracked secrets, `.env.example` sanity, `verify:release` gate contents |
 | `live-smoke.mjs` | no | **yes** | Opt-in; refuses to run without `DATA_WORKBENCH_LIVE_TESTS=true` + `LIVE_TEST_CONFIRM_NON_PRODUCTION=YES_I_UNDERSTAND`, and refuses hosts matching `/prod|prd|production|live/i` |
 

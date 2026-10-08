@@ -5,6 +5,70 @@ All notable Data Workbench Console changes are tracked here.
 The in-app version is read from `package.json` and exposed through `/api/version`
 together with the current git commit and build information.
 
+## 1.9.0 - 2026-10-08
+
+A SQL formatter that lays out real T-SQL cleanly and proves it changed nothing else, Tab
+indenting in every SQL editor, a pop-out that is the same editor as the main one, readable
+suggestions, and a Dracula theme.
+
+### Added
+
+- **Dracula theme**: the official Dracula palette in dark mode and its official light variant
+  (Alucard) in light mode, with Dracula's own syntax colours in the SQL editors. Its background
+  scene is a crescent moon over a castle on a distant hill with one lit window, faint twinkling
+  stars, a few bats crossing the sky very slowly and low mist; it follows the Background scenery
+  level like every other scene.
+- **Tab indents in the SQL editors**: `Tab` indents to the next 4-space stop (or every selected
+  line), `Shift+Tab` outdents, and `Enter` keeps the line's indentation, one level more after
+  `BEGIN` or `(`. Before, Tab moved focus out of the editor. `Esc` then `Tab` still moves focus
+  on, so keyboard users are never trapped. Works in the SQL editor, the procedure script editor
+  and the pop-out, and `Ctrl+Z` undoes each step.
+- **Richer syntax colours**: comments, `@variables`, quoted names, data types and operators are
+  coloured too, from one shared T-SQL lexer that also understands `N'…'` strings, `""` and `[]`
+  names with escapes, and nested `/* */` comments, so a quote inside a comment no longer colours
+  the rest of the editor as a string. Themes can set each colour.
+
+### Changed
+
+- **Format rewritten**: the old formatter upper-cased every word (turning column and alias names
+  into capitals, which changes the name in a case-sensitive database), dropped `/* */` comments,
+  and mis-read `""` names and `N'…'` strings. The new one is token-based: keywords and built-in
+  functions in capitals, names exactly as written, one column per line, each clause on its own
+  line, `AND`/`OR` and `JOIN … ON` indented, short subqueries kept on one line and longer ones
+  indented, CTEs, `CASE`, `BEGIN … END`, `TRY/CATCH`, `IF/ELSE`, `MERGE`, `CREATE TABLE` and
+  `CREATE PROCEDURE` laid out, comments kept where they were written, and `GO` kept on its own
+  line. Non-reserved words that are often column names (`rows`, `next`, `type`, `date`…) are
+  only capitalised where the words around them prove they are keywords. Before applying, the
+  formatter re-reads its result and checks it is the same SQL with only spacing and keyword case
+  changed; if not, nothing is changed. Formatting is idempotent, formats only the selection when
+  there is one (refusing a selection that starts or ends inside a string or comment), and one
+  `Ctrl+Z` undoes it.
+- **Pop-out editor is the same editor**: it now uses the app's stylesheets, so it has the
+  current theme and syntax colours (and follows theme, mode, colour and text-size changes made
+  in the main window), the editor tabs, autocomplete, Format, Copy, Clear, A-/A+, Cancel, Tab
+  indenting and the main shortcuts, plus a status line that repeats the main one. It closes
+  when the main page goes away.
+- **Suggestions show the full name**: the column or table name keeps its width and the
+  `column · table` detail beside it shortens first; the list widens to fit (up to 680px), moves
+  left instead of being cut off at the editor's edge, and each item's tooltip shows everything.
+
+### Security
+
+- **Next.js 15.5.26 → 15.5.27**: fixes two moderate cache-poisoning advisories in SSG/ISR
+  rendering (GHSA-4jqv-mc3x-m676, GHSA-mcj8-r9mp-w47p) published after 1.8.0. A patch release;
+  only `next` and its own `@next/*` packages changed in the lockfile.
+
+### Verification
+
+- `npm run verify` steps pass: build, classifier (154), metadata, smoke, UI smoke (new checks
+  for the format layout, idempotence, refusing a selection inside a string, every highlight
+  class, Tab/Shift+Tab/Enter/Esc→Tab in the SQL and procedure editors, and the pop-out's
+  colours, theme following, tabs, Tab, Format, autocomplete and suggestion tooltips), responsive
+  audit (68 checks, now with Dracula dark and light), server unit and route contract.
+- The formatter was run over the 390 SQL strings in the test suites and 6,000 random token
+  sequences: no crash, no rejected format and no second-pass change.
+- `npm audit`: only the accepted `sprintf-js` exception (through `tedious`/`mssql`) remains.
+
 ## 1.8.0 - 2026-10-07
 
 Themes are now whole looks with a dark and a light mode, a living background scene whose

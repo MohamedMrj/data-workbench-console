@@ -243,7 +243,7 @@ function SqlWorkspace({ hidden = false }) {
             <button id="runScopeDismissBtn" className="icon-btn" type="button" aria-label="Dismiss">×</button>
           </div>
           <div className="helper-row">
-            <span id="editorHint">Ctrl+Enter runs the selection or the statement under the cursor, Ctrl+Shift+Enter runs everything, Ctrl+Space suggests names. Press ? for all shortcuts.</span>
+            <span id="editorHint">Ctrl+Enter runs the selection or the statement under the cursor, Ctrl+Shift+Enter runs everything, Ctrl+Space suggests names, Tab indents. Press ? for all shortcuts.</span>
             <span id="editorStats">0 lines • 0 chars</span>
             <span id="queryModeHint">Mode: Select</span>
           </div>

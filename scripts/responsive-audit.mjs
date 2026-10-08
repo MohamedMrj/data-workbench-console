@@ -8,7 +8,7 @@ let baseUrl = process.env.RESPONSIVE_AUDIT_BASE_URL || '';
 const outDir = path.join(process.cwd(), 'responsive-audit');
 const widths = [320, 360, 390, 430, 540, 700, 768, 900, 960, 1024, 1200, 1280, 1366, 1440, 1600, 1920];
 const screenshotWidths = new Set([320, 390, 768, 960, 1200, 1600, 1920]);
-const themes = ['glass', 'oled', 'neon', 'minimal', 'neumorphic', 'pastel', 'cyberpunk', 'cottagecore', 'garden', 'space'];
+const themes = ['glass', 'oled', 'neon', 'minimal', 'neumorphic', 'pastel', 'cyberpunk', 'cottagecore', 'garden', 'space', 'dracula'];
 
 const healthPayload = {
   ok: true,

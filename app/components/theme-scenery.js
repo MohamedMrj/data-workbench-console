@@ -382,6 +382,58 @@ function SpaceScene() {
   );
 }
 
+/* ─── Dracula ─────────────────────────────────────────────────────────────────────────────── */
+// Moonlight over a castle on a distant hill: a crescent moon, faint stars that twinkle out of
+// step, four small bats crossing the sky over minutes, low mist and one lit window. At dusk
+// (light mode) the same picture in lavender and parchment.
+
+const DRACULA_BAT = 'M30 10C27 6 24 4 20 6C16 2 9 2 2 6C7 8 9 11 10 15C13 12 17 12 19 15C22 12 26 13 30 18C34 13 38 12 41 15C43 12 47 12 50 15C51 11 53 8 58 6C51 2 44 2 40 6C36 4 33 6 30 10Z';
+const DRACULA_BATS = [
+  { left: 18, top: 22, size: 34, time: 150, offset: 20, dx: '22vw', dy: '-5vh', flap: 1.9 },
+  { left: 30, top: 14, size: 22, time: 190, offset: 75, dx: '16vw', dy: '3vh', flap: 1.5 },
+  { left: 56, top: 9, size: 18, time: 210, offset: 40, dx: '-14vw', dy: '4vh', flap: 1.3 },
+  { left: 8, top: 36, size: 26, time: 170, offset: 110, dx: '18vw', dy: '-8vh', flap: 1.7 }
+];
+
+function DraculaScene() {
+  const stars = scatter(313, 46, 1600, 900, 0.5, 1.4, (x, y) => y > 620 || (x > 1260 && y < 260));
+  return (
+    <div className="scene scene-dracula" data-scene="dracula">
+      <Piece className="dr-stars" viewBox="0 0 1600 900" ratio="xMidYMid slice">
+        {stars.map(([x, y, r], index) => <circle key={index} className="dr-star" cx={x} cy={y} r={r} />)}
+      </Piece>
+      <div className="sc-group sc-detail">
+        {[[14, 12], [42, 6], [68, 21], [24, 44], [52, 30]].map(([x, y], index) => (
+          <div key={index} className="sc-piece dr-glint sc-twinkle" style={{ left: `${x}%`, top: `${y}%`, ...motion(7 + index * 3.7, index * 2.3, { '--low': 0.12 }) }} />
+        ))}
+      </div>
+      <div className="sc-piece dr-moon">
+        <div className="dr-moon-glow sc-breathe" style={motion(38, 4, { '--low': 0.55 })} />
+        <svg className="sc-art" viewBox="0 0 200 200" focusable="false">
+          <path className="dr-moon-shape" d="M100 20A80 80 0 0 0 100 180A100 100 0 0 1 100 20Z" />
+        </svg>
+      </div>
+      <div className="sc-group sc-detail">
+        {DRACULA_BATS.map((bat, index) => (
+          <div key={index} className="sc-piece dr-bat sc-drift" style={{ left: `${bat.left}%`, top: `${bat.top}%`, width: `${bat.size}px`, ...motion(bat.time, bat.offset, { '--dx': bat.dx, '--dy': bat.dy }) }}>
+            <div className="dr-flap" style={{ '--flap': `${bat.flap}s`, '--flap-delay': `${-index * 0.6}s` }}>
+              <svg className="sc-art" viewBox="0 0 60 24" focusable="false"><path className="dr-bat-shape" d={DRACULA_BAT} /></svg>
+            </div>
+          </div>
+        ))}
+      </div>
+      <div className="sc-piece dr-mist sc-breathe" style={motion(44, 12, { '--low': 0.6 })} />
+      <Piece className="dr-castle" viewBox="0 0 600 220" ratio="xMinYMax meet">
+        <path className="dr-silhouette" d="M0 220V156Q90 122 170 128Q240 118 300 130Q430 142 520 186Q566 210 600 220Z" />
+        <path className="dr-silhouette" d="M158 132V82H154L170 52L186 82H182V104H190V60H186L215 18L244 60H240V104H250V74H246L261 40L276 74H272V104H282V96H279L288 78L297 96H294V132Z" />
+        <path className="dr-silhouette" d="M182 104V98H188V104ZM244 104V98H250V104ZM274 104V98H280V104Z" />
+        <path className="dr-rim" d="M0 156Q90 122 170 128Q240 118 300 130Q430 142 520 186Q566 210 600 220" />
+        <rect className="dr-window sc-breathe" x="212" y="78" width="6" height="11" rx="3" style={motion(9, 3, { '--low': 0.35 })} />
+      </Piece>
+    </div>
+  );
+}
+
 export default function ThemeScenery() {
   return (
     <>
@@ -395,6 +447,7 @@ export default function ThemeScenery() {
       <CottagecoreScene />
       <GardenScene />
       <SpaceScene />
+      <DraculaScene />
     </>
   );
 }

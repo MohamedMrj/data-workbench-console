@@ -353,7 +353,7 @@ const spaced = await appearanceStore.saveAppearanceProfile({ name: 'Night sky', 
 assert.deepEqual(spaced.profile.themeColors, { dark: { accent: '#ff8800', panel: '#102030' }, light: { accent: '#3344aa' } });
 assert.equal(spaced.profile.mode, 'system');
 assert.equal(spaced.profile.sceneryLevel, 70);
-for (const theme of ['glass', 'oled', 'neon', 'minimal', 'neumorphic', 'pastel', 'cyberpunk', 'cottagecore', 'garden', 'space']) {
+for (const theme of ['glass', 'oled', 'neon', 'minimal', 'neumorphic', 'pastel', 'cyberpunk', 'cottagecore', 'garden', 'space', 'dracula']) {
   assert.equal((await appearanceStore.saveAppearanceProfile({ name: `Theme ${theme}`, theme })).profile.theme, theme);
 }
 for (const profile of (await appearanceStore.getAppearance()).profiles.filter((item) => item.name.startsWith('Theme '))) {

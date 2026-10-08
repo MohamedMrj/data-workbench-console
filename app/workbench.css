@@ -4727,10 +4727,12 @@ body {
   word-wrap: break-word;
   overflow-wrap: break-word;
   overflow: hidden;
+  tab-size: 4;
 }
 
 #queryEditor,
-#procedureScriptEditor {
+#procedureScriptEditor,
+#popoutQuery {
   position: relative;
   z-index: 2;
   background: transparent;
@@ -4745,18 +4747,22 @@ body {
   padding: 12px 14px;
   white-space: pre-wrap;
   overflow-wrap: break-word;
+  tab-size: 4;
 }
 
 #queryEditor:hover,
 #queryEditor:focus,
 #procedureScriptEditor:hover,
-#procedureScriptEditor:focus {
+#procedureScriptEditor:focus,
+#popoutQuery:hover,
+#popoutQuery:focus {
   box-shadow: none;
   outline: none;
 }
 
 #queryEditor::selection,
-#procedureScriptEditor::selection {
+#procedureScriptEditor::selection,
+#popoutQuery::selection {
   background: color-mix(in srgb, var(--accent) 28%, transparent);
   color: transparent;
 }
@@ -4853,7 +4859,7 @@ body {
   position: absolute;
   z-index: 5;
   min-width: 220px;
-  max-width: min(420px, calc(100% - 16px));
+  max-width: min(680px, calc(100% - 16px));
   max-height: 232px;
   overflow-y: auto;
   padding: 4px;
@@ -4882,22 +4888,91 @@ body {
   background: var(--accent-soft);
 }
 
+/* The name is what you pick, so it keeps its full width: the kind and table detail give way
+   first (a shrink factor far above the label's), and only a name wider than the whole list is
+   ever shortened. The item's title shows everything on hover. */
 .editor-suggest-label {
+  flex: 0 1 auto;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
 .editor-suggest-kind {
-  flex: none;
+  flex: 0 100000 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
   color: var(--muted);
   font-size: 0.72rem;
 }
 
 /* SYNTAX HIGHLIGHTING (SQL) */
-.sql-keyword { color: var(--accent); font-weight: 600; }
-.sql-string { color: var(--accent-2); }
-.sql-number { color: #f59e0b; }
-.sql-function { color: #8b5cf6; }
+/* Only colour and weight: anything that changes glyph width would pull the coloured layer out
+   of line with the transparent textarea text above it. Each theme can override these tokens. */
+.sql-keyword { color: var(--sql-keyword, var(--accent)); font-weight: 600; }
+.sql-string { color: var(--sql-string, var(--accent-2)); }
+.sql-number { color: var(--sql-number, #f59e0b); }
+.sql-function { color: var(--sql-function, #8b5cf6); }
+.sql-comment { color: var(--sql-comment, color-mix(in srgb, var(--muted) 88%, transparent)); font-style: italic; }
+.sql-variable { color: var(--sql-variable, color-mix(in srgb, var(--warning) 75%, var(--text))); }
+.sql-identifier { color: var(--sql-identifier, color-mix(in srgb, var(--text) 82%, var(--accent))); }
+.sql-type { color: var(--sql-type, color-mix(in srgb, var(--accent-2) 60%, var(--text))); }
+.sql-operator { color: var(--sql-operator, color-mix(in srgb, var(--text) 70%, var(--muted))); }
+
+/* Pop-out SQL editor window. It loads this stylesheet, so its editor is the same component. */
+body.popout-editor-body {
+  margin: 0;
+  overflow: hidden;
+}
+
+.popout-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  height: 100vh;
+  box-sizing: border-box;
+  padding: 16px 18px 12px;
+}
+
+.popout-editor-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.popout-editor-heading h2 {
+  margin: 2px 0 0;
+}
+
+.popout-editor .editor-container {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+#popoutQuery {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  resize: none;
+  box-sizing: border-box;
+}
+
+.popout-editor .helper-row {
+  margin-top: -6px;
+}
+
+.popout-status {
+  min-height: 1.3em;
+  margin-top: -10px;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.popout-status[data-kind='error'] { color: var(--danger); }
+.popout-status[data-kind='success'] { color: var(--success); }
 .sql-error-underline {
   text-decoration: underline wavy var(--danger);
   text-underline-offset: 4px;

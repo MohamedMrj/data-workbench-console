@@ -188,20 +188,21 @@ ORDER BY [CreatedUtc] DESC;`}</pre>
         <DocsCardGrid
           items={[
             { title: 'Run query', text: 'Runs the selection, or the statement under the cursor when the editor holds several. SELECTs run directly; writes start a preview.' },
-            { title: 'Pop out', text: 'Opens the editor in its own window, linked live to this one. Run from there; results show here.' },
+            { title: 'Pop out', text: 'Opens the same editor in its own window: theme, colours, tabs, autocomplete, Format and shortcuts. Linked live; results show here.' },
             { title: 'Resize', text: 'Drag the bottom edge for height. With the builder beside the editor, drag the editor\'s left edge for width.' },
             { title: 'Cancel', text: 'Stops a running query on the server. A read or preview stops straight away; a confirmed write is rolled back.' },
             { title: 'Autocomplete', text: 'Suggests tables, views and columns from the loaded catalog as you type. Ctrl+Space opens it on demand.' },
             { title: 'Editor tabs', text: 'Keep up to eight SQL buffers side by side. Each keeps its own text, cursor and scroll position.' },
             { title: 'Review scripts', text: 'Object CREATE and ALTER/Edit scripts load into the editor and still use the normal confirmation path if executed.' },
-            { title: 'Format', text: 'Reflows common SQL clauses into a clearer layout.' },
+            { title: 'Format', text: 'Lays SQL out cleanly without changing what it does. Names keep their case; Ctrl+Z undoes it.' },
+            { title: 'Tab indents', text: 'Tab and Shift+Tab indent and outdent lines; Enter keeps the indentation. Esc then Tab leaves the editor.' },
             { title: 'Copy and Clear', text: 'Copy the current SQL or clear the editor when switching tasks.' },
             { title: 'Text size', text: 'Use A- and A+ to tune editor readability. The editor adapter preserves textarea behavior and can use Monaco when available.' }
           ]}
         />
         <div className="docs-table">
           <div><strong>A- / A+</strong><span>Decrease or increase SQL editor font size. Use it for long review sessions or projected screens.</span></div>
-          <div><strong>Format</strong><span>Formats common SQL clauses. Use it before review, especially after loading scripts or helper snippets.</span></div>
+          <div><strong>Format</strong><span>Formats the selection, or all SQL: keywords in capitals, one column per line, each clause on its own line, conditions and joins indented, and CTEs, subqueries, <code>CASE</code>, <code>BEGIN … END</code> and <code>IF/ELSE</code> laid out. Names, strings and comments stay exactly as written. The result is checked to be the same SQL before it is applied, and <span className="docs-kbd">Ctrl</span> + <span className="docs-kbd">Z</span> undoes it.</span></div>
           <div><strong>Copy</strong><span>Copies the full editor SQL to the clipboard.</span></div>
           <div><strong>Clear</strong><span>Clears the editor. It does not clear builder state, history, or result tabs.</span></div>
           <div><strong>Run query</strong><span>Runs the selected text. With nothing selected it runs the statement under the cursor when the editor holds several statements separated by <code>;</code>, otherwise the whole editor. The statement that ran is briefly highlighted. Writes still require preview and confirmation.</span></div>
@@ -218,7 +219,8 @@ ORDER BY [CreatedUtc] DESC;`}</pre>
             <div><strong>Ctrl + Enter</strong><span>Run the selection, or the statement under the cursor.</span></div>
             <div><strong>Ctrl + Shift + Enter</strong><span>Run the whole editor.</span></div>
             <div><strong>Ctrl + Space</strong><span>Show table and column suggestions. Tab or Enter accepts, Esc dismisses.</span></div>
-            <div><strong>Ctrl + Shift + F</strong><span>Format SQL.</span></div>
+            <div><strong>Ctrl + Shift + F</strong><span>Format the selection, or all SQL.</span></div>
+            <div><strong>Tab / Shift + Tab</strong><span>Indent / outdent the line or the selected lines. Esc then Tab moves focus out of the editor.</span></div>
             <div><strong>Ctrl + Alt + N / W</strong><span>New editor tab / close the editor tab.</span></div>
             <div><strong>Ctrl + Alt + PageDown / PageUp</strong><span>Next / previous editor tab.</span></div>
             <div><strong>/</strong><span>Jump to the explorer search.</span></div>
@@ -327,7 +329,7 @@ WHERE <review scope before execution>;`}</pre>
           <div><strong>Mode switching</strong><span>Use the top workspace tabs to move between SQL Studio and Procedure Runner, even when the left connection rail is hidden.</span></div>
           <div><strong>Workspace restore</strong><span>Editor text, cursor position, filters, sort, result tabs, pagination, and active object are restored for the same browser tab and connection.</span></div>
           <div><strong>Saved profiles</strong><span>Server/database profile details can be saved. Passwords and service principal secrets are not saved.</span></div>
-          <div><strong>Themes</strong><span>Ten whole looks in <strong>Settings → Appearance</strong>: Liquid Glass, OLED Black, Matte Neon, Minimal, Neomorphic, Pastel, Cyberpunk, Cottagecore, Garden and Space. Each has its own shapes, fonts and background picture. It applies immediately, is remembered, and also applies to these guides.</span></div>
+          <div><strong>Themes</strong><span>Eleven whole looks in <strong>Settings → Appearance</strong>: Liquid Glass, OLED Black, Matte Neon, Minimal, Neomorphic, Pastel, Cyberpunk, Cottagecore, Garden, Space and Dracula. Each has its own shapes, fonts and background picture. It applies immediately, is remembered, and also applies to these guides.</span></div>
           <div><strong>Mode</strong><span>Every theme has a dark and a light palette. Choose <strong>Dark</strong>, <strong>Light</strong> or <strong>Match system</strong>.</span></div>
           <div><strong>Background scenery</strong><span>Each theme has its own living scene behind the app, for example a tree whose branches move in the wind for Garden or a turning galaxy for Space. It moves only while ambient motion is on and your system does not ask for reduced motion. Use the slider to make it fainter or stronger; 0 turns it off.</span></div>
           <div><strong>Theme colours</strong><span>Change any of the theme's main colours. Changes are kept per theme and per mode; <strong>Reset</strong> restores the theme's own.</span></div>

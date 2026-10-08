@@ -1283,13 +1283,13 @@ if (sqlWindow.document.querySelector('.glow-next')) {
   }
   sqlWindow.document.getElementById('closeWorkbenchToolsBtn').click();
 }
-if (sqlWindow.document.querySelectorAll('#themeList .theme-chip').length !== 10) {
+if (sqlWindow.document.querySelectorAll('#themeList .theme-chip').length !== 11) {
   throw new Error('Theme chips did not render on the SQL page.');
 }
 {
   // Ten themes, each in dark and light mode; Match system follows the operating system.
   const root = sqlWindow.document.documentElement;
-  const themes = ['glass', 'oled', 'neon', 'minimal', 'neumorphic', 'pastel', 'cyberpunk', 'cottagecore', 'garden', 'space'];
+  const themes = ['glass', 'oled', 'neon', 'minimal', 'neumorphic', 'pastel', 'cyberpunk', 'cottagecore', 'garden', 'space', 'dracula'];
   for (const mode of ['dark', 'light']) {
     sqlWindow.document.querySelector(`#themeModeList [data-theme-mode="${mode}"]`).click();
     for (const theme of themes) {
@@ -2855,8 +2855,129 @@ if (sqlWindow.__postedQueries.at(-1) !== 'SELECT 1 AS a;') {
   if (sqlWindow.__postedQueries.at(-1) !== 'SELECT 5 AS other;') {
     throw new Error(`Ctrl+Enter in the pop-out should run the statement under its cursor here. Sent: ${JSON.stringify(sqlWindow.__postedQueries)}`);
   }
+  // Same editor as the main one: syntax colours, theme, Tab indent, Format, tabs and suggestions.
+  const popupDoc = popup.document;
+  if (!popupDoc.getElementById('popoutBackdrop')?.innerHTML.includes('sql-keyword')) {
+    throw new Error(`The pop-out editor should colour its SQL. Backdrop: ${popupDoc.getElementById('popoutBackdrop')?.innerHTML}`);
+  }
+  if (popupDoc.documentElement.getAttribute('data-theme') !== sqlWindow.document.documentElement.getAttribute('data-theme')) {
+    throw new Error('The pop-out should open in the main window\'s theme.');
+  }
+  sqlWindow.document.documentElement.setAttribute('data-theme-tone', 'light');
+  await flush();
+  if (popupDoc.documentElement.getAttribute('data-theme-tone') !== 'light') {
+    throw new Error('The pop-out should follow theme changes made in the main window.');
+  }
+  if (!popupDoc.getElementById('popoutTabs')?.querySelector('[data-editor-tab]')) {
+    throw new Error('The pop-out should show the editor tabs.');
+  }
+  for (const id of ['popoutRunBtn', 'popoutRunAllBtn', 'popoutFormatBtn', 'popoutCopyBtn', 'popoutClearBtn', 'popoutDecreaseTextBtn', 'popoutIncreaseTextBtn', 'popoutCancelBtn']) {
+    if (!popupDoc.getElementById(id)) throw new Error(`The pop-out is missing #${id}.`);
+  }
+  popupArea.value = 'SELECT 1';
+  popupArea.setSelectionRange(0, 0);
+  popupArea.dispatchEvent(new popup.KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true }));
+  if (popupArea.value !== '    SELECT 1' || editor.value !== '    SELECT 1') {
+    throw new Error(`Tab in the pop-out should indent, and reach the main editor. Pop-out: ${JSON.stringify(popupArea.value)} Main: ${JSON.stringify(editor.value)}`);
+  }
+  popupArea.value = 'select a, b from dbo.t where x = 1';
+  popupArea.dispatchEvent(new popup.Event('input', { bubbles: true }));
+  popupDoc.getElementById('popoutFormatBtn').click();
+  if (popupArea.value !== 'SELECT\n    a,\n    b\nFROM dbo.t\nWHERE x = 1' || editor.value !== popupArea.value) {
+    throw new Error(`Format in the pop-out should format there and in the main editor. Pop-out: ${JSON.stringify(popupArea.value)}`);
+  }
+  popupArea.value = 'SELECT * FROM dbo.Al';
+  popupArea.setSelectionRange(popupArea.value.length, popupArea.value.length);
+  popupArea.dispatchEvent(new popup.Event('input', { bubbles: true }));
+  await flush();
+  const popupSuggest = popupDoc.getElementById('popoutSuggest');
+  if (popupSuggest.classList.contains('hidden') || !popupSuggest.textContent.includes('dbo.Alerts')) {
+    throw new Error(`The pop-out should suggest object names like the main editor. Suggestions: ${popupSuggest.textContent}`);
+  }
+  if (!popupSuggest.querySelector('.editor-suggest-item')?.getAttribute('title')?.includes('dbo.Alerts')) {
+    throw new Error('Each suggestion should carry its full name as a tooltip.');
+  }
+  popupArea.dispatchEvent(new popup.KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+  if (!/^SELECT \* FROM \S*Alerts/.test(popupArea.value) || editor.value !== popupArea.value) {
+    throw new Error(`Accepting a suggestion in the pop-out should insert it there and here. Pop-out: ${popupArea.value}`);
+  }
+  sqlWindow.document.documentElement.setAttribute('data-theme-tone', 'dark');
   popup.close();
   sqlWindow.open = originalOpen;
+  editor.value = '';
+  editor.dispatchEvent(new sqlWindow.Event('input', { bubbles: true }));
+}
+
+{
+  // Format: keywords upper-cased, names left exactly as written, one column per line, and
+  // nothing but layout changed. A selection inside a string is refused rather than reflowed.
+  const pressKey = (key, options = {}) => {
+    const event = new sqlWindow.KeyboardEvent('keydown', { key, bubbles: true, cancelable: true, ...options });
+    editor.dispatchEvent(event);
+    return event;
+  };
+  editor.value = "select top (100) [rubrik], convert(varchar(8), [skapelsedatum], 108) as skapat_tid, Status -- note\nfrom [process].[fact] where status = 'Öppen  x' and year(skapelsedatum) >= 2024 order by skapelsedatum desc";
+  editor.dispatchEvent(new sqlWindow.Event('input', { bubbles: true }));
+  sqlWindow.document.getElementById('formatQueryBtn').click();
+  const expectedFormat = [
+    'SELECT TOP (100)',
+    '    [rubrik],',
+    '    CONVERT(varchar(8), [skapelsedatum], 108) AS skapat_tid,',
+    '    Status -- note',
+    'FROM [process].[fact]',
+    "WHERE status = 'Öppen  x'",
+    '    AND YEAR(skapelsedatum) >= 2024',
+    'ORDER BY skapelsedatum DESC'
+  ].join('\n');
+  if (editor.value !== expectedFormat) {
+    throw new Error(`Format should lay the query out cleanly and keep names as written. Got:\n${editor.value}`);
+  }
+  sqlWindow.document.getElementById('formatQueryBtn').click();
+  if (editor.value !== expectedFormat) {
+    throw new Error('Formatting formatted SQL again should change nothing.');
+  }
+  const stringStart = editor.value.indexOf('Öppen');
+  editor.setSelectionRange(stringStart, stringStart + 7);
+  sqlWindow.document.getElementById('formatQueryBtn').click();
+  if (editor.value !== expectedFormat || !sqlWindow.document.getElementById('statusText').textContent.includes('inside a string')) {
+    throw new Error(`A selection inside a string must not be formatted. Status: ${sqlWindow.document.getElementById('statusText').textContent}`);
+  }
+  const backdropHtml = sqlWindow.document.getElementById('queryEditorBackdrop').innerHTML;
+  for (const className of ['sql-keyword', 'sql-function', 'sql-identifier', 'sql-string', 'sql-number', 'sql-comment', 'sql-operator']) {
+    if (!backdropHtml.includes(`class="${className}"`)) throw new Error(`The editor should colour ${className}. Backdrop: ${backdropHtml}`);
+  }
+
+  // Tab indents (to the next 4-column stop, or every selected line), Shift+Tab outdents, Enter
+  // keeps the indentation, and Escape then Tab lets focus leave the editor.
+  editor.value = 'SELECT a\nFROM t';
+  editor.setSelectionRange(0, 0);
+  if (!pressKey('Tab').defaultPrevented || editor.value !== '    SELECT a\nFROM t') {
+    throw new Error(`Tab should indent in the editor instead of leaving it. Editor: ${JSON.stringify(editor.value)}`);
+  }
+  editor.setSelectionRange(0, editor.value.length);
+  pressKey('Tab');
+  if (editor.value !== '        SELECT a\n    FROM t') {
+    throw new Error(`Tab with several lines selected should indent each line. Editor: ${JSON.stringify(editor.value)}`);
+  }
+  editor.setSelectionRange(0, editor.value.length);
+  pressKey('Tab', { shiftKey: true });
+  pressKey('Tab', { shiftKey: true });
+  if (editor.value !== 'SELECT a\nFROM t') {
+    throw new Error(`Shift+Tab should outdent the selected lines. Editor: ${JSON.stringify(editor.value)}`);
+  }
+  editor.value = 'BEGIN';
+  editor.setSelectionRange(5, 5);
+  pressKey('Enter');
+  if (editor.value !== 'BEGIN\n    ') {
+    throw new Error(`Enter after BEGIN should indent the new line. Editor: ${JSON.stringify(editor.value)}`);
+  }
+  pressKey('Escape');
+  if (pressKey('Tab').defaultPrevented) {
+    throw new Error('Escape then Tab should let focus move out of the editor.');
+  }
+  if (!pressKey('Tab').defaultPrevented) {
+    throw new Error('Tab should indent again once focus stays in the editor.');
+  }
   editor.value = '';
   editor.dispatchEvent(new sqlWindow.Event('input', { bubbles: true }));
 }
@@ -3101,7 +3222,7 @@ if (!sqlWindow.document.getElementById('savedConnections').textContent.includes(
 if (!sqlWindow.document.querySelector('[data-procedure="dbo.usp_ProcessAlert"]')) {
   throw new Error('Procedure catalog was not restored automatically on the procedure page.');
 }
-if (sqlWindow.document.querySelectorAll('#themeList .theme-chip').length !== 10) {
+if (sqlWindow.document.querySelectorAll('#themeList .theme-chip').length !== 11) {
   throw new Error('Theme chips did not render after switching to the procedure page.');
 }
 if (sqlWindow.document.getElementById('advancedOperationsContent').classList.contains('hidden')) {
@@ -3152,7 +3273,7 @@ const procedureWindow = await createWindow(
     }));
   }
 );
-if (procedureWindow.document.querySelectorAll('#themeList .theme-chip').length !== 10) {
+if (procedureWindow.document.querySelectorAll('#themeList .theme-chip').length !== 11) {
   throw new Error('Theme chips did not render on the procedure page.');
 }
 ['saveConnectionBtn', 'testConnectionBtn', 'loadTablesBtn', 'runProcedureBtn', 'clearHistoryBtn', 'confirmModalBtn'].forEach((id) => {
@@ -3233,6 +3354,21 @@ if (!procedureWindow.document.getElementById('procedureScriptEditor').value.incl
 }
 if (!procedureWindow.document.getElementById('procedureScriptEditorBackdrop').innerHTML.includes('sql-keyword')) {
   throw new Error('Procedure script editor did not render SQL syntax highlighting.');
+}
+{
+  const scriptEditor = procedureWindow.document.getElementById('procedureScriptEditor');
+  const before = scriptEditor.value;
+  scriptEditor.setSelectionRange(0, 0);
+  const tabEvent = new procedureWindow.KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true });
+  scriptEditor.dispatchEvent(tabEvent);
+  if (!tabEvent.defaultPrevented || scriptEditor.value !== `    ${before}`) {
+    throw new Error('Tab should indent in the procedure script editor too.');
+  }
+  scriptEditor.setSelectionRange(0, 0);
+  scriptEditor.dispatchEvent(new procedureWindow.KeyboardEvent('keydown', { key: 'Tab', shiftKey: true, bubbles: true, cancelable: true }));
+  if (scriptEditor.value !== before) {
+    throw new Error('Shift+Tab should outdent in the procedure script editor.');
+  }
 }
 if (!procedureWindow.document.getElementById('activeTarget').textContent.includes('dbo.usp_ProcessAlert')) {
   throw new Error('Procedure script loading should keep the active procedure on the Procedure Runner page.');

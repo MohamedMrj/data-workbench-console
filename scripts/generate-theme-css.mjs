@@ -476,6 +476,46 @@ T.space = {
 }`
 };
 
+// The official Dracula palette (draculatheme.com) in dark mode and its official light variant,
+// Alucard, in light mode, including Dracula's own syntax colours in the SQL editors.
+T.dracula = {
+  title: 'Dracula — the classic dark editor palette: purple, pink and cyan on deep grey; Alucard\'s warm parchment in light mode.',
+  structure: { '--theme-ambient': '0.4', '--surface-blur': '10px', '--orb-opacity': '0.22', '--radius-xl': '18px', '--radius-lg': '13px', '--radius-md': '9px', '--font-heading': "'Space Grotesk', 'Sora', sans-serif", '--heading-tracking': '-0.005em' },
+  dark: {
+    '--bg': '#1e1f29', '--bg-soft': '#282a36', '--surface': 'rgba(40, 42, 54, 0.88)', '--surface-strong': '#282a36', '--surface-soft': '#343746', '--surface-raised': 'rgba(52, 55, 70, 0.97)',
+    '--line': 'rgba(98, 114, 164, 0.3)', '--line-strong': 'rgba(98, 114, 164, 0.55)', '--text': '#f8f8f2', '--muted': '#a7aed0',
+    '--accent': '#bd93f9', '--accent-2': '#ff79c6', '--accent-soft': 'rgba(189, 147, 249, 0.18)', '--success': '#50fa7b', '--warning': '#ffb86c', '--danger': '#ff5555',
+    '--on-accent': '#21222c', '--panel-glow': '0 22px 54px rgba(10, 10, 16, 0.5), inset 0 1px 0 rgba(248, 248, 242, 0.05)', '--shadow': '0 18px 44px rgba(8, 8, 14, 0.55)',
+    '--tint-explorer': '#8be9fd', '--tint-builder': '#bd93f9', '--tint-results': '#50fa7b', '--tint-activity': '#ff79c6',
+    '--sql-keyword': '#ff79c6', '--sql-string': '#f1fa8c', '--sql-number': '#bd93f9', '--sql-function': '#50fa7b', '--sql-comment': '#6272a4',
+    '--sql-variable': '#ffb86c', '--sql-type': '#8be9fd', '--sql-identifier': '#f8f8f2', '--sql-operator': '#ff79c6',
+    '--page-background': 'radial-gradient(circle at 84% 12%, rgba(189, 147, 249, 0.16), transparent 36%), radial-gradient(circle at 10% 90%, rgba(255, 121, 198, 0.1), transparent 38%), linear-gradient(180deg, #1e1f29 0%, #282a36 100%)'
+  },
+  light: {
+    '--bg': '#f5efd9', '--bg-soft': '#fffbeb', '--surface': 'rgba(255, 251, 235, 0.86)', '--surface-strong': '#fffdf4', '--surface-soft': '#f1ead2', '--surface-raised': 'rgba(255, 253, 244, 0.97)',
+    '--line': 'rgba(108, 102, 75, 0.2)', '--line-strong': 'rgba(108, 102, 75, 0.36)', '--text': '#1f1f1f', '--muted': '#635d44',
+    '--accent': '#644ac9', '--accent-2': '#a3144d', '--accent-soft': 'rgba(100, 74, 201, 0.12)', '--success': '#14710a', '--warning': '#a34d14', '--danger': '#cb3a2a',
+    '--panel-glow': '0 20px 46px rgba(108, 102, 75, 0.14), inset 0 1px 0 rgba(255, 255, 255, 0.7)', '--shadow': '0 14px 36px rgba(80, 72, 40, 0.14)',
+    '--tint-explorer': '#036a96', '--tint-builder': '#644ac9', '--tint-results': '#14710a', '--tint-activity': '#a3144d',
+    '--sql-keyword': '#a3144d', '--sql-string': '#846e15', '--sql-number': '#644ac9', '--sql-function': '#14710a', '--sql-comment': '#6c664b',
+    '--sql-variable': '#a34d14', '--sql-type': '#036a96', '--sql-identifier': '#1f1f1f', '--sql-operator': '#a3144d',
+    '--page-background': 'radial-gradient(circle at 84% 12%, rgba(100, 74, 201, 0.1), transparent 36%), radial-gradient(circle at 10% 90%, rgba(163, 20, 77, 0.07), transparent 38%), linear-gradient(180deg, #f5efd9 0%, #fffbeb 100%)'
+  },
+  scenery: {},
+  extra: `/* Dracula: the editor theme's purple selection and focus, a soft violet glow on what is active. */
+:root[data-theme='dracula'] ::selection {
+  background: color-mix(in srgb, var(--accent) 34%, transparent);
+}
+
+:root[data-theme='dracula'] :is(.segment-btn.active, .theme-chip.active, .table-item.active, .procedure-item.active, .column-pill.active, .result-tab.active) {
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 45%, transparent), 0 0 14px color-mix(in srgb, var(--accent) 22%, transparent);
+}
+
+:root[data-theme='dracula'] :is(.primary-btn, .secondary-btn, .ghost-btn, .segment-btn, .icon-btn, .save-conn-btn):focus-visible {
+  box-shadow: 0 0 0 3px var(--input-focus-ring), 0 0 18px color-mix(in srgb, var(--accent-2) 35%, transparent);
+}`
+};
+
 // ── emit ─────────────────────────────────────────────────────────────────────────
 const block = (selector, tokens) => `${selector} {\n${Object.entries(tokens).map(([k, v]) => `  ${k}: ${v};`).join('\n')}\n}\n`;
 let out = `${marker} ═══════════════════════════════════════════════════════════════════════

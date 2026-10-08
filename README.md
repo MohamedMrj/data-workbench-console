@@ -6,7 +6,7 @@ Production-safe internal SQL workbench for Microsoft Fabric SQL endpoints, Fabri
 
 Data Workbench Console is built for controlled operational work: browse metadata, generate SQL, run read queries, preview writes before execution, run stored procedures from a dedicated flow, and keep an audit trail of important actions.
 
-Current app version: `1.8.0`. See [CHANGELOG.md](CHANGELOG.md) for release notes.
+Current app version: `1.9.0`. See [CHANGELOG.md](CHANGELOG.md) for release notes.
 
 <p>
   <img alt="Next.js" src="https://img.shields.io/badge/Next.js-15-111827?style=for-the-badge&logo=nextdotjs" />
@@ -753,7 +753,21 @@ The editor supports:
 - manual SQL editing
 - generated SQL editing
 - generated object definition editing
-- format SQL
+- format SQL: keywords and built-in functions in capitals, one column per line, each clause on
+  its own line, `AND`/`OR` and `JOIN … ON` indented, CTEs, subqueries, `CASE`, `BEGIN … END`,
+  `IF/ELSE`, `MERGE` and `CREATE PROCEDURE` laid out. Table, column and alias names keep exactly
+  the case you wrote (a case-sensitive database would otherwise see a different name), and
+  strings and comments are never touched. Before applying anything the formatter re-reads the
+  result and checks it is the same SQL with only spacing and keyword case changed; if not, the
+  editor is left as it was. With text selected only the selection is formatted, and one `Ctrl+Z`
+  undoes a format
+- `Tab` indents (to the next 4-space stop, or every selected line), `Shift+Tab` outdents, and
+  `Enter` keeps the line's indentation (one level more after `BEGIN` or `(`). `Esc` then `Tab`
+  moves focus out of the editor. The same keys work in the procedure script editor and the
+  pop-out
+- syntax colours for keywords, functions, data types, strings, numbers, `@variables`, quoted
+  names, operators and comments; an `UPDATE`/`DELETE` without a `WHERE` and any `DROP` or
+  `TRUNCATE` get a wavy underline
 - copy SQL
 - clear SQL
 - execute query
@@ -779,9 +793,11 @@ The editor supports:
 - resizing: drag the editor's bottom edge for height; when the Query Builder and the editor sit
   side by side, drag the editor's left edge to make it wider or narrower (remembered; double-click
   the edge to go back to the default split)
-- `Pop out`: opens the editor in its own window, linked live both ways. Typing there updates the
-  editor here, `Ctrl+Enter` / `Ctrl+Shift+Enter` there run here with the same rules, and results
-  show in the main window
+- `Pop out`: opens the editor in its own window, linked live both ways. It is the same editor:
+  the same theme and syntax colours (following any change made in the main window), editor tabs,
+  autocomplete, Format, Copy, Clear, text size, Tab indenting and shortcuts. `Ctrl+Enter` /
+  `Ctrl+Shift+Enter` there run here with the same rules; results, previews and confirmations show
+  in the main window, and its status line repeats the main one
 - each result tab remembers the SQL that produced it; clicking an older result tab shows that SQL
   in the editor (switching to the editor tab that holds it, or opening a new one). Nothing runs
 - live line and character counts
@@ -802,10 +818,14 @@ Keyboard shortcuts (press `?` in the app for the full list):
   Run the whole editor
 
 - `Ctrl+Space`
-  Show table and column suggestions; `Tab` or `Enter` accepts, `Esc` dismisses
+  Show table and column suggestions; `Tab` or `Enter` accepts, `Esc` dismisses. Each suggestion
+  shows its full name (the table detail beside it gives way first), and hovering shows everything
+
+- `Tab` / `Shift+Tab`
+  Indent / outdent the line or the selected lines. `Esc` then `Tab` leaves the editor
 
 - `Ctrl+Shift+F` or `Cmd+Shift+F`
-  Format SQL
+  Format the selection, or all SQL (`Ctrl+Z` undoes it)
 
 - `Ctrl+Alt+N`, `Ctrl+Alt+W`, `Ctrl+Alt+PageDown` / `PageUp`
   New, close, next and previous editor tab
@@ -998,6 +1018,7 @@ with a palette for dark mode and one for light mode.
 | Cottagecore | warm paper, stitched panels, uneven hand-cut corners, serif headings | a painted cottage with chimney smoke on soft hills, a fence with a robin, swaying wildflowers, a rose vine with a lantern; moon, stars and fireflies at night |
 | Garden | botanical greens with earth accents, leaf-cut buttons; deep teal forest and soft lime in dark mode | a painted flowering tree rooted bottom right whose canopy branches and blossom twigs move in the wind, with a rare falling leaf and fireflies at night |
 | Space | deep floating panels with luminous selection (a pale celestial sky in light mode) | a drifting star field, a painted ringed planet close by, a slowly turning spiral galaxy, a nebula and a rare shooting star |
+| Dracula | the official Dracula palette (purple, pink, cyan and green on deep grey) with Dracula's own syntax colours in the SQL editors; Alucard's warm parchment in light mode | a crescent moon over a castle on a distant hill with one lit window, faint twinkling stars, a few bats crossing the sky very slowly and low mist |
 
 The scenes sit behind the panels and towards the screen edges, and never take a click. They move
 only while ambient motion is on (`APP_AMBIENT_MOTION_ENABLED`) and the operating system or browser
