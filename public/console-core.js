@@ -2625,7 +2625,8 @@ window.createConsoleApp = function createConsoleApp() {
       visualObject: String(snapshot.visualObject || ''),
       elapsedMs: Number.isFinite(Number(snapshot.elapsedMs)) && snapshot.elapsedMs !== null ? Number(snapshot.elapsedMs) : null,
       sourceQuery: String(snapshot.sourceQuery || ''),
-      ranQuery: String(snapshot.ranQuery || '')
+      ranQuery: String(snapshot.ranQuery || ''),
+      rowsDropped: Boolean(snapshot.rowsDropped)
     };
   }
 
@@ -2639,7 +2640,88 @@ window.createConsoleApp = function createConsoleApp() {
   }
 
   function writeWorkspaceState(nextState) {
-    safeSessionSet(WORKSPACE_STATE_KEY, JSON.stringify(nextState || {}));
+    return trySessionSet(WORKSPACE_STATE_KEY, JSON.stringify(nextState || {}));
+  }
+
+  // Result rows are kept apart from the rest of the workspace, one key per workspace, and are
+  // rewritten only when they changed. They used to sit inside the workspace snapshot, so every
+  // keystroke re-serialised and rewrote all result tabs (about 30 ms with five full tabs), and
+  // once the rows passed session storage's ~5 MB limit the write failed and nothing was saved,
+  // editor text included.
+  const WORKSPACE_RESULTS_KEY = 'dataWorkbenchWorkspaceResultsV1';
+  const persistedResultsText = {};
+
+  function trySessionSet(key, value) {
+    try {
+      sessionStorage.setItem(key, value);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  function workspaceResultsKey(key) {
+    return `${WORKSPACE_RESULTS_KEY}:${key}`;
+  }
+
+  function readWorkspaceResults(key) {
+    try {
+      const parsed = JSON.parse(safeSessionGet(workspaceResultsKey(key)) || 'null');
+      return parsed && typeof parsed === 'object' ? parsed : null;
+    } catch {
+      return null;
+    }
+  }
+
+  function clearWorkspaceResults() {
+    ['sql', 'procedure'].forEach((key) => {
+      try {
+        sessionStorage.removeItem(workspaceResultsKey(key));
+      } catch {
+        // Storage unavailable: nothing to clear.
+      }
+      delete persistedResultsText[key];
+    });
+  }
+
+  // When the rows do not fit, the oldest tabs give up their rows first and the visible result
+  // last; a tab without rows comes back with its columns and a note to run it again.
+  function writeWorkspaceResults(key, entry) {
+    const text = JSON.stringify(entry);
+    if (persistedResultsText[key] === text) return;
+    const storageKey = workspaceResultsKey(key);
+    if (trySessionSet(storageKey, text)) {
+      persistedResultsText[key] = text;
+      return;
+    }
+    const trimmed = { ...entry, resultTabs: entry.resultTabs.map((tab) => ({ ...tab })) };
+    const dropRows = (results) => (results.rows.length ? { ...results, rows: [], rowsDropped: true } : results);
+    const order = trimmed.resultTabs
+      .map((tab, index) => index)
+      .filter((index) => trimmed.resultTabs[index].id !== trimmed.activeResultTabId)
+      .reverse();
+    const activeIndex = trimmed.resultTabs.findIndex((tab) => tab.id === trimmed.activeResultTabId);
+    if (activeIndex !== -1) order.push(activeIndex);
+    for (const index of order) {
+      trimmed.resultTabs[index].results = dropRows(trimmed.resultTabs[index].results);
+      if (index === activeIndex) trimmed.results = dropRows(trimmed.results);
+      if (trySessionSet(storageKey, JSON.stringify(trimmed))) {
+        persistedResultsText[key] = text;
+        return;
+      }
+    }
+    trimmed.results = dropRows(trimmed.results);
+    if (trySessionSet(storageKey, JSON.stringify(trimmed))) {
+      persistedResultsText[key] = text;
+      return;
+    }
+    // Not even the columns fit: an older, larger copy must not come back in its place.
+    try {
+      sessionStorage.removeItem(storageKey);
+    } catch {
+      // Storage unavailable.
+    }
+    persistedResultsText[key] = text;
   }
 
   function currentBuilderSnapshot() {
@@ -2675,6 +2757,15 @@ window.createConsoleApp = function createConsoleApp() {
     syncActiveResultsToTab();
     const allState = readWorkspaceState();
     const key = workspace === 'procedure' ? 'procedure' : 'sql';
+    // Snapshots from before the split carried their results inline: move them out once.
+    Object.entries(allState).forEach(([entryKey, entry]) => {
+      if (!entry || typeof entry !== 'object' || !('resultTabs' in entry || 'results' in entry)) return;
+      if (entryKey !== key && !readWorkspaceResults(entryKey)) {
+        writeWorkspaceResults(entryKey, { results: entry.results, resultTabs: Array.isArray(entry.resultTabs) ? entry.resultTabs : [], activeResultTabId: entry.activeResultTabId || '' });
+      }
+      delete entry.results;
+      delete entry.resultTabs;
+    });
     const snapshot = {
       connectionSignature: connectionSignature(),
       activeObject: state.activeObject || '',
@@ -2682,14 +2773,6 @@ window.createConsoleApp = function createConsoleApp() {
       procedureValues: { ...(state.procedureValues || {}) },
       procedureParameters: Array.isArray(state.procedureParameters) ? state.procedureParameters : [],
       historyFilter: state.historyFilter || '',
-      results: normalizeResultsSnapshot(state.results),
-      resultTabs: state.resultTabs
-        .filter((tab) => tab.workspace === key)
-        .slice(0, RESULT_TABS_MAX)
-        .map((tab) => ({
-          ...tab,
-          results: normalizeResultsSnapshot(tab.results)
-        })),
       activeResultTabId: state.activeResultTabId || '',
       scrollY: Number(window.scrollY || 0),
       resultsScrollLeft: Number($('resultsPanel')?.scrollLeft || 0),
@@ -2700,9 +2783,27 @@ window.createConsoleApp = function createConsoleApp() {
       snapshot.builder = currentBuilderSnapshot();
     }
     allState[key] = snapshot;
-    writeWorkspaceState(allState);
+    // The SQL you typed comes first: results can be run again, so they make room for it.
+    if (!writeWorkspaceState(allState)) {
+      clearWorkspaceResults();
+      writeWorkspaceState(allState);
+    }
+    writeWorkspaceResults(key, {
+      results: normalizeResultsSnapshot(state.results),
+      resultTabs: state.resultTabs
+        .filter((tab) => tab.workspace === key)
+        .slice(0, RESULT_TABS_MAX)
+        .map((tab) => ({
+          ...tab,
+          results: normalizeResultsSnapshot(tab.results)
+        })),
+      activeResultTabId: state.activeResultTabId || ''
+    });
     rememberProfileWorkspace();
   }
+
+  // Typing saves once the keys pause, not on every key; leaving the page saves at once.
+  const scheduleEditorPersist = debounce(() => persistWorkspaceState('sql'), 250);
 
   function readProfileWorkspaces() {
     try {
@@ -2769,10 +2870,12 @@ window.createConsoleApp = function createConsoleApp() {
   function restoreWorkspaceState(workspace = state.workspace) {
     const allState = readWorkspaceState();
     const key = workspace === 'procedure' ? 'procedure' : 'sql';
-    const snapshot = allState[key];
-    if (!snapshot || snapshot.connectionSignature !== connectionSignature()) {
+    const saved = allState[key];
+    if (!saved || saved.connectionSignature !== connectionSignature()) {
       return false;
     }
+    const stored = readWorkspaceResults(key);
+    const snapshot = stored ? { ...saved, results: stored.results, resultTabs: stored.resultTabs } : saved;
 
     if (key === 'sql') {
       applyBuilderSnapshot(snapshot.builder || {});
@@ -6500,7 +6603,7 @@ window.createConsoleApp = function createConsoleApp() {
       syncActiveEditorTab();
       syncEditorBackdrop();
       updateEditorStats();
-      persistWorkspaceState('sql');
+      scheduleEditorPersist();
     };
     // Ctrl+Enter there runs exactly what it would run here: the selection made there, or the
     // statement under that cursor, with the same batch-scope checks.
@@ -8927,18 +9030,22 @@ window.createConsoleApp = function createConsoleApp() {
       if (!Number.isNaN(parsedDate) && /[-/:T]/.test(text)) return { type: 'date', value: parsedDate };
       return { type: 'string', value: text.toLowerCase() };
     };
-    rows.sort((left, right) => {
-      const a = normalize(left?.[column]);
-      const b = normalize(right?.[column]);
-      if (a.type !== b.type) {
-        const order = ['empty', 'number', 'date', 'string'];
-        return (order.indexOf(a.type) - order.indexOf(b.type)) * (state.results.sortDirection === 'asc' ? 1 : -1);
-      }
-      if (a.value < b.value) return state.results.sortDirection === 'asc' ? -1 : 1;
-      if (a.value > b.value) return state.results.sortDirection === 'asc' ? 1 : -1;
-      return 0;
-    });
-    return rows;
+    // Each row's key is worked out once, not on every comparison: the number and date checks
+    // dominated sorting large results. Array sort is stable, so the order is unchanged.
+    const order = ['empty', 'number', 'date', 'string'];
+    const direction = state.results.sortDirection === 'asc' ? 1 : -1;
+    return rows
+      .map((row) => {
+        const key = normalize(row?.[column]);
+        return { row, rank: order.indexOf(key.type), value: key.value };
+      })
+      .sort((a, b) => {
+        if (a.rank !== b.rank) return (a.rank - b.rank) * direction;
+        if (a.value < b.value) return -direction;
+        if (a.value > b.value) return direction;
+        return 0;
+      })
+      .map((entry) => entry.row);
   }
 
   function resultCellKey(rowIndex, column) {
@@ -9367,6 +9474,19 @@ window.createConsoleApp = function createConsoleApp() {
     if (!state.results.columns.length && !state.results.rowsAffected && !Object.keys(state.results.output || {}).length && state.results.returnValue == null) {
       panel.innerHTML = '<div class="empty-state">Run a query or procedure to see results.</div>';
       $('resultsMeta').textContent = 'No results yet.';
+      if (resultsCard) {
+        resultsCard.dataset.resultsState = resultsState;
+      }
+      updateResultScrollControls();
+      applyPanelLayout();
+      return;
+    }
+
+    if (!rows.length && state.results.rowsDropped) {
+      resultsState = 'summary';
+      const message = 'These rows were too large to keep while the page changed. Run the query again to see them.';
+      panel.innerHTML = `<div class="empty-state">${esc(message)}</div>`;
+      $('resultsMeta').textContent = message;
       if (resultsCard) {
         resultsCard.dataset.resultsState = resultsState;
       }
@@ -12081,7 +12201,7 @@ window.createConsoleApp = function createConsoleApp() {
       editor.oninput = () => {
         updateEditorStats();
         syncEditorBackdrop();
-        persistWorkspaceState('sql');
+        scheduleEditorPersist();
         if (!state.suggestSuppressed) updateSuggestions();
       };
       editor.onkeydown = (event) => handleEditorKeydown(event);

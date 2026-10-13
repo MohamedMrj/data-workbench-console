@@ -697,6 +697,19 @@ function attachMocks(window) {
           elapsedMs: 3
         }), { status: 200, headers: { 'Content-Type': 'application/json' } });
       }
+      // About 6 million characters of rows: more than session storage holds.
+      if (queryText.includes('LARGE_RESULT_TEST')) {
+        const columns = Array.from({ length: 10 }, (_, index) => `Wide${index}`);
+        return new Response(JSON.stringify({
+          success: true,
+          mode: 'read',
+          columns,
+          rows: Array.from({ length: 1500 }, (_, row) => Object.fromEntries(columns.map((column) => [column, `${'x'.repeat(390)}${row}`]))),
+          totalRows: 1500,
+          rowsAffected: 0,
+          elapsedMs: 4
+        }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
       if (queryText.includes('TRUNCATED_TEST')) {
         return new Response(JSON.stringify({
           success: true,
@@ -2182,6 +2195,10 @@ if (!sqlWindow.document.querySelector('.visual-helper-card')?.textContent.includ
   if (JSON.stringify(selectedIds) !== '["3"]') {
     throw new Error(`Selection should follow the row through a re-sort. Selected AlertIds: ${selectedIds}`);
   }
+  const sortedIds = rows().map((tr) => tr.querySelector('td:last-child').previousElementSibling.textContent.trim());
+  if (JSON.stringify(sortedIds) !== '["5","4","3","2","1"]') {
+    throw new Error(`Sorting twice should order the rows descending. Order: ${sortedIds}`);
+  }
   {
     // Selected rows: write a query for just these rows, and compare two side by side.
     clickRow(1);
@@ -3261,6 +3278,63 @@ if (sqlWindow.document.querySelector('.app-shell').style.getPropertyValue('--res
     throw new Error(`Switching between SQL Studio and Procedure Runner should keep the chosen theme, not re-apply the default profile. Got: ${switchedWindow.document.documentElement.getAttribute('data-theme')}`);
   }
   switchedWindow.close();
+}
+
+{
+  // Results too large for session storage (~5M characters) used to stop the whole workspace
+  // being saved, editor text included. Now the SQL is always saved, and a result whose rows did
+  // not fit comes back as its columns with a note to run it again.
+  const largeEditor = sqlWindow.document.getElementById('queryEditor');
+  largeEditor.value = 'SELECT * FROM dbo.Alerts /* LARGE_RESULT_TEST */';
+  largeEditor.dispatchEvent(new sqlWindow.Event('input', { bubbles: true }));
+  sqlWindow.document.getElementById('runAllQueryBtn').click();
+  await flush();
+  await flush();
+  if (!sqlWindow.document.getElementById('resultsMeta').textContent.includes('of 1500')) {
+    throw new Error('The large result should show in full while the page is open.');
+  }
+  largeEditor.value = 'SELECT 1 AS typed_after_large_results';
+  largeEditor.dispatchEvent(new sqlWindow.Event('input', { bubbles: true }));
+  await new Promise((resolve) => setTimeout(resolve, 320));
+  const savedWorkspace = JSON.parse(sqlWindow.sessionStorage.getItem('dataWorkbenchWorkspaceStateV1') || '{}');
+  const savedTabs = savedWorkspace.sql?.builder?.editorTabs || [];
+  if (!savedTabs.some((tab) => tab.query === 'SELECT 1 AS typed_after_large_results') && savedWorkspace.sql?.builder?.query !== 'SELECT 1 AS typed_after_large_results') {
+    throw new Error('The editor text must be saved even when the results do not fit in session storage.');
+  }
+  if ('results' in (savedWorkspace.sql || {})) {
+    throw new Error('Result rows should no longer be stored inside the workspace snapshot.');
+  }
+  const savedResults = JSON.parse(sqlWindow.sessionStorage.getItem('dataWorkbenchWorkspaceResultsV1:sql') || 'null');
+  if (!savedResults?.results?.columns?.includes('Wide0') || savedResults.results.rows.length !== 0 || !savedResults.results.rowsDropped) {
+    throw new Error(`A result too large to keep should be saved as its columns, marked as dropped. Saved: ${JSON.stringify(savedResults?.results?.columns)} rows=${savedResults?.results?.rows?.length}`);
+  }
+
+  const storedSession = {};
+  for (let index = 0; index < sqlWindow.sessionStorage.length; index += 1) {
+    const key = sqlWindow.sessionStorage.key(index);
+    storedSession[key] = sqlWindow.sessionStorage.getItem(key);
+  }
+  const storedLocal = {};
+  for (let index = 0; index < sqlWindow.localStorage.length; index += 1) {
+    const key = sqlWindow.localStorage.key(index);
+    storedLocal[key] = sqlWindow.localStorage.getItem(key);
+  }
+  const restoredWindow = await createWindow('http://127.0.0.1:3100/', [], { width: 1680, height: 980 }, (window) => {
+    Object.entries(storedLocal).forEach(([key, value]) => window.localStorage.setItem(key, value));
+    Object.entries(storedSession).forEach(([key, value]) => window.sessionStorage.setItem(key, value));
+  });
+  await flush();
+  await flush();
+  const restoredDoc = restoredWindow.document;
+  if (restoredDoc.getElementById('queryEditor').value !== 'SELECT 1 AS typed_after_large_results') {
+    throw new Error(`The editor text should come back after the page changes. Editor: ${restoredDoc.getElementById('queryEditor').value}`);
+  }
+  if (!restoredDoc.getElementById('resultsPanel').textContent.includes('Run the query again')) {
+    throw new Error(`A result whose rows could not be kept should say so. Panel: ${restoredDoc.getElementById('resultsPanel').textContent}`);
+  }
+  restoredWindow.close();
+  // Leave later checks a clean slate: these results are far bigger than anything else here.
+  sqlWindow.sessionStorage.removeItem('dataWorkbenchWorkspaceResultsV1:sql');
 }
 const procedureWindow = await createWindow(
   'http://127.0.0.1:3100/procedures',

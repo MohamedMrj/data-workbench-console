@@ -799,7 +799,8 @@ and nothing is lost on upgrade.
 | localStorage | `dataWorkbenchScratchpadsImportedV1` | `1` once the scratchpads above were imported |
 | sessionStorage | `dataWorkbenchActiveConnectionV1` | connection form **without password** |
 | sessionStorage | `dataWorkbenchCatalogStateV1` | catalog + active selections, fingerprint-gated |
-| sessionStorage | `dataWorkbenchWorkspaceStateV1` | per-mode snapshot: editor text, caret, scroll, editor tabs, filters, sort, result tabs, pagination |
+| sessionStorage | `dataWorkbenchWorkspaceStateV1` | per-mode snapshot: editor text, caret, scroll, editor tabs, filters, active result tab. Written first; while typing, once the keys pause (250 ms) |
+| sessionStorage | `dataWorkbenchWorkspaceResultsV1:sql` / `:procedure` | the mode's results and result tabs with their rows, sort and pagination; rewritten only when they change. Over the ~5 MB storage limit, the oldest tabs then the visible result keep only their columns (`rowsDropped`, shown as "run again"); if even the snapshot above cannot be written, results are cleared to make room for it |
 | sessionStorage | `dataWorkbenchLifecycleSessionV1` | heartbeat session id |
 | sessionStorage | `dataWorkbenchDefaultAppearanceAppliedV1` | `1` once the default appearance profile was applied in this app session, so switching modes does not apply it again |
 | memory only | `window.__dataWorkbenchSessionPassword` | password for the tab's lifetime |

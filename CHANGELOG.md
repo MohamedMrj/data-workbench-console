@@ -5,6 +5,40 @@ All notable Data Workbench Console changes are tracked here.
 The in-app version is read from `package.json` and exposed through `/api/version`
 together with the current git commit and build information.
 
+## 1.9.1 - 2026-10-13
+
+Typing stays smooth with large results open, and the SQL you type is always kept when you
+switch between SQL Studio and Procedure Runner.
+
+### Fixed
+
+- **SQL could stop being saved when results were large.** The workspace snapshot that carries
+  your editor text across a page change also carried every result tab's rows, in session
+  storage, which holds about 5 MB. Once the rows passed that (wide or long text columns, or a
+  raised row limit), the browser refused the write, the error was swallowed, and nothing more
+  was saved: switching pages or reloading brought back older SQL. Results now live under their
+  own key; the editor snapshot is always written first, and if even that is refused the saved
+  results are cleared to make room for it. Results that do not fit are trimmed from the oldest
+  tab, and a result whose rows could not be kept comes back as its columns with a note to run
+  it again.
+
+### Changed
+
+- **Faster typing with results open**: each keystroke re-serialised and rewrote all result rows
+  (about 30 ms per key with five full tabs, measured in Chromium). The editor now saves once
+  you pause typing (250 ms) and results only when they change; leaving the page still saves at
+  once.
+- **Faster sorting of large results**: each row's sort key is worked out once instead of on
+  every comparison, with the identical order (5,000 text rows: 41 ms to 5 ms).
+
+### Verification
+
+- UI smoke: a result of about 6 million characters no longer stops the editor text being saved,
+  is stored as columns marked as dropped, and a restored page shows the SQL and the run-again
+  note (this check fails on 1.9.0); sorting a column twice gives descending order.
+- The old and new sort gave the identical order on 4,000 random mixed-type sorts (numbers,
+  numeric text, dates, nulls, ties, mixed case) in both directions.
+
 ## 1.9.0 - 2026-10-08
 
 A SQL formatter that lays out real T-SQL cleanly and proves it changed nothing else, Tab
