@@ -7,7 +7,23 @@ together with the current git commit and build information.
 
 ## Unreleased
 
-A rejected result-grid save keeps what you typed, and Edit results no longer goes missing.
+A rejected result-grid save keeps what you typed, Edit results no longer goes missing, and a
+new Lakehouse table can be made visible on demand.
+
+### Added
+
+- **Sync Lakehouse.** A table created in a Lakehouse by Spark, a notebook or a pipeline only
+  reaches its SQL analytics endpoint once Fabric syncs the endpoint's metadata, which can take
+  minutes, and until then it is missing from the catalog however often it is reloaded. For a
+  Lakehouse connection the Object Explorer now has a Sync Lakehouse button: it asks Fabric to
+  sync now through the Fabric REST API, as the configured service principal, waits for the sync
+  (up to three minutes), then refreshes the object list and reports what synced and what
+  failed. It changes no data and is audited as `lakehouse_sync`. It needs the service principal
+  to be a Contributor on the workspace and Fabric to allow service principals to use its APIs;
+  without either, the error says so.
+- **Refresh in the Object Explorer.** Reloading the catalog used to need Load catalog, in the
+  connection panel, which is usually folded away. Refresh reloads it in place and keeps the
+  selected object when it still exists.
 
 ### Fixed
 
@@ -35,6 +51,16 @@ A rejected result-grid save keeps what you typed, and Edit results no longer goe
 
 ### Verification
 
+- `server-unit.test.mjs`: the SQL endpoint is found across paged workspaces by host and
+  Lakehouse name (skipping an unreadable workspace and a same-named Lakehouse on another host),
+  then reused; a 200 and a polled 202 sync both report per-table results; a sync still running
+  past the wait limit is reported as pending; a failed operation, a missing Lakehouse and a 403
+  each give a clear error; the token is never sent to a non-Fabric operation URL.
+- `route-contract.test.mjs`: `/api/lakehouse-sync` refuses a missing connection and any source
+  other than a Lakehouse before calling Fabric.
+- `ui-smoke.mjs`: Sync Lakehouse shows only for Lakehouse connections, reloads the catalog with
+  the synced table, keeps the selected object and reports the result; a refused sync explains
+  the missing permission; Refresh loads the catalog from the Object Explorer.
 - `ui-smoke.mjs`: a save rejected at the preview, a cancelled confirmation and a save rejected
   at execution each keep the staged new row, its value, the grid and edit mode; returning to an
   editable result tab shows Edit results again.

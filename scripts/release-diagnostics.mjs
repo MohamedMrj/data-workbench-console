@@ -94,6 +94,7 @@ const routeFiles = [
   'app/api/audit/route.js',
   'app/api/object-definition/route.js',
   'app/api/object-insights/route.js',
+  'app/api/lakehouse-sync/route.js',
   'app/api/query-plan/route.js',
   'app/api/schema-compare/route.js',
   'app/api/saved-connections/route.js',

@@ -629,6 +629,10 @@ export default function WorkbenchShell({ pageMode = 'sql' }) {
                       : 'Browse tables and views available on the current connection.'}
                   </p>
                 </div>
+                <div className="button-row wrap right">
+                  <button id="refreshCatalogBtn" className="ghost-btn small" type="button">Refresh</button>
+                  <button id="syncLakehouseBtn" className="ghost-btn small hidden" type="button">Sync Lakehouse</button>
+                </div>
               </div>
 
               <div id="explorerSummary" className="summary-text">Load a catalog to browse available objects and procedures.</div>

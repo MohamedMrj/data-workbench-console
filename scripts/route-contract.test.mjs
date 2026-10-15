@@ -151,6 +151,20 @@ try {
   assert.deepEqual(Object.keys(tablesMissingConnection.payload).sort(), ['code', 'error', 'success']);
   assert.equal(tablesMissingConnection.payload.code, null);
 
+  // Lakehouse metadata sync calls the Fabric API, so it is refused before any network call
+  // for anything that is not a Lakehouse SQL endpoint.
+  const syncMissingConnection = await request('/api/lakehouse-sync', { method: 'POST', body: {} });
+  assert.equal(syncMissingConnection.response.status, 400);
+  assert.match(syncMissingConnection.payload.error, /Server and database/);
+  const syncWrongSource = await request('/api/lakehouse-sync', { method: 'POST', body: safeSqlLogin });
+  assert.equal(syncWrongSource.response.status, 400);
+  assert.match(syncWrongSource.payload.error, /only available for a Fabric Lakehouse/);
+  const syncWarehouse = await request('/api/lakehouse-sync', {
+    method: 'POST',
+    body: { sourceType: 'fabric-sql', authMode: 'servicePrincipal', server: 'demo', database: 'warehouse_db' }
+  });
+  assert.equal(syncWarehouse.response.status, 400);
+
   const columnsMissingObject = await request('/api/columns', {
     method: 'POST',
     body: safeSqlLogin

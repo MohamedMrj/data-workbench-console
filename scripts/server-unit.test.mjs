@@ -965,6 +965,140 @@ assert.equal(streamed.headers.get('x-content-type-options'), 'nosniff');
 assert.equal(streamed.headers.get('cache-control'), 'no-store');
 assert.equal(await streamed.text(), 'a,b\r\n1,2\r\n');
 
+// Lakehouse SQL endpoint metadata sync, against a scripted Fabric API.
+{
+  const { createLakehouseMetadataSync } = await import('../lib/server/fabric-metadata-sync.js');
+  const fabric = 'https://api.fabric.microsoft.com/v1';
+  const host = 'abc-def.datawarehouse.fabric.microsoft.com';
+  const json = (body, status = 200, headers = {}) => new Response(body === null ? null : JSON.stringify(body), { status, headers });
+  const lakehouse = (name, endpointId, connectionString = host) => ({
+    id: `lh-${name}`,
+    displayName: name,
+    properties: { sqlEndpointProperties: { id: endpointId, connectionString } }
+  });
+  function scripted(routes) {
+    const calls = [];
+    const fetchImpl = async (url, init) => {
+      calls.push({ url, method: init.method, authorization: init.headers.Authorization });
+      const handler = routes[`${init.method} ${url}`];
+      if (!handler) throw new Error(`Unexpected Fabric call: ${init.method} ${url}`);
+      // Cloned so a route can answer more than once; the original body is never read.
+      return typeof handler === 'function' ? handler(calls) : handler.clone();
+    };
+    return { calls, fetchImpl };
+  }
+  const connection = { server: `${host},1433`, database: 'Sales_Lakehouse' };
+  const synced = { value: [
+    { tableName: 'NewTable', status: 'Success', lastSuccessfulSyncDateTime: '2026-10-15T10:00:00Z' },
+    { tableName: 'Broken', status: 'Failure', error: { errorCode: 'DeltaTableNotFound', message: 'Delta table not found.' } },
+    { tableName: 'Old', status: 'NotRun' }
+  ] };
+
+  // The endpoint is found across paged workspaces by host and Lakehouse name, ignoring a
+  // same-named Lakehouse on another host and a workspace the principal cannot read.
+  {
+    const { calls, fetchImpl } = scripted({
+      [`GET ${fabric}/workspaces`]: json({ value: [{ id: 'ws-denied' }, { id: 'ws-other' }], continuationUri: `${fabric}/workspaces?continuationToken=2` }),
+      [`GET ${fabric}/workspaces?continuationToken=2`]: json({ value: [{ id: 'ws-1', displayName: 'Data' }] }),
+      [`GET ${fabric}/workspaces/ws-denied/lakehouses`]: json({ errorCode: 'InsufficientPrivileges', message: 'No access.' }, 403),
+      [`GET ${fabric}/workspaces/ws-other/lakehouses`]: json({ value: [lakehouse('Sales_Lakehouse', 'ep-wrong', 'other.datawarehouse.fabric.microsoft.com')] }),
+      [`GET ${fabric}/workspaces/ws-1/lakehouses`]: json({ value: [lakehouse('Other', 'ep-0'), lakehouse('sales_lakehouse', 'ep-1')] }),
+      [`POST ${fabric}/workspaces/ws-1/sqlEndpoints/ep-1/refreshMetadata`]: json(synced)
+    });
+    const sync = createLakehouseMetadataSync({ fetchImpl, getToken: async () => 'token-1', sleep: async () => {} });
+    const result = await sync.syncLakehouseMetadata(connection);
+    assert.equal(result.workspaceId, 'ws-1');
+    assert.equal(result.sqlEndpointId, 'ep-1');
+    assert.equal(result.pending, false);
+    assert.deepEqual([result.succeeded, result.failed, result.notRun], [1, 1, 1]);
+    assert.equal(result.tables[1].error, 'Delta table not found.');
+    assert.ok(calls.every((call) => call.authorization === 'Bearer token-1'));
+    // A second sync reuses the resolved endpoint instead of walking the workspaces again.
+    const before = calls.length;
+    await sync.syncLakehouseMetadata(connection);
+    assert.equal(calls.length, before + 1);
+  }
+
+  // 202: the operation is polled until it succeeds, then its result is read.
+  {
+    const operation = 'https://api.fabric.microsoft.com/v1/operations/op-1';
+    let polls = 0;
+    const { fetchImpl } = scripted({
+      [`GET ${fabric}/workspaces`]: json({ value: [{ id: 'ws-1' }] }),
+      [`GET ${fabric}/workspaces/ws-1/lakehouses`]: json({ value: [lakehouse('Sales_Lakehouse', 'ep-1')] }),
+      [`POST ${fabric}/workspaces/ws-1/sqlEndpoints/ep-1/refreshMetadata`]: json(null, 202, { Location: operation, 'Retry-After': '2' }),
+      [`GET ${operation}`]: () => {
+        polls += 1;
+        return polls < 2 ? json({ status: 'Running' }, 200, { 'Retry-After': '1' }) : json({ status: 'Succeeded' });
+      },
+      [`GET ${operation}/result`]: json(synced)
+    });
+    const sleeps = [];
+    const sync = createLakehouseMetadataSync({ fetchImpl, getToken: async () => 't', sleep: async (ms) => { sleeps.push(ms); } });
+    const result = await sync.syncLakehouseMetadata(connection);
+    assert.equal(result.pending, false);
+    assert.equal(result.succeeded, 1);
+    assert.deepEqual(sleeps, [2000, 1000]);
+  }
+
+  // A sync still running past the wait limit is reported as pending, not as a failure.
+  {
+    let clock = 0;
+    const operation = 'https://api.fabric.microsoft.com/v1/operations/op-2';
+    const { fetchImpl } = scripted({
+      [`GET ${fabric}/workspaces`]: json({ value: [{ id: 'ws-1' }] }),
+      [`GET ${fabric}/workspaces/ws-1/lakehouses`]: json({ value: [lakehouse('Sales_Lakehouse', 'ep-1')] }),
+      [`POST ${fabric}/workspaces/ws-1/sqlEndpoints/ep-1/refreshMetadata`]: json(null, 202, { Location: operation, 'Retry-After': '10' }),
+      [`GET ${operation}`]: json({ status: 'Running' }, 200, { 'Retry-After': '10' })
+    });
+    const sync = createLakehouseMetadataSync({ fetchImpl, getToken: async () => 't', sleep: async (ms) => { clock += ms; }, now: () => clock, waitLimitMs: 25_000 });
+    const result = await sync.syncLakehouseMetadata(connection);
+    assert.equal(result.pending, true);
+    assert.equal(result.tables.length, 0);
+  }
+
+  // The token is never sent to a host other than the Fabric API.
+  {
+    const { calls, fetchImpl } = scripted({
+      [`GET ${fabric}/workspaces`]: json({ value: [{ id: 'ws-1' }] }),
+      [`GET ${fabric}/workspaces/ws-1/lakehouses`]: json({ value: [lakehouse('Sales_Lakehouse', 'ep-1')] }),
+      [`POST ${fabric}/workspaces/ws-1/sqlEndpoints/ep-1/refreshMetadata`]: json(null, 202, { Location: 'https://attacker.example/op' })
+    });
+    const sync = createLakehouseMetadataSync({ fetchImpl, getToken: async () => 't', sleep: async () => {} });
+    await assert.rejects(sync.syncLakehouseMetadata(connection), /outside api\.fabric\.microsoft\.com/);
+    assert.ok(calls.every((call) => call.url.startsWith('https://api.fabric.microsoft.com/')));
+  }
+
+  // A failed operation, a missing Lakehouse and a permission error each surface a clear message.
+  {
+    const operation = 'https://api.fabric.microsoft.com/v1/operations/op-3';
+    const { fetchImpl } = scripted({
+      [`GET ${fabric}/workspaces`]: json({ value: [{ id: 'ws-1' }] }),
+      [`GET ${fabric}/workspaces/ws-1/lakehouses`]: json({ value: [lakehouse('Sales_Lakehouse', 'ep-1')] }),
+      [`POST ${fabric}/workspaces/ws-1/sqlEndpoints/ep-1/refreshMetadata`]: json(null, 202, { Location: operation }),
+      [`GET ${operation}`]: json({ status: 'Failed', error: { message: 'Endpoint unavailable' } })
+    });
+    const sync = createLakehouseMetadataSync({ fetchImpl, getToken: async () => 't', sleep: async () => {} });
+    await assert.rejects(sync.syncLakehouseMetadata(connection), /Endpoint unavailable/);
+    await assert.rejects(
+      sync.syncLakehouseMetadata({ server: host, database: 'Missing' }),
+      (error) => error.httpStatus === 404 && /No Lakehouse named "Missing"/.test(error.message)
+    );
+  }
+  {
+    const { fetchImpl } = scripted({
+      [`GET ${fabric}/workspaces`]: json({ value: [{ id: 'ws-1' }] }),
+      [`GET ${fabric}/workspaces/ws-1/lakehouses`]: json({ value: [lakehouse('Sales_Lakehouse', 'ep-1')] }),
+      [`POST ${fabric}/workspaces/ws-1/sqlEndpoints/ep-1/refreshMetadata`]: json({ errorCode: 'InsufficientPrivileges', message: 'Caller lacks permission.' }, 403)
+    });
+    const sync = createLakehouseMetadataSync({ fetchImpl, getToken: async () => 't', sleep: async () => {} });
+    await assert.rejects(
+      sync.syncLakehouseMetadata(connection),
+      (error) => error.httpStatus === 403 && /Contributor role/.test(error.message) && /InsufficientPrivileges/.test(error.message)
+    );
+  }
+}
+
 await fs.rm(tempRoot, { recursive: true, force: true });
 console.log('Server unit tests passed.');
 process.exit(0);

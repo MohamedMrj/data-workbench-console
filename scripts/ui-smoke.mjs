@@ -48,6 +48,8 @@ async function assertBuildIsFresh() {
 
 function attachMocks(window) {
   let envSettingsSynced = false;
+  // Flipped by a successful Lakehouse sync, after which a Lakehouse catalog shows the new table.
+  let lakehouseSynced = false;
   window.fetch = async (url, options = {}) => {
     const body = options.body ? JSON.parse(options.body) : {};
 
@@ -92,12 +94,40 @@ function attachMocks(window) {
       });
     }
 
+    if (String(url).includes('/api/lakehouse-sync')) {
+      if (body.database === 'sync_denied') {
+        return new Response(JSON.stringify({
+          success: false,
+          error: 'Fabric API 403 InsufficientPrivileges: Caller lacks permission. The service principal needs the Contributor role on the workspace.'
+        }), { status: 403, headers: { 'Content-Type': 'application/json' } });
+      }
+      lakehouseSynced = true;
+      return new Response(JSON.stringify({
+        success: true,
+        workspaceId: 'ws-1',
+        lakehouseName: body.database,
+        sqlEndpointId: 'ep-1',
+        pending: false,
+        tables: [
+          { tableName: 'NewLakeTable', status: 'Success', error: '' },
+          { tableName: 'Alerts', status: 'NotRun', error: '' }
+        ],
+        succeeded: 1,
+        failed: 0,
+        notRun: 1
+      }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    }
+
     if (String(url).includes('/api/tables')) {
+      const syncedLakehouseTables = lakehouseSynced && body.sourceType === 'fabric-lakehouse'
+        ? [{ schema: 'dbo', name: 'NewLakeTable', table: 'NewLakeTable', fullName: 'dbo.NewLakeTable', objectType: 'table' }]
+        : [];
       return new Response(JSON.stringify({
         success: true,
         objects: [
           { schema: 'dbo', name: 'Alerts', table: 'Alerts', fullName: 'dbo.Alerts', objectType: 'table' },
-          { schema: 'dbo', name: 'AlertView', table: 'AlertView', fullName: 'dbo.AlertView', objectType: 'view' }
+          { schema: 'dbo', name: 'AlertView', table: 'AlertView', fullName: 'dbo.AlertView', objectType: 'view' },
+          ...syncedLakehouseTables
         ]
       }), {
         status: 200,
@@ -4006,6 +4036,53 @@ if (autoHideWindow.localStorage.getItem('dataWorkbenchSidePanelVisibilityV1')) {
   await flush();
   if (editorWindow.document.getElementById('toggleEditResultsBtn').classList.contains('hidden')) {
     throw new Error('Switching back to an editable result tab should bring Edit results back.');
+  }
+}
+
+// Object Explorer Refresh and Lakehouse metadata sync. Isolated in its own window because a
+// sync changes what this window's mocked Lakehouse catalog returns.
+{
+  const syncWindow = await createWindow('http://127.0.0.1:3100/');
+  const doc = syncWindow.document;
+  const setField = (id, value, eventName = 'input') => {
+    doc.getElementById(id).value = value;
+    doc.getElementById(id).dispatchEvent(new syncWindow.Event(eventName, { bubbles: true }));
+  };
+  setField('serverInput', 'abc.datawarehouse.fabric.microsoft.com');
+  setField('databaseInput', 'Sales_Lakehouse');
+  if (doc.getElementById('syncLakehouseBtn').classList.contains('hidden') === false) {
+    throw new Error('Sync Lakehouse should stay hidden for a Fabric SQL endpoint connection.');
+  }
+  setField('sourceTypeSelect', 'fabric-lakehouse', 'change');
+  if (doc.getElementById('syncLakehouseBtn').classList.contains('hidden')) {
+    throw new Error('Sync Lakehouse should appear once the source is a Fabric Lakehouse SQL endpoint.');
+  }
+
+  doc.getElementById('refreshCatalogBtn').click();
+  await waitForCondition(() => doc.querySelector('[data-object="dbo.Alerts"]'), 'Refresh should load the catalog from the Object Explorer.');
+  doc.querySelector('[data-object="dbo.Alerts"]').click();
+  await waitForCondition(() => doc.querySelector('.table-item.active[data-object="dbo.Alerts"]'), 'Selecting an object should mark it active.');
+  if (doc.querySelector('[data-object="dbo.NewLakeTable"]')) {
+    throw new Error('The new Lakehouse table should not be visible before the endpoint is synced.');
+  }
+
+  doc.getElementById('syncLakehouseBtn').click();
+  await waitForCondition(() => doc.querySelector('[data-object="dbo.NewLakeTable"]'), 'Syncing the Lakehouse should reload the catalog with the newly synced table.');
+  await waitForCondition(() => doc.getElementById('statusText').textContent.includes('Synced 1 table in Sales_Lakehouse'), `Sync should report what it synced. Got: ${doc.getElementById('statusText').textContent}`);
+  if (!doc.querySelector('.table-item.active[data-object="dbo.Alerts"]')) {
+    throw new Error('Refreshing after a sync should keep the object that was selected.');
+  }
+  if (doc.getElementById('syncLakehouseBtn').disabled || doc.getElementById('syncLakehouseBtn').textContent !== 'Sync Lakehouse') {
+    throw new Error('Sync Lakehouse should be usable again once the sync finishes.');
+  }
+
+  setField('databaseInput', 'sync_denied');
+  doc.getElementById('syncLakehouseBtn').click();
+  await waitForCondition(() => doc.getElementById('statusText').textContent.includes('Lakehouse sync failed') && doc.getElementById('statusText').textContent.includes('Contributor'), `A refused sync should explain the missing permission. Got: ${doc.getElementById('statusText').textContent}`);
+
+  setField('sourceTypeSelect', 'fabric-sql', 'change');
+  if (!doc.getElementById('syncLakehouseBtn').classList.contains('hidden')) {
+    throw new Error('Sync Lakehouse should hide again when the source is no longer a Lakehouse.');
   }
 }
 

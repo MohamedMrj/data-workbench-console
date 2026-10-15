@@ -248,6 +248,7 @@ caught centrally and mapped through `error.httpStatus` (default 500).
 | `/api/procedures` | GET POST | `getProcedures` / `postProcedures` | POST dispatches on presence of `procedure` or `confirmToken` |
 | `/api/procedure-parameters` | GET POST | `getProcedureParameters` | |
 | `/api/object-insights` | POST | `postObjectInsight` | `profile` \| `dependencies` \| `rowcount` \| `topvalues` \| `resultshape` \| `editability` \| `relationships` (catalog-wide foreign keys, no object needed; empty with `supported: false` on Fabric) |
+| `/api/lakehouse-sync` | POST | `postLakehouseSync` | Lakehouse only. Calls the Fabric REST API (`fabric-metadata-sync.js`) as the service principal: resolves workspace + SQL endpoint, runs `refreshMetadata`, polls the operation up to 3 min; the bearer token is only ever sent to `api.fabric.microsoft.com` |
 | `/api/object-definition` | POST | `postObjectDefinition` | CREATE/ALTER scripting |
 | `/api/schema-compare` | POST | `postSchemaCompare` | Takes two full connection payloads; the client sends a saved profile as the right side; optional `includeRowCounts` |
 | `/api/query-plan` | POST | `postQueryPlan` | Read queries only; blocked for Lakehouse |

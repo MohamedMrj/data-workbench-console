@@ -98,6 +98,8 @@ window.createConsoleApp = function createConsoleApp() {
     trustServerCertificateInput: 'Allow SQL Server connections that rely on a trusted local or server certificate setup.',
     testConnectionBtn: 'Verify the server, database, authentication method, and credentials before loading metadata.',
     loadTablesBtn: 'Load tables, views, and stored procedures from the current source catalog.',
+    refreshCatalogBtn: 'Read the table, view and procedure list from the database again, keeping the selected object if it still exists.',
+    syncLakehouseBtn: 'Ask Fabric to sync this Lakehouse SQL endpoint now, so tables just created by Spark, notebooks or pipelines appear without waiting, then refresh the list. Needs the service principal to be a Contributor on the workspace.',
     profileNameInput: 'Give this connection profile a friendly local name before saving it.',
     saveConnectionBtn: 'Save this connection profile locally without saving passwords or secrets.',
     tableSearchInput: 'Filter loaded tables and views by schema, object name, and loaded column names.',
@@ -343,6 +345,7 @@ window.createConsoleApp = function createConsoleApp() {
     versionInfo: null,
     envSettings: null,
     updateInProgress: false,
+    lakehouseSyncInFlight: false,
     currentTheme: 'glass',
     themeTone: '',
     editorTextSize: 0.95,
@@ -1966,6 +1969,7 @@ window.createConsoleApp = function createConsoleApp() {
   function renderConnectionSummary() {
     // Every connection-field change funnels through here, so the hero source line stays in step even when the connection panel is hidden.
     renderActiveSource();
+    $('syncLakehouseBtn')?.classList.toggle('hidden', connection().sourceType !== 'fabric-lakehouse');
     const panel = $('connectionSummary');
     if (!panel) {
       return;
@@ -8452,6 +8456,61 @@ window.createConsoleApp = function createConsoleApp() {
     setStatus('success', `Loaded ${state.objects.length} objects${state.procedureNote ? '' : ` and ${state.procedures.length} procedures`}.`);
   }
 
+  // Load catalog lives in the connection panel, which is often folded away; this re-reads the
+  // same catalog from the Object Explorer and puts the operator back on the object they had.
+  async function refreshCatalog() {
+    const previousObject = state.activeObject;
+    await loadCatalog();
+    const stillThere = previousObject && state.objects.find((item) => item.fullName === previousObject);
+    if (stillThere) {
+      await selectObject(stillThere.fullName, stillThere.objectType);
+    }
+  }
+
+  async function syncLakehouse() {
+    if (state.lakehouseSyncInFlight || !ensureReadyConnection('syncing the Lakehouse')) {
+      return;
+    }
+    const button = $('syncLakehouseBtn');
+    state.lakehouseSyncInFlight = true;
+    if (button) {
+      button.disabled = true;
+      button.textContent = 'Syncing...';
+    }
+    setStatus('loading', 'Asking Fabric to sync the Lakehouse SQL endpoint. This can take a minute...');
+    try {
+      let payload;
+      try {
+        payload = await api('/api/lakehouse-sync', { method: 'POST', data: requestConnection() });
+      } catch (error) {
+        setStatus('error', `Lakehouse sync failed: ${error.message}`);
+        return;
+      }
+      try {
+        await refreshCatalog();
+      } catch (error) {
+        setStatus('error', `The Lakehouse synced, but the object list could not be reloaded: ${error.message}`);
+        return;
+      }
+      if (payload.pending) {
+        setStatus('neutral', 'Fabric is still syncing the SQL endpoint. The list was refreshed; press Refresh again in a minute to pick up the rest.');
+        return;
+      }
+      const failures = (payload.tables || []).filter((table) => table.status === 'Failure');
+      const failedNames = failures.slice(0, 3).map((table) => `${table.tableName} (${table.error || 'failed'})`).join(', ');
+      setStatus(
+        failures.length ? 'error' : 'success',
+        `Synced ${payload.succeeded} table${payload.succeeded === 1 ? '' : 's'} in ${payload.lakehouseName || 'the Lakehouse'}${payload.notRun ? `, ${payload.notRun} skipped by Fabric` : ''}${failures.length ? `. ${failures.length} failed: ${failedNames}${failures.length > 3 ? '…' : ''}` : ''}. Loaded ${state.objects.length} objects.`
+      );
+    } finally {
+      state.lakehouseSyncInFlight = false;
+      if (button) {
+        button.disabled = false;
+        button.textContent = 'Sync Lakehouse';
+      }
+    }
+  }
+
   async function loadObjectDefinitionToEditor(objectName, objectType, scriptMode = 'alter') {
     if (!ensureReadyConnection('loading the object script')) {
       return;
@@ -11885,6 +11944,15 @@ window.createConsoleApp = function createConsoleApp() {
       title: 'Catalog load failed',
       operation: 'catalog'
     }));
+    if ($('refreshCatalogBtn')) {
+      $('refreshCatalogBtn').onclick = () => refreshCatalog().catch((error) => renderResultError(error, {
+        title: 'Catalog refresh failed',
+        operation: 'catalog'
+      }));
+    }
+    if ($('syncLakehouseBtn')) {
+      $('syncLakehouseBtn').onclick = () => syncLakehouse();
+    }
     $('clearHistoryBtn').onclick = clearCurrentHistory;
     if ($('loadAuditBtn')) {
       $('loadAuditBtn').onclick = openAuditFilters;

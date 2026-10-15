@@ -655,6 +655,17 @@ These actions load results into the results grid without changing saved SQL hist
 Source compatibility behavior:
 
 - Lakehouse or Fabric endpoints can expose a smaller metadata surface than SQL Server.
+- A Lakehouse table created by Spark, a notebook or a pipeline only reaches the SQL endpoint
+  after Fabric syncs its metadata, which can take minutes. `Sync Lakehouse` in the Object
+  Explorer header (Lakehouse connections only) asks Fabric to sync now through the Fabric REST
+  API (`refreshMetadata`), waits up to three minutes, then refreshes the object list. It changes
+  no data and is recorded in the audit log as `lakehouse_sync`. The app finds the endpoint by
+  listing the workspaces the service principal can see and matching the Lakehouse by SQL
+  connection string and name. Requirements: the service principal has the **Contributor** role
+  on the Lakehouse's workspace, and the Fabric tenant setting *Service principals can use Fabric
+  APIs* is enabled for it.
+- `Refresh` in the Object Explorer header re-reads the catalog for any source (the same as
+  `Load catalog`) and keeps the selected object when it still exists.
 - `Row count` uses metadata when available and falls back to exact `COUNT_BIG(*)` when metadata row-count DMVs are unavailable.
 - `Dependency view` returns a clear warning and an empty graph when dependency catalog metadata is unavailable.
 - `Schema compare` falls back to column-only `INFORMATION_SCHEMA` comparison when rich table metadata is unavailable.
