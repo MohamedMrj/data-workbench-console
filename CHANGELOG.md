@@ -55,7 +55,9 @@ new Lakehouse table can be made visible on demand.
   Lakehouse name (skipping an unreadable workspace and a same-named Lakehouse on another host),
   then reused; a 200 and a polled 202 sync both report per-table results; a sync still running
   past the wait limit is reported as pending; a failed operation, a missing Lakehouse and a 403
-  each give a clear error; the token is never sent to a non-Fabric operation URL.
+  each give a clear error; Fabric's real 202 (a regional `analysis.windows.net` Location plus
+  an operation id) is polled through `api.fabric.microsoft.com`; the token is never sent to a
+  host outside Fabric's and Power BI's own.
 - `route-contract.test.mjs`: `/api/lakehouse-sync` refuses a missing connection and any source
   other than a Lakehouse before calling Fabric.
 - `ui-smoke.mjs`: Sync Lakehouse shows only for Lakehouse connections, reloads the catalog with

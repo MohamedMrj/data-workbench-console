@@ -1057,15 +1057,46 @@ assert.equal(await streamed.text(), 'a,b\r\n1,2\r\n');
     assert.equal(result.tables.length, 0);
   }
 
-  // The token is never sent to a host other than the Fabric API.
+  // What Fabric really sends: a Location on a regional analysis.windows.net host plus an
+  // x-ms-operation-id. The documented api.fabric.microsoft.com operation URLs are used instead.
   {
+    const regional = 'https://wabi-north-europe-redirect.analysis.windows.net/v1/operations/op-9';
     const { calls, fetchImpl } = scripted({
       [`GET ${fabric}/workspaces`]: json({ value: [{ id: 'ws-1' }] }),
       [`GET ${fabric}/workspaces/ws-1/lakehouses`]: json({ value: [lakehouse('Sales_Lakehouse', 'ep-1')] }),
-      [`POST ${fabric}/workspaces/ws-1/sqlEndpoints/ep-1/refreshMetadata`]: json(null, 202, { Location: 'https://attacker.example/op' })
+      [`POST ${fabric}/workspaces/ws-1/sqlEndpoints/ep-1/refreshMetadata`]: json(null, 202, { Location: regional, 'x-ms-operation-id': 'op-9', 'Retry-After': '1' }),
+      [`GET ${fabric}/operations/op-9`]: json({ status: 'Succeeded' }, 200, { Location: `${regional}/result` }),
+      [`GET ${fabric}/operations/op-9/result`]: json(synced)
     });
     const sync = createLakehouseMetadataSync({ fetchImpl, getToken: async () => 't', sleep: async () => {} });
-    await assert.rejects(sync.syncLakehouseMetadata(connection), /outside api\.fabric\.microsoft\.com/);
+    const result = await sync.syncLakehouseMetadata(connection);
+    assert.equal(result.succeeded, 1);
+    assert.ok(calls.every((call) => call.url.startsWith('https://api.fabric.microsoft.com/')));
+  }
+
+  // Without an operation id, a regional Location is followed as sent.
+  {
+    const regional = 'https://wabi-north-europe-redirect.analysis.windows.net/v1/operations/op-10';
+    const { fetchImpl } = scripted({
+      [`GET ${fabric}/workspaces`]: json({ value: [{ id: 'ws-1' }] }),
+      [`GET ${fabric}/workspaces/ws-1/lakehouses`]: json({ value: [lakehouse('Sales_Lakehouse', 'ep-1')] }),
+      [`POST ${fabric}/workspaces/ws-1/sqlEndpoints/ep-1/refreshMetadata`]: json(null, 202, { Location: regional }),
+      [`GET ${regional}`]: json({ status: 'Succeeded' }, 200, { Location: `${regional}/result` }),
+      [`GET ${regional}/result`]: json(synced)
+    });
+    const sync = createLakehouseMetadataSync({ fetchImpl, getToken: async () => 't', sleep: async () => {} });
+    assert.equal((await sync.syncLakehouseMetadata(connection)).succeeded, 1);
+  }
+
+  // The token is never sent to a host outside Microsoft's Fabric and Power BI services.
+  for (const foreign of ['https://attacker.example/op', 'http://wabi-x.analysis.windows.net/op', 'https://analysis.windows.net.attacker.example/op']) {
+    const { calls, fetchImpl } = scripted({
+      [`GET ${fabric}/workspaces`]: json({ value: [{ id: 'ws-1' }] }),
+      [`GET ${fabric}/workspaces/ws-1/lakehouses`]: json({ value: [lakehouse('Sales_Lakehouse', 'ep-1')] }),
+      [`POST ${fabric}/workspaces/ws-1/sqlEndpoints/ep-1/refreshMetadata`]: json(null, 202, { Location: foreign })
+    });
+    const sync = createLakehouseMetadataSync({ fetchImpl, getToken: async () => 't', sleep: async () => {} });
+    await assert.rejects(sync.syncLakehouseMetadata(connection), /unexpected host/);
     assert.ok(calls.every((call) => call.url.startsWith('https://api.fabric.microsoft.com/')));
   }
 
