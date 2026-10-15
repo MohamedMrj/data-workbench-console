@@ -25,11 +25,22 @@ A rejected result-grid save keeps what you typed, and Edit results no longer goe
   save above also left you on an empty, non-editable tab. Restored results now check again,
   and the result reloaded after a save keeps its query so it can be checked as well.
 
+### Changed
+
+- **The Query Builder's Columns list uses the whole card.** With the builder and SQL editor side
+  by side, the builder card stretches to the editor's height, but the Columns list stopped at a
+  fixed cap (at most 44% of the window height) and left an empty gap below it, most visibly
+  with Advanced Operations hidden. It now fills the space the Operation panel leaves, and a
+  long column list scrolls inside it without making the page taller.
+
 ### Verification
 
 - `ui-smoke.mjs`: a save rejected at the preview, a cancelled confirmation and a save rejected
   at execution each keep the staged new row, its value, the grid and edit mode; returning to an
   editable result tab shows Edit results again.
+- `responsive-audit.mjs`: at 2400 px with the builder and editor side by side, the Columns panel
+  reaches the bottom of the builder card, the card is no taller than the editor, and 60 columns
+  scroll inside the panel.
 
 ## 1.9.1 - 2026-10-13
 

@@ -841,6 +841,47 @@ try {
     }
     await page.close();
   }
+
+  // Side by side, the Columns panel fills the builder card down to the editor's height instead
+  // of stopping at a fixed cap, and a long column list scrolls inside it without growing the row.
+  {
+    const page = await browser.newPage({ viewport: { width: 2400, height: 1000 } });
+    await page.addInitScript(() => {
+      localStorage.clear();
+      sessionStorage.clear();
+    });
+    await attachApiMocks(page);
+    await page.route('**/api/columns', (route) => route.fulfill({
+      json: {
+        success: true,
+        columns: Array.from({ length: 60 }, (_, index) => ({ name: `Column${index}`, type: 'varchar', nullable: false }))
+      }
+    }));
+    await page.goto(`${baseUrl}/`, { waitUntil: 'networkidle' });
+    await page.fill('#serverInput', 'demo');
+    await page.fill('#databaseInput', 'meta_store');
+    await page.click('#loadTablesBtn');
+    await page.waitForTimeout(250);
+    await page.click('[data-object]');
+    await page.waitForTimeout(250);
+    await page.locator('#toggleControlRailBtn').click();
+    await page.waitForTimeout(250);
+    const fill = await page.evaluate(() => {
+      const rect = (selector) => document.querySelector(selector).getBoundingClientRect();
+      const list = document.querySelector('#columnsPanel');
+      return {
+        studioMode: document.querySelector('.app-shell').dataset.studioMode,
+        builder: Math.round(rect('.builder-card').height),
+        editor: Math.round(rect('.editor-card').height),
+        gap: Math.round(rect('.builder-card').bottom - rect('.builder-panel-columns').bottom),
+        scrolls: list.scrollHeight > list.clientHeight + 1
+      };
+    });
+    if (fill.studioMode !== 'wide' || fill.gap > 24 || fill.builder > fill.editor + 2 || !fill.scrolls) {
+      throw new Error(`The Columns panel should fill the side-by-side builder card and scroll a long list inside it. ${JSON.stringify(fill)}`);
+    }
+    await page.close();
+  }
 } finally {
   await browser.close();
   serverProcess?.kill();

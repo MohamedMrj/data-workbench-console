@@ -860,6 +860,26 @@ html[data-ambient-motion='enabled'] .shell-orbit-b {
   align-self: stretch;
 }
 
+/* The builder card is stretched to the editor's height, so the Columns panel takes whatever
+   the Operation panel leaves instead of stopping at a fixed cap above an empty gap. The pill
+   list is size-contained so a table with hundreds of columns scrolls inside the panel rather
+   than growing the card, and with it the whole studio row. */
+.app-shell[data-studio-mode="wide"] .builder-primary-grid {
+  flex: 1 1 auto;
+  min-height: 0;
+  grid-template-rows: auto 1fr;
+}
+
+.app-shell[data-studio-mode="wide"] .builder-panel-columns {
+  align-self: stretch;
+  max-height: none;
+}
+
+.app-shell[data-studio-mode="wide"] .builder-panel-columns .columns-panel {
+  flex: 1 1 auto;
+  contain: size;
+}
+
 /* Same fill-the-stretched-row treatment on the Procedure Runner page.
    The procedure-studio-grid holds the procedure workspace and results
    card side-by-side; when the workspace-grid row is stretched, this
