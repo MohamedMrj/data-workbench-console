@@ -529,6 +529,7 @@ window.createConsoleApp = function createConsoleApp() {
     state.results = normalizeResultsSnapshot(tab.results);
     renderResultTabs();
     renderResults();
+    recheckRestoredResultEditability();
     persistWorkspaceState(state.workspace);
   }
 
@@ -576,6 +577,7 @@ window.createConsoleApp = function createConsoleApp() {
     }
     renderResultTabs();
     renderResults();
+    recheckRestoredResultEditability();
     persistWorkspaceState(state.workspace);
   }
 
@@ -2939,6 +2941,7 @@ window.createConsoleApp = function createConsoleApp() {
     renderHistoryPanel();
     renderResultTabs();
     renderResults();
+    recheckRestoredResultEditability();
     window.setTimeout(() => {
       try {
         if (!/jsdom/i.test(String(window.navigator?.userAgent || ''))) {
@@ -10163,6 +10166,18 @@ window.createConsoleApp = function createConsoleApp() {
     renderEditResultsButton();
   }
 
+  // Editability is never kept in a tab snapshot (see defaultResultsState), so a
+  // result brought back by switching or closing a tab, or by a session restore,
+  // must ask again; otherwise its Edit results button silently disappears.
+  function recheckRestoredResultEditability() {
+    renderEditResultsButton();
+    renderPendingEditsBar();
+    const query = state.results.sourceQuery;
+    if (query && state.results.visualKind === 'query' && (state.results.rows || []).length) {
+      checkResultEditability(query);
+    }
+  }
+
   function clearPendingResultChanges() {
     state.results.pendingEdits = {};
     state.results.deletedRowKeys = {};
@@ -10239,6 +10254,7 @@ window.createConsoleApp = function createConsoleApp() {
       setResults(payload.columns || [], payload.rows || [], {
         totalRows: Number(payload.totalRows ?? (payload.rows || []).length),
         truncated: Boolean(payload.truncated),
+        sourceQuery: query,
         visualKind: 'query',
         tabTitle: objectName ? `Query ${objectName}` : 'Query result',
         tabKey: ''
@@ -10258,7 +10274,29 @@ window.createConsoleApp = function createConsoleApp() {
     }
   }
 
+  function reportResultEditSaveFailure(error) {
+    const reason = error?.message || 'The database rejected the change.';
+    setStatus('error', `Save failed: ${reason} Your changes are still here: correct them and save again.`);
+    showToast(`Save failed: ${reason} Your changes are still here.`, 'error', 10000);
+  }
+
+  // The grid now stays live during the preview round trip, so a second click on
+  // Save would otherwise request a second preview and open a second dialog.
+  let resultEditSaveInFlight = false;
+
   async function saveResultEdits() {
+    if (resultEditSaveInFlight) {
+      return;
+    }
+    resultEditSaveInFlight = true;
+    try {
+      await prepareResultEditSave();
+    } finally {
+      resultEditSaveInFlight = false;
+    }
+  }
+
+  async function prepareResultEditSave() {
     const info = state.results.editableInfo;
     if (!info) {
       setStatus('error', 'No unsaved changes to save.');
@@ -10354,20 +10392,19 @@ window.createConsoleApp = function createConsoleApp() {
       summary.insertCount && `${summary.insertCount} new`
     ].filter(Boolean).join(', ');
 
+    // The grid and its staged edits stay untouched until the save has actually
+    // executed. The preview is where a bad value usually fails (NOT NULL,
+    // duplicate key, conversion), and the grid used to be wiped before it, so
+    // one wrong field meant retyping a whole new row; replacing the grid also
+    // dropped its editability, which hid Edit results.
     setStatus('loading', `Preparing to save ${changeLabel}...`);
-    resetResultsForRun(`Preparing to save ${changeLabel}...`);
 
     try {
       const payload = await api('/api/query', { method: 'POST', data: requestConnection({ query: combinedQuery }) });
       if (!payload.requiresConfirmation) {
-        renderResultError(new Error('Unexpected response from server.'), { title: 'Save failed', operation: 'query', query: combinedQuery });
+        reportResultEditSaveFailure(new Error('Unexpected response from server.'));
         return;
       }
-      setResults([], [], {
-        rowsAffected: Number(payload.rowsAffected || 0),
-        tabTitle: `Save ${changeLabel} to ${info.object}`,
-        tabKey: ''
-      });
       setStatus('success', payload.message);
       openConfirm({
         type: 'resultEdit',
@@ -10395,7 +10432,7 @@ window.createConsoleApp = function createConsoleApp() {
         changeCount: summary.total
       });
     } catch (error) {
-      renderResultError(error, { title: 'Save failed', operation: 'query', query: combinedQuery });
+      reportResultEditSaveFailure(error);
     }
   }
 
@@ -11679,8 +11716,7 @@ window.createConsoleApp = function createConsoleApp() {
         // pending edits this catch block is telling the user are still pending.
         // The results grid and its pendingEdits/deletedRowKeys/insertedRows are
         // left exactly as the user had them so they can retry or discard.
-        setStatus('error', error?.message ? `Save failed: ${error.message}` : 'Save failed.');
-        showToast('Save failed. Your edits are still pending.', 'error');
+        reportResultEditSaveFailure(error);
         return;
       }
       renderResultError(error, {

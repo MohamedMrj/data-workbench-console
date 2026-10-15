@@ -998,6 +998,9 @@ Saving:
 - on success the grid re-runs the original query and reloads in place, still in edit mode,
   so you see your saved data rather than a generic write-result screen
 - a small toast notification confirms the save and its row count, then disappears on its own
+- if the database rejects the save (at the preview or at execution), or you cancel the
+  confirmation, the grid and every staged change, new rows included, stay as they were, with
+  the database error in the status bar; correct the value and save again
   after five seconds
 
 ### Themes

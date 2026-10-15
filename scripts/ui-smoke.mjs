@@ -820,6 +820,47 @@ function attachMocks(window) {
           headers: { 'Content-Type': 'application/json' }
         });
       }
+      // A results-grid save the database rejects, first at the preview and then
+      // at execution, so the editor can be checked to keep the staged row both times.
+      if (queryText.includes('INSERT_FAIL_TEST') && !body.confirmToken) {
+        return new Response(JSON.stringify({
+          success: false,
+          error: "Violation of PRIMARY KEY constraint 'PK_Alerts'. Cannot insert duplicate key in object 'dbo.Alerts'."
+        }), {
+          status: 400,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
+      if (queryText.includes('EXEC_FAIL_TEST') && !body.confirmToken) {
+        return new Response(JSON.stringify({
+          success: true,
+          mode: 'write-preview',
+          requiresConfirmation: true,
+          confirmationToken: 'query-exec-fail-token',
+          rowsAffected: 1,
+          action: 'INSERT',
+          statementCount: 1,
+          actions: ['INSERT'],
+          highRiskActions: [],
+          expectedText: '',
+          heightened: false,
+          reviewRequired: true,
+          warnings: [],
+          message: 'INSERT preview complete. Review it, then click Continue to execute.'
+        }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
+      if (body.confirmToken === 'query-exec-fail-token') {
+        return new Response(JSON.stringify({
+          success: false,
+          error: "Cannot insert the value NULL into column 'CreatedAt', table 'dbo.Alerts'."
+        }), {
+          status: 400,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
       const statementCount = queryText.split(';').map((part) => part.trim()).filter(Boolean).length;
       if (statementCount > 1 && !body.confirmToken) {
         return new Response(JSON.stringify({
@@ -3894,6 +3935,77 @@ if (autoHideWindow.localStorage.getItem('dataWorkbenchSidePanelVisibilityV1')) {
   }
   if (editorWindow.document.getElementById('pendingEditsSummary').textContent !== 'No unsaved changes') {
     throw new Error('Pending changes should be cleared once the refreshed grid loads after a save.');
+  }
+
+  // --- A rejected save keeps the staged new row, so a wrong field can be
+  // corrected and saved again instead of retyping the whole row.
+  const assertStagedRowKept = (expectedValue, step) => {
+    const input = editorWindow.document.querySelector('#resultsNewRows [data-new-row-column="Status"]');
+    if (!input || input.value !== expectedValue) {
+      throw new Error(`${step}: the staged new row should keep its typed value. Got: ${input?.value}`);
+    }
+    if (!editorWindow.document.querySelector('.results-table')) {
+      throw new Error(`${step}: the editable grid should stay on screen.`);
+    }
+    const toggle = editorWindow.document.getElementById('toggleEditResultsBtn');
+    if (toggle.classList.contains('hidden') || toggle.textContent !== 'Exit edit mode') {
+      throw new Error(`${step}: Edit results should stay visible and in edit mode.`);
+    }
+    if (!editorWindow.document.getElementById('pendingEditsSummary').textContent.includes('1 new')) {
+      throw new Error(`${step}: the staged insert should still count as an unsaved change.`);
+    }
+    return input;
+  };
+  editorWindow.document.getElementById('addResultRowBtn').click();
+  await flush();
+  const failingRowInput = editorWindow.document.querySelector('#resultsNewRows [data-new-row-column="Status"]');
+  failingRowInput.value = 'INSERT_FAIL_TEST';
+  failingRowInput.dispatchEvent(new editorWindow.Event('input', { bubbles: true }));
+  editorWindow.document.getElementById('saveResultEditsBtn').click();
+  await flush();
+  if (!editorWindow.document.getElementById('confirmModal').classList.contains('hidden')) {
+    throw new Error('A save rejected at the preview should not open the confirmation modal.');
+  }
+  if (!editorWindow.document.getElementById('statusText').textContent.includes('Cannot insert duplicate key')) {
+    throw new Error(`A save rejected at the preview should show the database error. Got: ${editorWindow.document.getElementById('statusText').textContent}`);
+  }
+  const retryInput = assertStagedRowKept('INSERT_FAIL_TEST', 'Preview failure');
+
+  retryInput.value = 'EXEC_FAIL_TEST';
+  retryInput.dispatchEvent(new editorWindow.Event('input', { bubbles: true }));
+  editorWindow.document.getElementById('saveResultEditsBtn').click();
+  await flush();
+  if (editorWindow.document.getElementById('confirmModal').classList.contains('hidden')) {
+    throw new Error('A save that previews cleanly should open the confirmation modal.');
+  }
+  editorWindow.document.getElementById('cancelModalBtn').click();
+  await flush();
+  assertStagedRowKept('EXEC_FAIL_TEST', 'Cancelled confirmation');
+
+  editorWindow.document.getElementById('saveResultEditsBtn').click();
+  await flush();
+  editorWindow.document.getElementById('confirmModalBtn').click();
+  await flush();
+  if (!editorWindow.document.getElementById('statusText').textContent.includes("Cannot insert the value NULL into column 'CreatedAt'")) {
+    throw new Error(`A save rejected at execution should show the database error. Got: ${editorWindow.document.getElementById('statusText').textContent}`);
+  }
+  assertStagedRowKept('EXEC_FAIL_TEST', 'Execution failure');
+
+  // --- Editability is not stored in a result tab, so returning to an editable
+  // tab must re-check it rather than leave Edit results hidden.
+  editorWindow.document.getElementById('discardResultEditsBtn').click();
+  await flush();
+  editor.value = 'SELECT a.AlertId, b.Name FROM dbo.Alerts a JOIN dbo.Users b ON a.UserId = b.Id';
+  editor.dispatchEvent(new editorWindow.Event('input', { bubbles: true }));
+  editorWindow.document.getElementById('runQueryBtn').click();
+  await flush();
+  if (!editorWindow.document.getElementById('toggleEditResultsBtn').classList.contains('hidden')) {
+    throw new Error('Edit results should hide on a non-editable JOIN result tab.');
+  }
+  editorWindow.document.querySelectorAll('#resultTabs [data-result-tab]')[1].click();
+  await flush();
+  if (editorWindow.document.getElementById('toggleEditResultsBtn').classList.contains('hidden')) {
+    throw new Error('Switching back to an editable result tab should bring Edit results back.');
   }
 }
 

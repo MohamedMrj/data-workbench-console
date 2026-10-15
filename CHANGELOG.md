@@ -5,6 +5,32 @@ All notable Data Workbench Console changes are tracked here.
 The in-app version is read from `package.json` and exposed through `/api/version`
 together with the current git commit and build information.
 
+## Unreleased
+
+A rejected result-grid save keeps what you typed, and Edit results no longer goes missing.
+
+### Fixed
+
+- **A failed save threw away the rows you were inserting.** Save changes cleared the grid and
+  every staged change before the database had even previewed the statements, so when the
+  preview failed (duplicate key, NULL into a required column, a bad conversion) the new row
+  had to be typed again from scratch. Cancelling the confirmation, or a failure at execution,
+  lost them the same way, even though the error said the edits were still pending. The grid
+  and its staged changes now stay untouched until the save has run; on any failure the
+  database error appears in the status bar and a toast, and the row can be corrected and saved
+  again. A second click on Save while the preview is still running is ignored.
+- **Edit results disappeared.** Whether a result can be edited is not stored with a result
+  tab, and it was only checked right after a query ran. Coming back to a result by switching
+  or closing a tab, or after a page reload, therefore always hid the button, and the failed
+  save above also left you on an empty, non-editable tab. Restored results now check again,
+  and the result reloaded after a save keeps its query so it can be checked as well.
+
+### Verification
+
+- `ui-smoke.mjs`: a save rejected at the preview, a cancelled confirmation and a save rejected
+  at execution each keep the staged new row, its value, the grid and edit mode; returning to an
+  editable result tab shows Edit results again.
+
 ## 1.9.1 - 2026-10-13
 
 Typing stays smooth with large results open, and the SQL you type is always kept when you
