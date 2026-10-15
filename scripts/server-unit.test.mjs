@@ -1011,7 +1011,9 @@ assert.equal(await streamed.text(), 'a,b\r\n1,2\r\n');
     assert.equal(result.sqlEndpointId, 'ep-1');
     assert.equal(result.pending, false);
     assert.deepEqual([result.succeeded, result.failed, result.notRun], [1, 1, 1]);
-    assert.equal(result.tables[1].error, 'Delta table not found.');
+    // NotRun tables are counted but not listed: a real Lakehouse reports hundreds of them.
+    assert.deepEqual(result.tables.map((table) => table.tableName), ['NewTable', 'Broken']);
+    assert.equal(result.tables[1].error, 'DeltaTableNotFound: Delta table not found.');
     assert.ok(calls.every((call) => call.authorization === 'Bearer token-1'));
     // A second sync reuses the resolved endpoint instead of walking the workspaces again.
     const before = calls.length;
@@ -1055,6 +1057,23 @@ assert.equal(await streamed.text(), 'a,b\r\n1,2\r\n');
     const result = await sync.syncLakehouseMetadata(connection);
     assert.equal(result.pending, true);
     assert.equal(result.tables.length, 0);
+  }
+
+  // A table behind a broken OneLake shortcut fails with a full HTTP dump as its message, as
+  // seen on a real Lakehouse; only the part before the headers is kept.
+  {
+    const dump = 'Service request failed.\r\nStatus: 404 (Not Found)\r\nErrorCode: ArtifactNotFound\r\n\r\nHeaders:\r\nAccess-Control-Allow-Origin: *\r\nx-ms-error-code: ArtifactNotFound\r\nServer: Kestrel\r\n';
+    const { fetchImpl } = scripted({
+      [`GET ${fabric}/workspaces`]: json({ value: [{ id: 'ws-1' }] }),
+      [`GET ${fabric}/workspaces/ws-1/lakehouses`]: json({ value: [lakehouse('Sales_Lakehouse', 'ep-1')] }),
+      [`POST ${fabric}/workspaces/ws-1/sqlEndpoints/ep-1/refreshMetadata`]: json({ value: [
+        { tableName: 'visma.shortcut_table', status: 'Failure', error: { message: dump } },
+        { tableName: 'meta.TaskInstances', status: 'Success' }
+      ] })
+    });
+    const sync = createLakehouseMetadataSync({ fetchImpl, getToken: async () => 't', sleep: async () => {} });
+    const result = await sync.syncLakehouseMetadata(connection);
+    assert.equal(result.tables[0].error, 'Service request failed. Status: 404 (Not Found) ErrorCode: ArtifactNotFound');
   }
 
   // What Fabric really sends: a Location on a regional analysis.windows.net host plus an

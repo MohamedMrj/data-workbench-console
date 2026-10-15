@@ -8496,11 +8496,16 @@ window.createConsoleApp = function createConsoleApp() {
         setStatus('neutral', 'Fabric is still syncing the SQL endpoint. The list was refreshed; press Refresh again in a minute to pick up the rest.');
         return;
       }
-      const failures = (payload.tables || []).filter((table) => table.status === 'Failure');
-      const failedNames = failures.slice(0, 3).map((table) => `${table.tableName} (${table.error || 'failed'})`).join(', ');
+      const tables = payload.tables || [];
+      const synced = tables.filter((table) => table.status === 'Success').map((table) => table.tableName);
+      const failures = tables.filter((table) => table.status === 'Failure');
+      const syncedNames = synced.length ? ` (${synced.slice(0, 5).join(', ')}${synced.length > 5 ? '…' : ''})` : '';
+      const failedNames = failures.slice(0, 3).map((table) => `${table.tableName}: ${table.error || 'failed'}`).join('; ');
+      // A long-broken table elsewhere in the Lakehouse (a shortcut whose target was deleted, say)
+      // fails on every sync; it only makes the result an error when nothing else synced.
       setStatus(
-        failures.length ? 'error' : 'success',
-        `Synced ${payload.succeeded} table${payload.succeeded === 1 ? '' : 's'} in ${payload.lakehouseName || 'the Lakehouse'}${payload.notRun ? `, ${payload.notRun} skipped by Fabric` : ''}${failures.length ? `. ${failures.length} failed: ${failedNames}${failures.length > 3 ? '…' : ''}` : ''}. Loaded ${state.objects.length} objects.`
+        failures.length && !payload.succeeded ? 'error' : 'success',
+        `Synced ${payload.succeeded} table${payload.succeeded === 1 ? '' : 's'} in ${payload.lakehouseName || 'the Lakehouse'}${syncedNames}${payload.notRun ? `; ${payload.notRun} already up to date` : ''}${failures.length ? `. ${failures.length} could not be synced: ${failedNames}${failures.length > 3 ? '…' : ''}` : ''}. Loaded ${state.objects.length} objects.`
       );
     } finally {
       state.lakehouseSyncInFlight = false;
